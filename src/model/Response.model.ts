@@ -1,5 +1,6 @@
 import { model, Schema, Types } from "mongoose";
 import { RangeType } from "./Content.model";
+import { returnscore } from "./Form.model";
 
 export interface ResponseSetType {
   questionId: Types.ObjectId;
@@ -10,6 +11,7 @@ export interface ResponseSetType {
     | RangeType<number>
     | RangeType<Date>
     | Date;
+  score?: number;
 }
 
 export interface FormResponseType {
@@ -17,6 +19,7 @@ export interface FormResponseType {
   formId: Types.ObjectId;
   userId: Types.ObjectId;
   responseset: Array<ResponseSetType>;
+  returnscore?: returnscore;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -32,6 +35,10 @@ const ResponseSetSchema = new Schema<ResponseSetType>({
   response: {
     type: Schema.Types.Mixed, // Allows flexible response types
     required: true,
+  },
+  score: {
+    type: Number,
+    required: false,
   },
 });
 

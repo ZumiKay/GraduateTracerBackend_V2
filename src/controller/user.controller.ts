@@ -28,7 +28,7 @@ export async function RegisterUser(req: Request, res: Response) {
       return res.status(400).json(ReturnCode(400, "Email already exist"));
 
     const password = hashedPassword(data.password);
-    const createdUser = await User.create({
+    await User.create({
       ...data,
       role: ROLE.USER,
       password,

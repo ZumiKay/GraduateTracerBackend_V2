@@ -24,6 +24,9 @@ import {
   UserValidate,
 } from "../controller/user.controller";
 import form_responseController from "../controller/form_response.controller";
+import VerifyRecaptcha from "../controller/recaptcha.controller";
+import TrafficMiddleware from "../middleware/Traffic.middleware";
+import questionController from "../controller/question.controller";
 
 const UserRoute = Router();
 
@@ -46,12 +49,23 @@ UserRoute.post(
   validate(UserValidate) as any,
   authenicationController.Login as any
 );
+UserRoute.get(
+  "/checksession",
+  UserMiddleware.VerifyToken as any,
+  UserMiddleware.VerifyRefreshToken as any,
+  authenicationController.CheckSession as any
+);
 UserRoute.delete("/logout", authenicationController.Logout as any);
 UserRoute.post(
   "/refreshtoken",
   UserMiddleware.VerifyRefreshToken as any,
   authenicationController.RefreshToken as any
 );
+UserRoute.put("/forgotpassword", authenicationController.ForgotPassword as any);
+
+//Recaptcha
+UserRoute.post("/recaptchaverify", VerifyRecaptcha as any);
+
 //Form Routes
 UserRoute.post(
   "/createform",
@@ -70,16 +84,22 @@ UserRoute.get(
   GetAllForm as any
 );
 UserRoute.get(
-  "/filterdform",
+  "/filteredform",
   UserMiddleware.VerifyToken as any,
   GetFilterForm as any
 );
 
 //Form Content Routes
+
 UserRoute.post(
   "/addcontent",
   [UserMiddleware.VerifyToken as any, validate(ContentValidate) as any],
   AddFormContent as any
+);
+UserRoute.put(
+  "/savecontent",
+  UserMiddleware.VerifyToken as any,
+  questionController.SaveQuestion as any
 );
 UserRoute.put(
   "/editcontent",

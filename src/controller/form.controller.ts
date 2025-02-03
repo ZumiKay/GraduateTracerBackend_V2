@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
-import { ReturnCode } from "../utilities/helper";
+import { FormatToGeneralDate, ReturnCode } from "../utilities/helper";
 import Form, { FormType } from "../model/Form.model";
 import { CustomRequest } from "../types/customType";
+import { isValidObjectId } from "mongoose";
 
 export async function CreateForm(req: CustomRequest, res: Response) {
   const formdata = req.body as FormType;
@@ -11,9 +12,16 @@ export async function CreateForm(req: CustomRequest, res: Response) {
   try {
     //Form Creation
 
+    const isForm = await Form.findOne({ title: formdata.title, user: user.id });
+
+    if (isForm)
+      return res.status(400).json(ReturnCode(400, "Form already exist"));
+
     await Form.create({ ...formdata, user: user.id });
 
-    return res.status(201).json(ReturnCode(201, "Form Created"));
+    return res
+      .status(200)
+      .json({ ...ReturnCode(201, "Form Created"), data: formdata });
   } catch (error: any) {
     console.log("Create Form", error);
 
@@ -26,17 +34,28 @@ export async function CreateForm(req: CustomRequest, res: Response) {
 }
 
 export async function EditForm(req: Request, res: Response) {
-  const { _id, ...updateData } = req.body as FormType;
+  const { _id, setting, ...updateData } = req.body as FormType;
 
   try {
     // Validate _id
     if (!_id) return res.status(400).json(ReturnCode(400, "Invalid Form ID"));
 
-    // Update form using minimal query
+    // Construct update query dynamically
+    const updateQuery: any = { ...updateData };
+
+    if (setting) {
+      Object.keys(setting).forEach((key) => {
+        updateQuery[`setting.${key}`] = setting[key as never]; // Use dot notation
+      });
+    }
+
+    console.log({ updateQuery });
+
+    // Update the form
     const updatedForm = await Form.findByIdAndUpdate(
       _id,
-      { $set: updateData }, // Only set fields that need updating
-      { new: true, projection: "_id" } // Return only `_id` for confirmation
+      { $set: updateQuery }, // Apply update query
+      { new: true, projection: "_id" } // Return `_id` for confirmation
     );
 
     // Handle not found
@@ -52,18 +71,27 @@ export async function EditForm(req: Request, res: Response) {
 }
 
 export async function DeleteForm(req: Request, res: Response) {
-  const id = req.body;
   try {
-    if (!id) return res.status(400).json(ReturnCode(400));
+    const { ids } = req.body as { ids: string[] };
 
-    const deleted = await Form.findByIdAndDelete(id);
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res
+        .status(400)
+        .json(ReturnCode(400, "Invalid request: No IDs provided"));
+    }
 
-    if (!deleted) return res.status(404).json(ReturnCode(404));
+    const { deletedCount } = await Form.deleteMany({ _id: { $in: ids } });
 
-    return res.status(200).json(ReturnCode(200));
+    if (deletedCount === 0) {
+      return res.status(404).json(ReturnCode(404, "No forms found to delete"));
+    }
+
+    return res
+      .status(200)
+      .json(ReturnCode(200, `${deletedCount} forms deleted successfully`));
   } catch (error) {
-    console.log("Delete Form", error);
-    return res.status(500).json(ReturnCode(500));
+    console.error("Delete Form Error:", error);
+    return res.status(500).json(ReturnCode(500, "Internal Server Error"));
   }
 }
 
@@ -86,7 +114,14 @@ export async function GetAllForm(req: Request, res: Response) {
 }
 
 interface GetFilterFormParamType {
-  ty?: "search" | "type" | "createddate" | "modifieddate" | "detail" | "user";
+  ty?:
+    | "search"
+    | "type"
+    | "createddate"
+    | "modifieddate"
+    | "detail"
+    | "user"
+    | "setting";
   q?: string;
   page?: string;
   limit?: string;
@@ -103,30 +138,64 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
   const lt = Number(limit);
 
   try {
-    if (!ty || !q) {
+    if (!ty) {
       return res.status(400).json(ReturnCode(400, "Invalid type or query"));
     }
 
-    let filterdForm;
+    let filterdForm: Array<FormType> | FormType | null = null;
 
     if (ty === "detail") {
-      filterdForm = await Form.findById(q)
+      if (q === undefined)
+        return res.status(400).json(ReturnCode(400, "Invalid query"));
+      const deatilform = await Form.findOne({
+        ...(isValidObjectId(q) ? { _id: q } : { title: q }),
+      })
+        .select("title type setting createdAt updatedAt contentIds")
         .populate({
           path: "contentIds",
           select:
             "_id title type text checkbox range numrange date score require",
         })
+        .lean()
         .exec(); // Ensure execution for populated results
+      if (!deatilform) {
+        return res.status(400).json({ ...ReturnCode(400, "No Form Found") });
+      }
+
+      filterdForm = {
+        ...deatilform,
+        contents: deatilform.contentIds ?? [],
+        contentIds: undefined,
+      } as unknown as FormType;
+    } else if (ty === "setting") {
+      //Get Form Setting
+      if (!q) return res.status(400).json(ReturnCode(400, "Invalid query"));
+      filterdForm = (await Form.findById(q).select("setting")) as FormType;
     } else if (ty === "user") {
       const user = req.user;
 
       if (!user) return res.status(401).json(ReturnCode(401));
 
-      filterdForm = await Form.find({ user: user.id })
+      const userform = await Form.find({ user: user.id })
         .skip((p - 1) * lt)
         .limit(lt)
-        .select("title type createdAt updatedAt");
+        .select("title type createdAt updatedAt")
+        .lean()
+        .populate({ path: "responses", select: "_id" })
+        .exec();
+
+      filterdForm = userform.map((form) => ({
+        ...form,
+        updatedAt: form.updatedAt
+          ? FormatToGeneralDate(form.updatedAt)
+          : undefined,
+        createdAt: form.createdAt
+          ? FormatToGeneralDate(form.createdAt)
+          : undefined,
+      })) as Array<FormType>;
     } else {
+      // Search by title, type, created date, modified date
+      if (!q) return res.status(400).json(ReturnCode(400, "Invalid query"));
       const conditions =
         ty === "search"
           ? { title: { $regex: q, $options: "i" } }

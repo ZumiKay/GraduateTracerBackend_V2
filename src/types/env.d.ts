@@ -8,6 +8,9 @@ declare namespace NodeJS {
     EMAIL_APP_PASSWORD: string;
     JWT_SECRET: string;
     REFRESH_TOKEN_COOKIE: string;
+    ACCESS_TOKEN_COOKIE: string;
+    RECAPCHA_SECRETKEY: string;
+    LOGIN_ATTEMPT: string;
     [key: string]: string | undefined; // Optional: For additional dynamic environment variables
   }
 }

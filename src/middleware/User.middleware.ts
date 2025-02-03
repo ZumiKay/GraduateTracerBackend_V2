@@ -11,7 +11,8 @@ class AuthenticateMiddleWare {
     next: NextFunction
   ) => {
     try {
-      const accessToken = this.extractBearerToken(req.header("authorization"));
+      const accessToken =
+        req?.cookies[process.env.ACCESS_TOKEN_COOKIE ?? "access_token"];
 
       if (!accessToken) return res.status(401).json(ReturnCode(401));
 
@@ -43,7 +44,8 @@ class AuthenticateMiddleWare {
     try {
       const isVerify = this.VerifyJWT(refreshToken);
 
-      if (!isVerify) return res.status(401).json(ReturnCode(401));
+      if (!isVerify)
+        return res.status(401).json(ReturnCode(401, "Unauthenticated"));
 
       const isValid = await Usersession.findOne({
         $and: [

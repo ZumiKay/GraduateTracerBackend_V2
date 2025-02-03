@@ -83,3 +83,14 @@ export const getDateByNumDay = (add: number): Date => {
   today.setDate(today.getDate() + add); // Add 1 day
   return today;
 };
+
+export const getDateByMinute = (min: number) => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + min);
+  return now;
+};
+
+export const FormatToGeneralDate = (date: Date) => {
+  const d = new Date(date);
+  return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+};

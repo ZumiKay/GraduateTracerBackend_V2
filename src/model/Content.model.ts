@@ -38,8 +38,8 @@ export interface AnswerKey {
 }
 
 export interface ContentType {
-  _id: Types.ObjectId;
-  title: string;
+  _id?: Types.ObjectId;
+  title: ContentTitle;
   type: QuestionType;
   formId: Types.ObjectId;
   text?: string;
@@ -51,6 +51,7 @@ export interface ContentType {
   answer?: AnswerKey;
   conditional?: ConditionalType;
   require?: boolean;
+  page?: number;
 }
 
 //Sub Documents
@@ -98,13 +99,30 @@ const AnswerKeySchema = new Schema<AnswerKey>({
   },
 });
 
+//Title Schema
+
+interface ContentTitle {
+  type: string;
+  content: Array<any>;
+}
+
+const TitleSchema = new Schema<ContentTitle>({
+  type: {
+    type: String,
+    required: true,
+  },
+  content: {
+    type: Schema.Types.Mixed,
+    required: true,
+  },
+});
+
 //Parent Document
 
 const ContentSchema = new Schema<ContentType>({
   title: {
-    type: "string",
+    type: TitleSchema,
     required: true,
-    unique: true,
   },
   type: {
     type: "string",
@@ -117,7 +135,7 @@ const ContentSchema = new Schema<ContentType>({
   },
   checkbox: {
     type: [CheckboxQuestionSchema],
-    default: [],
+    default: null,
   },
   range: {
     type: RangeSchema,
@@ -146,6 +164,10 @@ const ContentSchema = new Schema<ContentType>({
   require: {
     type: Boolean,
     default: false,
+  },
+  page: {
+    type: Number,
+    default: 1,
   },
 });
 

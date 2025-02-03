@@ -1,8 +1,14 @@
 import { Response } from "express";
 import { ReturnCode } from "../utilities/helper";
-import FormResponse, { FormResponseType } from "../model/Response.model";
+import FormResponse, {
+  FormResponseType,
+  ResponseSetType,
+} from "../model/Response.model";
 import Zod from "zod";
 import { CustomRequest } from "../types/customType";
+import Content from "../model/Content.model";
+import { Types } from "mongoose";
+import { returnscore } from "../model/Form.model";
 
 class FormResponseController {
   private static readonly DEFAULT_PAGE = 1;
@@ -23,10 +29,23 @@ class FormResponseController {
   public SubmitResponse = async (req: CustomRequest, res: Response) => {
     const submitdata = req.body as FormResponseType;
 
+    let autoscore = null;
     try {
+      if (submitdata.returnscore === returnscore.partial) {
+        autoscore = await Promise.all(
+          submitdata.responseset.map(async (response) => {
+            return await this.AddScore(
+              new Types.ObjectId(response.questionId),
+              response
+            );
+          })
+        );
+      }
+
       await FormResponse.create({
         ...submitdata,
-        userId: req.user?.id, // Optional chaining for safety
+        responseset: autoscore ?? submitdata.responseset,
+        userId: req.user?.id,
       });
 
       res.status(200).json(ReturnCode(200, "Form Submitted"));
@@ -90,6 +109,71 @@ class FormResponseController {
       return res.status(500).json(ReturnCode(500));
     }
   };
+
+  //Add Score for the response
+  public AddScore = async (qid: Types.ObjectId, response: ResponseSetType) => {
+    try {
+      const content = await Content.findById(qid)
+        .select("answer score")
+        .lean()
+        .exec();
+
+      if (!content?.answer) return null;
+
+      const correctAnswer = content.answer;
+      const responseValue = response.response;
+      let score = 0;
+
+      switch (true) {
+        case typeof responseValue === "boolean":
+        case typeof responseValue === "string":
+        case typeof responseValue === "number":
+          score =
+            responseValue === (correctAnswer as any) ? content.score ?? 0 : 0;
+          break;
+
+        case responseValue instanceof Date:
+          // Compare timestamps instead of Date objects
+          score =
+            responseValue.getTime() ===
+            (correctAnswer as unknown as Date)?.getTime()
+              ? content.score ?? 0
+              : 0;
+          break;
+
+        case typeof responseValue === "object":
+          score = this.deepEqual(responseValue, correctAnswer)
+            ? content.score ?? 0
+            : 0;
+          break;
+
+        default:
+          score = 0;
+      }
+
+      return { ...response, score };
+    } catch (error) {
+      console.error("AddScore Error:", error);
+      return null;
+    }
+  };
+
+  private deepEqual(a: any, b: any): boolean {
+    if (a === b) return true;
+    if (typeof a !== "object" || typeof b !== "object" || !a || !b)
+      return false;
+
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+
+    if (keysA.length !== keysB.length) return false;
+
+    return keysA.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(b, key) &&
+        this.deepEqual(a[key], b[key])
+    );
+  }
 }
 
 export default new FormResponseController();

@@ -3,8 +3,8 @@ import nodemailer from "nodemailer";
 const HandleEmail = async (
   to: string,
   subject: string,
-  message: string,
-  html: string
+  html: string,
+  message?: string
 ) => {
   const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -19,7 +19,7 @@ const HandleEmail = async (
       from: process.env.ADMIN_EMAIL, // Ensure the 'from' field is set, usually set to the admin email
       to,
       subject,
-      text: message,
+      text: message ?? "",
       html,
     });
 
