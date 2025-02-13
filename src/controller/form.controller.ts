@@ -3,6 +3,7 @@ import { FormatToGeneralDate, ReturnCode } from "../utilities/helper";
 import Form, { FormType } from "../model/Form.model";
 import { CustomRequest } from "../types/customType";
 import { isValidObjectId } from "mongoose";
+import Content from "../model/Content.model";
 
 export async function CreateForm(req: CustomRequest, res: Response) {
   const formdata = req.body as FormType;
@@ -33,8 +34,35 @@ export async function CreateForm(req: CustomRequest, res: Response) {
   }
 }
 
+export async function PageHandler(req: CustomRequest, res: Response) {
+  const {
+    ty,
+    formId,
+    deletepage,
+  }: { ty: "add" | "delete"; formId: string; deletepage?: number } = req.body;
+
+  if (!formId || !ty) return res.status(400).json(ReturnCode(400));
+
+  try {
+    await Form.updateOne(
+      { _id: formId },
+      { $inc: { ...(ty === "add" ? { totalpage: 1 } : { totalpage: -1 }) } }
+    );
+
+    //Handle Delete Page
+    if (ty === "delete" && deletepage) {
+      await Content.deleteMany({ page: deletepage });
+    }
+
+    return res.status(200).json(ReturnCode(200, "Success"));
+  } catch (error) {
+    console.log("Page Handler", error);
+    return res.status(500).json(ReturnCode(500));
+  }
+}
+
 export async function EditForm(req: Request, res: Response) {
-  const { _id, setting, ...updateData } = req.body as FormType;
+  const { _id, setting, ...updateData } = req.body.data as FormType;
 
   try {
     // Validate _id
@@ -48,8 +76,6 @@ export async function EditForm(req: Request, res: Response) {
         updateQuery[`setting.${key}`] = setting[key as never]; // Use dot notation
       });
     }
-
-    console.log({ updateQuery });
 
     // Update the form
     const updatedForm = await Form.findByIdAndUpdate(
@@ -127,97 +153,130 @@ interface GetFilterFormParamType {
   limit?: string;
 }
 export async function GetFilterForm(req: CustomRequest, res: Response) {
-  const {
-    ty,
-    q,
-    page = "1",
-    limit = "5",
-  } = req.query as GetFilterFormParamType;
-
-  const p = Number(page);
-  const lt = Number(limit);
-
   try {
+    const {
+      ty,
+      q,
+      page = "1",
+      limit = "5",
+    } = req.query as GetFilterFormParamType;
+
     if (!ty) {
       return res.status(400).json(ReturnCode(400, "Invalid type or query"));
     }
 
-    let filterdForm: Array<FormType> | FormType | null = null;
+    const p = Number(page);
+    const lt = Number(limit);
 
-    if (ty === "detail") {
-      if (q === undefined)
-        return res.status(400).json(ReturnCode(400, "Invalid query"));
-      const deatilform = await Form.findOne({
-        ...(isValidObjectId(q) ? { _id: q } : { title: q }),
-      })
-        .select("title type setting createdAt updatedAt contentIds")
-        .populate({
-          path: "contentIds",
-          select:
-            "_id title type text checkbox range numrange date score require",
-        })
-        .lean()
-        .exec(); // Ensure execution for populated results
-      if (!deatilform) {
-        return res.status(400).json({ ...ReturnCode(400, "No Form Found") });
-      }
-
-      filterdForm = {
-        ...deatilform,
-        contents: deatilform.contentIds ?? [],
-        contentIds: undefined,
-      } as unknown as FormType;
-    } else if (ty === "setting") {
-      //Get Form Setting
-      if (!q) return res.status(400).json(ReturnCode(400, "Invalid query"));
-      filterdForm = (await Form.findById(q).select("setting")) as FormType;
-    } else if (ty === "user") {
-      const user = req.user;
-
-      if (!user) return res.status(401).json(ReturnCode(401));
-
-      const userform = await Form.find({ user: user.id })
-        .skip((p - 1) * lt)
-        .limit(lt)
-        .select("title type createdAt updatedAt")
-        .lean()
-        .populate({ path: "responses", select: "_id" })
-        .exec();
-
-      filterdForm = userform.map((form) => ({
-        ...form,
-        updatedAt: form.updatedAt
-          ? FormatToGeneralDate(form.updatedAt)
-          : undefined,
-        createdAt: form.createdAt
-          ? FormatToGeneralDate(form.createdAt)
-          : undefined,
-      })) as Array<FormType>;
-    } else {
-      // Search by title, type, created date, modified date
-      if (!q) return res.status(400).json(ReturnCode(400, "Invalid query"));
-      const conditions =
-        ty === "search"
-          ? { title: { $regex: q, $options: "i" } }
-          : ty === "type"
-          ? { type: q }
-          : ty === "createddate"
-          ? { createdAt: new Date(q) }
-          : ty === "modifieddate"
-          ? { updatedAt: new Date(q) }
-          : ty === "user"
-          ? { user: q }
-          : {};
-
-      filterdForm = await Form.find(conditions)
-        .skip((p - 1) * lt)
-        .limit(lt)
-        .select("title type createdAt updatedAt");
+    // Early validation for query parameter
+    if (
+      [
+        "detail",
+        "setting",
+        "search",
+        "type",
+        "createddate",
+        "modifieddate",
+      ].includes(ty) &&
+      !q
+    ) {
+      return res.status(400).json(ReturnCode(400, "Invalid query"));
     }
 
-    return res.status(200).json({ ...ReturnCode(200), data: filterdForm });
-  } catch (error: any) {
-    console.error("Error in GetFilterForm:", error.message);
+    // Cache commonly used projections
+    const basicProjection = "title type createdAt updatedAt";
+
+    switch (ty) {
+      case "detail": {
+        const query = isValidObjectId(q) ? { _id: q } : { title: q };
+
+        const detailForm = await Form.findOne(query)
+          .select(`${basicProjection} totalpage setting contentIds`)
+          .lean();
+
+        if (!detailForm) {
+          return res.status(400).json(ReturnCode(400, "No Form Found"));
+        }
+        const resultContent = await Content.find({
+          $and: [
+            {
+              _id: { $in: detailForm.contentIds },
+            },
+            { page: p },
+          ],
+        })
+          .select(
+            "_id title type text checkbox range numrange date score require page conditional"
+          )
+          .lean();
+
+        return res.status(200).json({
+          ...ReturnCode(200),
+          data: {
+            ...detailForm,
+            contents: resultContent || [],
+            contentIds: undefined,
+          },
+        });
+      }
+
+      case "setting": {
+        const form = await Form.findById(q).select("setting").lean();
+        return res.status(200).json({ ...ReturnCode(200), data: form });
+      }
+
+      case "user": {
+        const user = req.user;
+        if (!user) {
+          return res.status(401).json(ReturnCode(401));
+        }
+
+        const userForms = await Form.find({ user: user.id })
+          .skip((p - 1) * lt)
+          .limit(lt)
+          .select(basicProjection)
+          .populate({ path: "responses", select: "_id" })
+          .lean();
+
+        const formattedForms = userForms.map((form) => ({
+          ...form,
+          updatedAt: form.updatedAt
+            ? FormatToGeneralDate(form.updatedAt)
+            : undefined,
+          createdAt: form.createdAt
+            ? FormatToGeneralDate(form.createdAt)
+            : undefined,
+        }));
+
+        return res
+          .status(200)
+          .json({ ...ReturnCode(200), data: formattedForms });
+      }
+
+      default: {
+        // Handle search, type, createddate, modifieddate cases
+        const conditions =
+          {
+            search: { title: { $regex: q, $options: "i" } },
+            type: { type: q },
+            createddate: { createdAt: new Date(q as string) },
+            modifieddate: { updatedAt: new Date(q as string) },
+          }[ty] || {};
+
+        const forms = await Form.find(conditions)
+          .skip((p - 1) * lt)
+          .limit(lt)
+          .select(basicProjection)
+          .lean();
+
+        return res.status(200).json({ ...ReturnCode(200), data: forms });
+      }
+    }
+  } catch (error) {
+    console.error(
+      "Error in GetFilterForm:",
+      error instanceof Error ? error.message : error
+    );
     return res.status(500).json(ReturnCode(500, "Internal Server Error"));
   }
 }

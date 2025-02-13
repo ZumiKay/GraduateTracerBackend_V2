@@ -6,11 +6,11 @@ import {
   EditForm,
   GetAllForm,
   GetFilterForm,
+  PageHandler,
 } from "../controller/form.controller";
 import {
   AddFormContent,
   ContentValidate,
-  DeleteContent,
   EditFormContent,
 } from "../controller/content.controller";
 import { createFormValidate } from "../model/Form.model";
@@ -25,7 +25,6 @@ import {
 } from "../controller/user.controller";
 import form_responseController from "../controller/form_response.controller";
 import VerifyRecaptcha from "../controller/recaptcha.controller";
-import TrafficMiddleware from "../middleware/Traffic.middleware";
 import questionController from "../controller/question.controller";
 
 const UserRoute = Router();
@@ -88,6 +87,11 @@ UserRoute.get(
   UserMiddleware.VerifyToken as any,
   GetFilterForm as any
 );
+UserRoute.put(
+  "/modifypage",
+  UserMiddleware.VerifyToken as any,
+  PageHandler as any
+);
 
 //Form Content Routes
 
@@ -109,7 +113,12 @@ UserRoute.put(
 UserRoute.delete(
   "/deletecontent",
   UserMiddleware.VerifyToken as any,
-  DeleteContent as any
+  questionController.DeleteQuestion as any
+);
+UserRoute.post(
+  "/handlecondition",
+  UserMiddleware.VerifyToken as any,
+  questionController.handleCondition as any
 );
 
 //Form Response Route

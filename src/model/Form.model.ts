@@ -26,6 +26,7 @@ interface FromSettingType {
   text?: string;
   submitonce?: boolean;
   email?: boolean;
+  autosave?: boolean;
   returnscore?: returnscore;
 }
 
@@ -39,6 +40,7 @@ export interface FormType {
   submittype: SubmitType;
   user: Types.ObjectId;
   setting?: FromSettingType;
+  totalpage?: number;
   respondants?: Array<Types.ObjectId>;
   responses?: Array<FormResponseType>;
   createdAt?: Date;
@@ -74,6 +76,10 @@ const FormSettingSchema = new Schema<FromSettingType>({
     default: null,
     required: false,
   },
+  autosave: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const FormSchema = new Schema<FormType>(
@@ -98,6 +104,11 @@ const FormSchema = new Schema<FormType>(
       type: Schema.Types.ObjectId,
       ref: "User", // Reference to the related collection
       required: true,
+    },
+    totalpage: {
+      type: Number,
+      default: 1,
+      required: false,
     },
     respondants: {
       type: [Schema.Types.ObjectId],

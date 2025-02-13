@@ -2,64 +2,188 @@ import { Request, Response } from "express";
 import { ReturnCode } from "../utilities/helper";
 import Content, { AnswerKey, ContentType } from "../model/Content.model";
 import Form from "../model/Form.model";
-import { Types } from "mongoose";
+import mongoose, { SchemaType, SchemaTypes, Types } from "mongoose";
 
 class QuestionController {
-  public async SaveQuestion(req: Request, res: Response) {
+  public SaveQuestion = async (req: Request, res: Response) => {
+    const session = await mongoose.startSession();
     try {
-      const data = req.body as Array<ContentType>;
+      const { data, formId, page } = req.body as {
+        data: Array<ContentType>;
+        formId: string;
+        page?: number;
+      };
 
-      // 1. Data preparation optimization
-      const operations = data.map((question) => {
-        const updateDoc = { ...question };
-        const filter = { _id: updateDoc._id || new Types.ObjectId() };
+      // Validate input
+      if (!Array.isArray(data) || !formId || !page) {
+        return res.status(400).json(ReturnCode(400, "Invalid request payload"));
+      }
 
-        delete updateDoc._id;
+      // Extract valid IDs once
+      const idsToKeep = data.map((item) => item._id).filter(Boolean);
 
-        return {
-          updateOne: {
-            filter,
-            update: { $set: updateDoc },
-            upsert: true,
-          },
-        };
-      });
+      // Optimize query with projection and index utilization
+      const existingContent = await Content.find(
+        { formId, page },
+        { _id: 1, formId: 1, page: 1 }, // Project only necessary fields
+        { lean: true, maxTimeMS: 5000 } // Add query timeout
+      );
 
-      const result = await Content.bulkWrite(operations, {
-        ordered: false, // Allow parallel execution
-        writeConcern: { w: 1 }, // Faster acknowledgement
-        bypassDocumentValidation: false, // Maintain schema validation
-      });
+      // Efficient change detection
+      if (await this.efficientChangeDetection(existingContent, data)) {
+        return res.status(200).json(ReturnCode(200, "No changes detected"));
+      }
 
-      return res.status(200).json({
-        success: true,
-        inserted: result.upsertedCount,
-        modified: result.modifiedCount,
-        message: "Questions saved successfully",
-      });
+      // Start transaction
+      session.startTransaction();
+
+      // Delete unnecessary content
+      if (page) {
+        await Content.deleteMany(
+          { _id: { $nin: idsToKeep }, page },
+          { session }
+        );
+      }
+
+      // Bulk write with proper upsert handling
+      if (data.length > 0) {
+        const bulkWriteResult = await Content.bulkWrite(
+          data.map(({ _id, ...rest }) => ({
+            updateOne: {
+              filter: { _id: _id || new Types.ObjectId() },
+              update: {
+                $set: { ...rest, formId, updatedAt: new Date() },
+              },
+              upsert: true,
+            },
+          })),
+          { ordered: false, session, writeConcern: { w: 1 } }
+        );
+
+        // Update form references if new content was created
+        const upsertedIds = Object.values(bulkWriteResult.upsertedIds);
+        if (upsertedIds.length > 0) {
+          await Form.findByIdAndUpdate(
+            formId,
+            {
+              $addToSet: { contentIds: { $each: upsertedIds } },
+              $set: { updatedAt: new Date() },
+            },
+            { session, new: true }
+          );
+        }
+      }
+
+      // Commit transaction
+      await session.commitTransaction();
+      return res.status(200).json(ReturnCode(200, "Saved successfully"));
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      console.error("SaveQuestion Error:", errorMessage);
+      console.error("SaveQuestion Error:", error);
 
-      return res.status(500).json({
-        success: false,
-        error: "Internal server error",
-        reference: Date.now().toString(36), // Unique error reference
-      });
+      // Handle Mongoose-specific errors
+      if (error instanceof mongoose.Error.ValidationError) {
+        return res.status(400).json(ReturnCode(400, "Validation Error"));
+      }
+      if (error instanceof mongoose.Error.CastError) {
+        return res.status(400).json(ReturnCode(400, "Invalid ID Format"));
+      }
+
+      // Rollback transaction on failure
+      await session.abortTransaction();
+      return res.status(500).json(ReturnCode(500, "Internal Server Error"));
+    } finally {
+      session.endSession(); // Ensure session ends in all cases
     }
-  }
+  };
+  public handleCondition = async (req: Request, res: Response) => {
+    try {
+      const { contentId, key, newContent, formId } = req.body as {
+        contentId: Types.ObjectId;
+        key: Types.ObjectId;
+        newContent: ContentType;
+        formId: string;
+      };
+
+      if (!contentId || key === undefined || !newContent || !formId) {
+        return res.status(400).json(ReturnCode(400, "Invalid request payload"));
+      }
+
+      const newContentId = new Types.ObjectId();
+
+      // Perform both operations in parallel
+      const [newContentCreated, updateResult] = await Promise.all([
+        Content.create({
+          ...newContent,
+          _id: newContentId,
+          formId,
+          conditional: [],
+        }),
+        Content.updateOne(
+          { _id: contentId },
+          {
+            $push: { conditional: { key, contentId: newContentId } },
+          }
+        ),
+        Form.updateOne(
+          { _id: formId },
+          { $push: { contentIds: newContentId } }
+        ),
+      ]);
+
+      if (!updateResult.modifiedCount) {
+        return res.status(400).json(ReturnCode(400, "Content not found"));
+      }
+
+      return res
+        .status(200)
+        .json({ ...ReturnCode(200), data: { newContentId } });
+    } catch (error) {
+      console.error("Add Condition Error:", error);
+      return res.status(500).json(ReturnCode(500, "Internal Server Error"));
+    }
+  };
+
   public async DeleteQuestion(req: Request, res: Response) {
     try {
-      const id = req.body;
+      const { id, formId }: { id: string; formId: string } = req.body;
 
-      if (!id) return res.status(400).json(ReturnCode(400));
-      await Content.deleteOne({ _id: id });
+      if (!id || !formId) {
+        return res.status(400).json(ReturnCode(400, "Invalid request payload"));
+      }
+
+      const tobeDelete = await Content.findById(id)
+        .select("conditional")
+        .lean();
+
+      if (!tobeDelete) return res.status(400).json(ReturnCode(400));
+
+      //Check if the question is linked
+      await Content.updateMany(
+        { "conditional.contentId": id },
+        { $pull: { conditional: { contentId: id } } }
+      );
+
+      //Delete Condition Questions
+      if (tobeDelete?.conditional) {
+        await Content.deleteMany({
+          _id: { $in: tobeDelete.conditional.map((con) => con.contentId) },
+        });
+      }
+
+      const deleteContent = Content.deleteOne({ _id: id });
+      const updateForm = Form.updateOne(
+        { _id: formId },
+        { $pull: { contentIds: id } }
+      );
+
+      await Promise.all([deleteContent, updateForm]);
 
       return res.status(200).json(ReturnCode(200, "Question Deleted"));
     } catch (error) {
-      console.log("Delete Question", error);
-      return res.status(500).json(ReturnCode(500));
+      console.error("Delete Question Error:", error);
+      return res
+        .status(500)
+        .json(ReturnCode(500, "Error occurred while deleting question"));
     }
   }
 
@@ -104,6 +228,24 @@ class QuestionController {
       console.log("Save Solution", error);
       return res.status(500).json(ReturnCode(500));
     }
+  }
+  private async efficientChangeDetection(
+    existing: any[],
+    incoming: any[]
+  ): Promise<boolean> {
+    if (existing.length !== incoming.length) return false;
+
+    const existingMap = new Map(
+      existing.map((item) => [item._id.toString(), item])
+    );
+    return incoming.every((item) => {
+      const existingItem = existingMap.get(item._id?.toString());
+      return (
+        existingItem &&
+        JSON.stringify(existingItem) ===
+          JSON.stringify({ ...item, _id: existingItem._id })
+      );
+    });
   }
 }
 

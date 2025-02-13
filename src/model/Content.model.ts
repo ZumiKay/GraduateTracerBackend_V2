@@ -22,8 +22,8 @@ export interface CheckboxQuestionType {
 
 export interface ConditionalType {
   _id: Types.ObjectId;
-  key: Types.ObjectId;
-  QuestionIds: Array<Types.ObjectId>;
+  key: number;
+  contentId: Types.ObjectId;
 }
 
 export interface AnswerKey {
@@ -38,7 +38,7 @@ export interface AnswerKey {
 }
 
 export interface ContentType {
-  _id?: Types.ObjectId;
+  _id?: string;
   title: ContentTitle;
   type: QuestionType;
   formId: Types.ObjectId;
@@ -49,7 +49,7 @@ export interface ContentType {
   date?: Date;
   score?: number;
   answer?: AnswerKey;
-  conditional?: ConditionalType;
+  conditional?: Array<ConditionalType>;
   require?: boolean;
   page?: number;
 }
@@ -79,17 +79,14 @@ const RangeSchema = new Schema<RangeType<Date> | RangeType<number>>({
 
 const ConditionalSchema = new Schema<ConditionalType>({
   key: {
-    type: Schema.Types.ObjectId,
-    ref: "Content", // Refers to another content
+    type: Number,
     required: true,
   },
-  QuestionIds: [
-    {
-      type: Schema.Types.ObjectId,
-      ref: "Content", // Refers to follow-up questions
-      required: true,
-    },
-  ],
+  contentId: {
+    type: Schema.Types.ObjectId,
+    ref: "Content",
+    required: true,
+  },
 });
 
 const AnswerKeySchema = new Schema<AnswerKey>({
@@ -120,6 +117,10 @@ const TitleSchema = new Schema<ContentTitle>({
 //Parent Document
 
 const ContentSchema = new Schema<ContentType>({
+  formId: {
+    type: Schema.ObjectId,
+    required: true,
+  },
   title: {
     type: TitleSchema,
     required: true,
@@ -170,6 +171,8 @@ const ContentSchema = new Schema<ContentType>({
     default: 1,
   },
 });
+
+ContentSchema.index({ formId: 1, page: 1 });
 
 const Content = model("Content", ContentSchema);
 
