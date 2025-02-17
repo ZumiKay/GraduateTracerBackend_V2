@@ -206,7 +206,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           ],
         })
           .select(
-            "_id title type text checkbox range numrange date score require page conditional"
+            "_id title type text multiple checkbox range numrange date score require page conditional"
           )
           .lean();
 

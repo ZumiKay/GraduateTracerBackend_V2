@@ -2,11 +2,10 @@ import { Request, Response } from "express";
 import { ReturnCode } from "../utilities/helper";
 import Content, { AnswerKey, ContentType } from "../model/Content.model";
 import Form from "../model/Form.model";
-import mongoose, { SchemaType, SchemaTypes, Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 
 class QuestionController {
   public SaveQuestion = async (req: Request, res: Response) => {
-    const session = await mongoose.startSession();
     try {
       const { data, formId, page } = req.body as {
         data: Array<ContentType>;
@@ -35,48 +34,55 @@ class QuestionController {
       }
 
       // Start transaction
-      session.startTransaction();
 
       // Delete unnecessary content
       if (page) {
-        await Content.deleteMany(
-          { _id: { $nin: idsToKeep }, page },
-          { session }
-        );
+        await Content.deleteMany({ _id: { $nin: idsToKeep }, page });
       }
 
       // Bulk write with proper upsert handling
+      let insertedId: Array<string> = [];
       if (data.length > 0) {
         const bulkWriteResult = await Content.bulkWrite(
           data.map(({ _id, ...rest }) => ({
             updateOne: {
               filter: { _id: _id || new Types.ObjectId() },
               update: {
-                $set: { ...rest, formId, updatedAt: new Date() },
+                $set: {
+                  ...rest,
+                  checkbox: rest.checkbox,
+                  multiple: rest.multiple,
+                  range: rest.range,
+                  numrange: rest.numrange,
+                  formId,
+                  updatedAt: new Date(),
+                },
               },
               upsert: true,
             },
           })),
-          { ordered: false, session, writeConcern: { w: 1 } }
+          { ordered: false, writeConcern: { w: 1 } }
         );
 
         // Update form references if new content was created
-        const upsertedIds = Object.values(bulkWriteResult.upsertedIds);
-        if (upsertedIds.length > 0) {
+        insertedId = Object.values(bulkWriteResult.upsertedIds);
+        if (insertedId.length > 0) {
           await Form.findByIdAndUpdate(
             formId,
             {
-              $addToSet: { contentIds: { $each: upsertedIds } },
+              $addToSet: { contentIds: { $each: insertedId } },
               $set: { updatedAt: new Date() },
             },
-            { session, new: true }
+            { new: true }
           );
         }
       }
 
       // Commit transaction
-      await session.commitTransaction();
-      return res.status(200).json(ReturnCode(200, "Saved successfully"));
+      return res.status(200).json({
+        ...ReturnCode(200, "Saved successfully"),
+        data: { insertedId },
+      });
     } catch (error) {
       console.error("SaveQuestion Error:", error);
 
@@ -89,10 +95,7 @@ class QuestionController {
       }
 
       // Rollback transaction on failure
-      await session.abortTransaction();
       return res.status(500).json(ReturnCode(500, "Internal Server Error"));
-    } finally {
-      session.endSession(); // Ensure session ends in all cases
     }
   };
   public handleCondition = async (req: Request, res: Response) => {
@@ -140,6 +143,18 @@ class QuestionController {
     } catch (error) {
       console.error("Add Condition Error:", error);
       return res.status(500).json(ReturnCode(500, "Internal Server Error"));
+    }
+  };
+  public removeCondition = async (req: Request, res: Response) => {
+    try {
+      const { formId, contentId } = req.body as {
+        formId: string;
+        contentId: string;
+      };
+      return res.status(200).json(ReturnCode(200));
+    } catch (error) {
+      console.log("Remove Condition", error);
+      return res.status(500).json(ReturnCode(500));
     }
   };
 

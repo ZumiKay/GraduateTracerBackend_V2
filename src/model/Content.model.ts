@@ -42,9 +42,10 @@ export interface ContentType {
   title: ContentTitle;
   type: QuestionType;
   formId: Types.ObjectId;
+  multiple?: Array<CheckboxQuestionType>;
   text?: string;
   checkbox?: Array<CheckboxQuestionType>;
-  range?: RangeType<Date>;
+  range?: RangeType<string>;
   numrange?: RangeType<number>;
   date?: Date;
   score?: number;
@@ -132,35 +133,30 @@ const ContentSchema = new Schema<ContentType>({
   },
   text: {
     type: "string",
-    default: null,
   },
   checkbox: {
     type: [CheckboxQuestionSchema],
-    default: null,
+  },
+  multiple: {
+    type: [CheckboxQuestionSchema],
   },
   range: {
     type: RangeSchema,
-    default: null,
   },
   numrange: {
     type: RangeSchema,
-    default: null,
   },
   date: {
     type: Date,
-    default: null,
   },
   answer: {
     type: AnswerKeySchema,
-    default: null,
   },
   conditional: {
     type: [ConditionalSchema],
-    default: null,
   },
   score: {
     type: Number,
-    default: null,
   },
   require: {
     type: Boolean,
@@ -173,6 +169,8 @@ const ContentSchema = new Schema<ContentType>({
 });
 
 ContentSchema.index({ formId: 1, page: 1 });
+
+//Pre Hook
 
 const Content = model("Content", ContentSchema);
 
