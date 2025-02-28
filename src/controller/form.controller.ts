@@ -2,8 +2,11 @@ import { Request, Response } from "express";
 import { FormatToGeneralDate, ReturnCode } from "../utilities/helper";
 import Form, { FormType } from "../model/Form.model";
 import { CustomRequest } from "../types/customType";
-import { isValidObjectId } from "mongoose";
-import Content from "../model/Content.model";
+import { isValidObjectId, Types } from "mongoose";
+import Content, {
+  ContentType,
+  ParentContentType,
+} from "../model/Content.model";
 
 export async function CreateForm(req: CustomRequest, res: Response) {
   const formdata = req.body as FormType;
@@ -147,11 +150,36 @@ interface GetFilterFormParamType {
     | "modifieddate"
     | "detail"
     | "user"
-    | "setting";
+    | "setting"
+    | "solution"
+    | "preview"
+    | "hidecond";
   q?: string;
   page?: string;
   limit?: string;
 }
+
+const CheckCondition = (
+  allcontent: Array<ContentType>,
+  qidx: number
+): { parentcontent: ParentContentType | undefined } => {
+  let parentcontent = undefined;
+  const isConditional = allcontent.find((question) =>
+    question.conditional?.some((cond) => cond.contentId === qidx)
+  );
+
+  if (!isConditional) {
+    return { parentcontent };
+  }
+
+  return {
+    parentcontent: {
+      idx: isConditional.idx ?? 0,
+      _id: isConditional._id,
+    },
+  };
+};
+
 export async function GetFilterForm(req: CustomRequest, res: Response) {
   try {
     const {
@@ -172,11 +200,14 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
     if (
       [
         "detail",
+        "solution",
         "setting",
         "search",
         "type",
         "createddate",
         "modifieddate",
+        "preview",
+        "hidecond",
       ].includes(ty) &&
       !q
     ) {
@@ -187,7 +218,9 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
     const basicProjection = "title type createdAt updatedAt";
 
     switch (ty) {
-      case "detail": {
+      case "detail":
+      case "solution":
+      case "hidecond": {
         const query = isValidObjectId(q) ? { _id: q } : { title: q };
 
         const detailForm = await Form.findOne(query)
@@ -206,15 +239,32 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           ],
         })
           .select(
-            "_id title type text multiple checkbox range numrange date score require page conditional"
+            `_id idx title type text multiple checkbox range numrange date require page conditional ${
+              ty === "solution" ? "answer score" : ""
+            }`
           )
-          .lean();
+          .lean()
+          .sort({ idx: 1 });
+
+        let finalcontent = resultContent.map((question) => {
+          const condition = CheckCondition(resultContent, question.idx ?? 0);
+          return {
+            ...question,
+            ...condition,
+          };
+        });
+
+        if (ty === "hidecond") {
+          finalcontent = finalcontent.filter((question) =>
+            ty === "hidecond" ? !question.parentcontent : question
+          );
+        }
 
         return res.status(200).json({
           ...ReturnCode(200),
           data: {
             ...detailForm,
-            contents: resultContent || [],
+            contents: finalcontent || [],
             contentIds: undefined,
           },
         });
@@ -261,7 +311,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
             type: { type: q },
             createddate: { createdAt: new Date(q as string) },
             modifieddate: { updatedAt: new Date(q as string) },
-          }[ty] || {};
+          }[ty as never] || {};
 
         const forms = await Form.find(conditions)
           .skip((p - 1) * lt)

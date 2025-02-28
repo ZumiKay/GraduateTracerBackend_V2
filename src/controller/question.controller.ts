@@ -54,6 +54,8 @@ class QuestionController {
                   multiple: rest.multiple,
                   range: rest.range,
                   numrange: rest.numrange,
+                  conditional: rest.conditional,
+                  answer: rest.answer,
                   formId,
                   updatedAt: new Date(),
                 },
@@ -124,7 +126,7 @@ class QuestionController {
         Content.updateOne(
           { _id: contentId },
           {
-            $push: { conditional: { key, contentId: newContentId } },
+            $push: { conditional: { key, contentId: newContent.idx } },
           }
         ),
         Form.updateOne(
@@ -137,9 +139,7 @@ class QuestionController {
         return res.status(400).json(ReturnCode(400, "Content not found"));
       }
 
-      return res
-        .status(200)
-        .json({ ...ReturnCode(200), data: { newContentId } });
+      return res.status(200).json({ ...ReturnCode(200) });
     } catch (error) {
       console.error("Add Condition Error:", error);
       return res.status(500).json(ReturnCode(500, "Internal Server Error"));

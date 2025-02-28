@@ -6,8 +6,11 @@ export enum QuestionType {
   Text = "texts",
   Number = "number",
   Date = "date",
-  Range = "range",
+  RangeDate = "rangedate",
   Selection = "select",
+  RangeNumber = "rangenumber",
+  ShortAnswer = "shortanswer",
+  Paragraph = "paragraph",
 }
 
 export interface RangeType<t> {
@@ -23,7 +26,12 @@ export interface CheckboxQuestionType {
 export interface ConditionalType {
   _id: Types.ObjectId;
   key: number;
-  contentId: Types.ObjectId;
+  contentId: number;
+}
+
+export interface ParentContentType {
+  _id?: string;
+  idx: Number;
 }
 
 export interface AnswerKey {
@@ -38,6 +46,7 @@ export interface AnswerKey {
 }
 
 export interface ContentType {
+  idx?: number;
   _id?: string;
   title: ContentTitle;
   type: QuestionType;
@@ -51,6 +60,7 @@ export interface ContentType {
   score?: number;
   answer?: AnswerKey;
   conditional?: Array<ConditionalType>;
+  parentcontent?: ParentContentType;
   require?: boolean;
   page?: number;
 }
@@ -84,8 +94,7 @@ const ConditionalSchema = new Schema<ConditionalType>({
     required: true,
   },
   contentId: {
-    type: Schema.Types.ObjectId,
-    ref: "Content",
+    type: Number,
     required: true,
   },
 });
@@ -118,6 +127,10 @@ const TitleSchema = new Schema<ContentTitle>({
 //Parent Document
 
 const ContentSchema = new Schema<ContentType>({
+  idx: {
+    type: Number,
+    default: 0,
+  },
   formId: {
     type: Schema.ObjectId,
     required: true,
@@ -168,9 +181,9 @@ const ContentSchema = new Schema<ContentType>({
   },
 });
 
+//Indexes
 ContentSchema.index({ formId: 1, page: 1 });
-
-//Pre Hook
+ContentSchema.index({ idx: 1 });
 
 const Content = model("Content", ContentSchema);
 
