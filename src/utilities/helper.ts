@@ -1,6 +1,7 @@
 import Bcrypt from "bcrypt";
 
 import JWT from "jsonwebtoken";
+import { ContentType, ParentContentType } from "../model/Content.model";
 
 export function ReturnCode(
   code: 200 | 201 | 204 | 400 | 401 | 403 | 404 | 500,
@@ -130,4 +131,31 @@ export const hasArrayChange = (arr1: Array<object>, arr2: Array<object>) => {
 
   // Element-wise deep comparison
   return arr1.every((item, index) => deepEqual(item, arr2[index]));
+};
+
+export const CheckCondition = (
+  allcontent: Array<ContentType>,
+  qId: string,
+  qIdx?: number
+): ParentContentType | null => {
+  console.log(qId, qIdx);
+
+  const isConditional = allcontent.find((question) =>
+    question.conditional?.some((cond) =>
+      qIdx ? cond.contentIdx === qIdx : cond.contentId === (qId as never)
+    )
+  );
+
+  if (!isConditional) {
+    return null;
+  }
+
+  return {
+    qId: isConditional._id ?? qId,
+    qIdx: undefined,
+    optIdx:
+      isConditional.conditional?.find(
+        (cond) => cond.contentId === (qId as never)
+      )?.key ?? 0,
+  };
 };

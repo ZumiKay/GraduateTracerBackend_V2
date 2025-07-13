@@ -41,6 +41,7 @@ export interface FormType {
   user: Types.ObjectId;
   setting?: FromSettingType;
   totalpage?: number;
+  totalscore?: number;
   respondants?: Array<Types.ObjectId>;
   responses?: Array<FormResponseType>;
   createdAt?: Date;
@@ -99,7 +100,6 @@ const FormSchema = new Schema<FormType>(
       required: false,
     },
     setting: FormSettingSchema,
-
     user: {
       type: Schema.Types.ObjectId,
       ref: "User", // Reference to the related collection
@@ -108,6 +108,10 @@ const FormSchema = new Schema<FormType>(
     totalpage: {
       type: Number,
       default: 1,
+      required: false,
+    },
+    totalscore: {
+      type: Number,
       required: false,
     },
     respondants: {

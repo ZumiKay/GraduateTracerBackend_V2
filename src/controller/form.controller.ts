@@ -2,11 +2,8 @@ import { Request, Response } from "express";
 import { FormatToGeneralDate, ReturnCode } from "../utilities/helper";
 import Form, { FormType } from "../model/Form.model";
 import { CustomRequest } from "../types/customType";
-import { isValidObjectId, Types } from "mongoose";
-import Content, {
-  ContentType,
-  ParentContentType,
-} from "../model/Content.model";
+import { isValidObjectId } from "mongoose";
+import Content from "../model/Content.model";
 
 export async function CreateForm(req: CustomRequest, res: Response) {
   const formdata = req.body as FormType;
@@ -44,23 +41,46 @@ export async function PageHandler(req: CustomRequest, res: Response) {
     deletepage,
   }: { ty: "add" | "delete"; formId: string; deletepage?: number } = req.body;
 
-  if (!formId || !ty) return res.status(400).json(ReturnCode(400));
+  if (!formId || !ty) {
+    return res
+      .status(400)
+      .json(ReturnCode(400, "Missing required fields: formId or ty"));
+  }
+
+  if (ty === "delete" && (deletepage === undefined || isNaN(deletepage))) {
+    return res
+      .status(400)
+      .json(
+        ReturnCode(
+          400,
+          "deletepage is required and must be a valid number for delete operation"
+        )
+      );
+  }
 
   try {
-    await Form.updateOne(
-      { _id: formId },
-      { $inc: { ...(ty === "add" ? { totalpage: 1 } : { totalpage: -1 }) } }
-    );
-
-    //Handle Delete Page
-    if (ty === "delete" && deletepage) {
+    if (ty === "add") {
+      // Add page: increment totalpage
+      await Form.updateOne({ _id: formId }, { $inc: { totalpage: 1 } });
+    } else if (ty === "delete") {
+      // Delete page: fetch content IDs, update form, and delete content
+      const toBeDeleteContent = await Content.find({ page: deletepage })
+        .select("_id")
+        .lean();
+      await Form.updateOne(
+        { _id: formId },
+        {
+          $inc: { totalpage: -1 },
+          $pull: { contentIds: { $in: toBeDeleteContent.map((i) => i._id) } },
+        }
+      );
       await Content.deleteMany({ page: deletepage });
     }
 
     return res.status(200).json(ReturnCode(200, "Success"));
   } catch (error) {
-    console.log("Page Handler", error);
-    return res.status(500).json(ReturnCode(500));
+    console.error("PageHandler Error:", error);
+    return res.status(500).json(ReturnCode(500, "Internal Server Error"));
   }
 }
 
@@ -153,32 +173,12 @@ interface GetFilterFormParamType {
     | "setting"
     | "solution"
     | "preview"
-    | "hidecond";
+    | "hidecond"
+    | "total";
   q?: string;
   page?: string;
   limit?: string;
 }
-
-const CheckCondition = (
-  allcontent: Array<ContentType>,
-  qidx: number
-): { parentcontent: ParentContentType | undefined } => {
-  let parentcontent = undefined;
-  const isConditional = allcontent.find((question) =>
-    question.conditional?.some((cond) => cond.contentId === qidx)
-  );
-
-  if (!isConditional) {
-    return { parentcontent };
-  }
-
-  return {
-    parentcontent: {
-      idx: isConditional.idx ?? 0,
-      _id: isConditional._id,
-    },
-  };
-};
 
 export async function GetFilterForm(req: CustomRequest, res: Response) {
   try {
@@ -208,6 +208,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
         "modifieddate",
         "preview",
         "hidecond",
+        "total",
       ].includes(ty) &&
       !q
     ) {
@@ -239,39 +240,42 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           ],
         })
           .select(
-            `_id idx title type text multiple checkbox range numrange date require page conditional ${
+            `_id idx title type text multiple checkbox range numrange date require page conditional parentcontent ${
               ty === "solution" ? "answer score" : ""
             }`
           )
           .lean()
           .sort({ idx: 1 });
 
-        let finalcontent = resultContent.map((question) => {
-          const condition = CheckCondition(resultContent, question.idx ?? 0);
-          return {
-            ...question,
-            ...condition,
-          };
-        });
-
-        if (ty === "hidecond") {
-          finalcontent = finalcontent.filter((question) =>
-            ty === "hidecond" ? !question.parentcontent : question
-          );
-        }
-
         return res.status(200).json({
           ...ReturnCode(200),
           data: {
             ...detailForm,
-            contents: finalcontent || [],
+            contents: resultContent || [],
             contentIds: undefined,
           },
         });
       }
 
+      case "total": {
+        const formdata = await Form.findById(q)
+          .select("totalpage totalscore contentIds")
+          .lean();
+
+        return res.status(200).json({
+          ...ReturnCode(200),
+          data: {
+            totalpage: formdata?.totalpage ?? 0,
+            totalscore: formdata?.totalscore ?? 0,
+            totalquestion: formdata?.contentIds?.length,
+          },
+        });
+      }
+
       case "setting": {
-        const form = await Form.findById(q).select("setting").lean();
+        const form = await Form.findById(q)
+          .select("_id title type setting")
+          .lean();
         return res.status(200).json({ ...ReturnCode(200), data: form });
       }
 

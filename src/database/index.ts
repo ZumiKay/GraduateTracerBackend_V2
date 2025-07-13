@@ -10,10 +10,6 @@ export default async function DBConnection() {
     }
     await mongoose.connect(process.env.DATABASE_URL as string, {});
     console.log("Connected To DB");
-
-    await Form.createIndexes();
-    await FormResponse.createIndexes();
-    console.log("Indexes created.");
   } catch (error) {
     console.log("MongoDB Connection Error: ", error);
     process.exit(1);

@@ -7,7 +7,7 @@ export enum QuestionType {
   Number = "number",
   Date = "date",
   RangeDate = "rangedate",
-  Selection = "select",
+  Selection = "selection",
   RangeNumber = "rangenumber",
   ShortAnswer = "shortanswer",
   Paragraph = "paragraph",
@@ -26,12 +26,15 @@ export interface CheckboxQuestionType {
 export interface ConditionalType {
   _id: Types.ObjectId;
   key: number;
-  contentId: number;
+  contentId: Types.ObjectId;
+  contentIdx?: number;
 }
 
 export interface ParentContentType {
   _id?: string;
-  idx: Number;
+  qId: string;
+  qIdx?: number;
+  optIdx: Number;
 }
 
 export interface AnswerKey {
@@ -46,7 +49,6 @@ export interface AnswerKey {
 }
 
 export interface ContentType {
-  idx?: number;
   _id?: string;
   title: ContentTitle;
   type: QuestionType;
@@ -90,11 +92,12 @@ const RangeSchema = new Schema<RangeType<Date> | RangeType<number>>({
 
 const ConditionalSchema = new Schema<ConditionalType>({
   key: {
-    type: Number,
+    type: "Number",
     required: true,
   },
   contentId: {
-    type: Number,
+    type: Schema.Types.ObjectId,
+    ref: "Content",
     required: true,
   },
 });
@@ -127,10 +130,6 @@ const TitleSchema = new Schema<ContentTitle>({
 //Parent Document
 
 const ContentSchema = new Schema<ContentType>({
-  idx: {
-    type: Number,
-    default: 0,
-  },
   formId: {
     type: Schema.ObjectId,
     required: true,
@@ -167,6 +166,10 @@ const ContentSchema = new Schema<ContentType>({
   },
   conditional: {
     type: [ConditionalSchema],
+  },
+  parentcontent: {
+    type: Object,
+    required: false,
   },
   score: {
     type: Number,

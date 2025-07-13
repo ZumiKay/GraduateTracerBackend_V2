@@ -17,11 +17,17 @@ export interface ResponseSetType {
 export interface FormResponseType {
   _id: Types.ObjectId;
   formId: Types.ObjectId;
-  userId: Types.ObjectId;
+  userId?: Types.ObjectId;
+  guest?: GuestType;
   responseset: Array<ResponseSetType>;
   returnscore?: returnscore;
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+export interface GuestType {
+  _id: Types.ObjectId;
+  email: string;
 }
 
 //Sub Doc
@@ -42,6 +48,13 @@ const ResponseSetSchema = new Schema<ResponseSetType>({
   },
 });
 
+const GuestSchema = new Schema<GuestType>({
+  email: {
+    required: false,
+    type: String,
+  },
+});
+
 // Main schema for form responses
 const ResponseSchema = new Schema<FormResponseType>(
   {
@@ -54,8 +67,12 @@ const ResponseSchema = new Schema<FormResponseType>(
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
       index: true, // Indexing `userId` for faster retrieval by user
+    },
+    guest: {
+      type: GuestSchema,
+      required: false,
     },
     responseset: {
       type: [ResponseSetSchema],
