@@ -1,4 +1,5 @@
 import { Router } from "express";
+import ConditionQuestionValidator from "../middleware/ConditionValidator";
 
 import {
   CreateForm,
@@ -7,11 +8,13 @@ import {
   GetAllForm,
   GetFilterForm,
   PageHandler,
+  ValidateFormBeforeAction,
 } from "../controller/form.controller";
 import {
   AddFormContent,
   ContentValidate,
   EditFormContent,
+  ValidateFormContent,
 } from "../controller/content.controller";
 import { createFormValidate } from "../model/Form.model";
 import { validate } from "../middleware/Validatetor";
@@ -93,6 +96,18 @@ UserRoute.put(
   PageHandler as any
 );
 
+//Form Validation Routes
+UserRoute.get(
+  "/validateform",
+  UserMiddleware.VerifyToken as any,
+  ValidateFormBeforeAction as any
+);
+UserRoute.get(
+  "/validatecontent",
+  UserMiddleware.VerifyToken as any,
+  ValidateFormContent as any
+);
+
 //Form Content Routes
 
 UserRoute.post(
@@ -118,11 +133,31 @@ UserRoute.delete(
 UserRoute.post(
   "/handlecondition",
   UserMiddleware.VerifyToken as any,
+  ConditionQuestionValidator.validateConditionCreationMiddleware as any,
   questionController.handleCondition as any
+);
+
+UserRoute.post(
+  "/savequestion",
+  UserMiddleware.VerifyToken as any,
+  ConditionQuestionValidator.validateConditionMiddleware as any,
+  questionController.SaveQuestion as any
+);
+
+UserRoute.post(
+  "/editcontent",
+  UserMiddleware.VerifyToken as any,
+  ConditionQuestionValidator.validateConditionMiddleware as any,
+  EditFormContent as any
 );
 
 //Form Response Route
 UserRoute.post("/submitform", form_responseController.SubmitResponse);
+UserRoute.get(
+  "/validateformsubmission",
+  UserMiddleware.VerifyToken as any,
+  form_responseController.ValidateFormForSubmission as any
+);
 UserRoute.get(
   "/getresponsebyform",
   UserMiddleware.VerifyToken as any,

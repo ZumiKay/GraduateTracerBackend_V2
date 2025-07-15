@@ -3,6 +3,7 @@ import Content, { ContentType, QuestionType } from "../model/Content.model";
 import { Request, Response } from "express";
 import { ReturnCode } from "../utilities/helper";
 import Form from "../model/Form.model";
+import SolutionValidationService from "../services/SolutionValidationService";
 
 export const ContentValidate = z.object({
   body: z.object({
@@ -58,10 +59,19 @@ export async function EditFormContent(
         .json(ReturnCode(400, "Invalid content data provided"));
     }
 
+    // Add validation flags
+    const validationResult =
+      SolutionValidationService.validateContent(contents);
+    const updatedContent = {
+      ...contents,
+      hasAnswer: !!contents.answer,
+      isValidated: validationResult.isValid,
+    };
+
     // Update content
-    const updatedContent = await Content.findByIdAndUpdate(
+    const updatedContentResult = await Content.findByIdAndUpdate(
       contents._id,
-      contents,
+      updatedContent,
       {
         new: true, // Return the updated document
         runValidators: true, // Run schema validations
@@ -69,13 +79,18 @@ export async function EditFormContent(
     );
 
     // Check if the content was found and updated
-    if (!updatedContent) {
+    if (!updatedContentResult) {
       return res.status(404).json(ReturnCode(404, "Content not found"));
     }
 
-    return res
-      .status(200)
-      .json(ReturnCode(200, "Content updated successfully"));
+    // Return validation warnings if any
+    const response = {
+      ...ReturnCode(200, "Content updated successfully"),
+      validationWarnings: validationResult.warnings,
+      validationErrors: validationResult.errors,
+    };
+
+    return res.status(200).json(response);
   } catch (error: any) {
     console.error("Edit Form Content Error:", error.message || error);
 
@@ -106,5 +121,34 @@ export async function DeleteContent(req: Request, res: Response) {
   } catch (error) {
     console.log("Delete Content", error);
     return res.status(200).json(ReturnCode(500));
+  }
+}
+
+export async function ValidateFormContent(req: Request, res: Response) {
+  const { formId } = req.query;
+
+  if (!formId || typeof formId !== "string") {
+    return res.status(400).json(ReturnCode(400, "Form ID is required"));
+  }
+
+  try {
+    const validationSummary = await SolutionValidationService.validateForm(
+      formId
+    );
+    const errors = await SolutionValidationService.getFormValidationErrors(
+      formId
+    );
+
+    return res.status(200).json({
+      ...ReturnCode(200),
+      data: {
+        ...validationSummary,
+        errors,
+        canSubmit: errors.length === 0,
+      },
+    });
+  } catch (error) {
+    console.error("Validate Form Content Error:", error);
+    return res.status(500).json(ReturnCode(500, "Failed to validate form"));
   }
 }

@@ -4,6 +4,7 @@ import Content, {
   AnswerKey,
   ConditionalType,
   ContentType,
+  QuestionType,
 } from "../model/Content.model";
 import Form from "../model/Form.model";
 import mongoose, { Types } from "mongoose";
@@ -227,13 +228,70 @@ class QuestionController {
     try {
       const { content, key, newContent, formId } = req.body as {
         content: { id: string; idx: number };
-        key: Types.ObjectId;
+        key: number;
         newContent: ContentType;
         formId: string;
       };
 
       if (!content || key === undefined || !newContent || !formId) {
         return res.status(400).json(ReturnCode(400, "Invalid request payload"));
+      }
+
+      // First, validate that the parent question supports conditions
+      const parentQuestion = await Content.findById(content.id);
+      if (!parentQuestion) {
+        return res
+          .status(404)
+          .json(ReturnCode(404, "Parent question not found"));
+      }
+
+      // Check if parent question type supports conditions
+      const allowedTypes = [QuestionType.CheckBox, QuestionType.MultipleChoice];
+      if (!allowedTypes.includes(parentQuestion.type)) {
+        return res
+          .status(400)
+          .json(
+            ReturnCode(
+              400,
+              `Condition questions are only allowed for checkbox and multiple choice questions. Current type: ${parentQuestion.type}`
+            )
+          );
+      }
+
+      // Validate that the key corresponds to a valid option
+      const options =
+        parentQuestion.type === QuestionType.MultipleChoice
+          ? parentQuestion.multiple
+          : parentQuestion.checkbox;
+
+      if (!options || options.length === 0) {
+        return res
+          .status(400)
+          .json(ReturnCode(400, "Parent question has no options defined"));
+      }
+
+      const optionExists = options.some((option) => option.idx === key);
+      if (!optionExists) {
+        return res
+          .status(400)
+          .json(
+            ReturnCode(
+              400,
+              `Invalid option key: ${key}. Option does not exist.`
+            )
+          );
+      }
+
+      // Check if condition already exists for this key
+      const existingCondition = parentQuestion.conditional?.some(
+        (cond) => cond.key === key
+      );
+      if (existingCondition) {
+        return res
+          .status(400)
+          .json(
+            ReturnCode(400, `Condition already exists for option key: ${key}`)
+          );
       }
 
       const newContentId = new Types.ObjectId();
@@ -263,9 +321,10 @@ class QuestionController {
         return res.status(400).json(ReturnCode(400, "Content not found"));
       }
 
-      return res
-        .status(200)
-        .json({ ...ReturnCode(200), data: newContentCreated._id });
+      return res.status(200).json({
+        ...ReturnCode(200, "Condition created successfully"),
+        data: newContentCreated._id,
+      });
     } catch (error) {
       console.error("Add Condition Error:", error);
       return res.status(500).json(ReturnCode(500, "Internal Server Error"));

@@ -9,6 +9,7 @@ import { CustomRequest } from "../types/customType";
 import Content from "../model/Content.model";
 import { Types } from "mongoose";
 import { returnscore } from "../model/Form.model";
+import SolutionValidationService from "../services/SolutionValidationService";
 
 class FormResponseController {
   private static readonly DEFAULT_PAGE = 1;
@@ -29,10 +30,10 @@ class FormResponseController {
   public SubmitResponse = async (req: CustomRequest, res: Response) => {
     const submitdata = req.body as FormResponseType;
 
-    let autoscore = null;
+    let scoredResponses = submitdata.responseset;
     try {
       if (submitdata.returnscore === returnscore.partial) {
-        autoscore = await Promise.all(
+        scoredResponses = await Promise.all(
           submitdata.responseset.map(async (response) => {
             return await this.AddScore(
               new Types.ObjectId(response.questionId),
@@ -44,7 +45,7 @@ class FormResponseController {
 
       await FormResponse.create({
         ...submitdata,
-        responseset: autoscore ?? submitdata.responseset,
+        responseset: scoredResponses,
         userId: req.user?.id,
       });
 
@@ -110,51 +111,59 @@ class FormResponseController {
     }
   };
 
+  public ValidateFormForSubmission = async (
+    req: CustomRequest,
+    res: Response
+  ) => {
+    const { formId } = req.query;
+
+    if (!formId || typeof formId !== "string") {
+      return res.status(400).json(ReturnCode(400, "Form ID is required"));
+    }
+
+    try {
+      const validationSummary = await SolutionValidationService.validateForm(
+        formId
+      );
+      const errors = await SolutionValidationService.getFormValidationErrors(
+        formId
+      );
+
+      res.status(200).json({
+        ...ReturnCode(200),
+        data: {
+          ...validationSummary,
+          errors,
+          canSubmit: errors.length === 0,
+        },
+      });
+    } catch (error) {
+      console.error("Validate Form Error:", error);
+      res.status(500).json(ReturnCode(500, "Failed to validate form"));
+    }
+  };
+
   //Add Score for the response
   public AddScore = async (qid: Types.ObjectId, response: ResponseSetType) => {
     try {
       const content = await Content.findById(qid)
-        .select("answer score")
+        .select("answer score type")
         .lean()
         .exec();
 
-      if (!content?.answer) return null;
+      if (!content?.answer || !content.score) return { ...response, score: 0 };
 
-      const correctAnswer = content.answer;
-      const responseValue = response.response;
-      let score = 0;
+      const calculatedScore = SolutionValidationService.calculateResponseScore(
+        response.response,
+        content.answer.answer,
+        content.type,
+        content.score
+      );
 
-      switch (true) {
-        case typeof responseValue === "boolean":
-        case typeof responseValue === "string":
-        case typeof responseValue === "number":
-          score =
-            responseValue === (correctAnswer as any) ? content.score ?? 0 : 0;
-          break;
-
-        case responseValue instanceof Date:
-          // Compare timestamps instead of Date objects
-          score =
-            responseValue.getTime() ===
-            (correctAnswer as unknown as Date)?.getTime()
-              ? content.score ?? 0
-              : 0;
-          break;
-
-        case typeof responseValue === "object":
-          score = this.deepEqual(responseValue, correctAnswer)
-            ? content.score ?? 0
-            : 0;
-          break;
-
-        default:
-          score = 0;
-      }
-
-      return { ...response, score };
+      return { ...response, score: calculatedScore };
     } catch (error) {
       console.error("AddScore Error:", error);
-      return null;
+      return { ...response, score: 0 };
     }
   };
 

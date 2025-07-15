@@ -19,6 +19,7 @@ export interface RangeType<t> {
 }
 
 export interface CheckboxQuestionType {
+  _id?: Types.ObjectId;
   idx: number;
   content: string;
 }
@@ -38,7 +39,7 @@ export interface ParentContentType {
 }
 
 export interface AnswerKey {
-  _id: Types.ObjectId;
+  _id?: Types.ObjectId;
   answer:
     | string
     | number
@@ -46,6 +47,7 @@ export interface AnswerKey {
     | RangeType<Date>
     | RangeType<number>
     | Array<number>;
+  isCorrect?: boolean; // For validation purposes
 }
 
 export interface ContentType {
@@ -65,6 +67,8 @@ export interface ContentType {
   parentcontent?: ParentContentType;
   require?: boolean;
   page?: number;
+  hasAnswer?: boolean; // Flag to indicate if question has an answer
+  isValidated?: boolean; // Flag to indicate if question is validated
 }
 
 //Sub Documents
@@ -106,6 +110,10 @@ const AnswerKeySchema = new Schema<AnswerKey>({
   answer: {
     type: Schema.Types.Mixed, // Handles string, number, date, ranges, arrays
     required: true,
+  },
+  isCorrect: {
+    type: Boolean,
+    default: true,
   },
 });
 
@@ -173,6 +181,7 @@ const ContentSchema = new Schema<ContentType>({
   },
   score: {
     type: Number,
+    default: 0,
   },
   require: {
     type: Boolean,
@@ -182,6 +191,62 @@ const ContentSchema = new Schema<ContentType>({
     type: Number,
     default: 1,
   },
+  hasAnswer: {
+    type: Boolean,
+    default: false,
+  },
+  isValidated: {
+    type: Boolean,
+    default: false,
+  },
+});
+
+//Pre-save middleware to update form total score
+ContentSchema.pre("save", async function (next) {
+  try {
+    const Form = require("./Form.model").default;
+
+    // Calculate total score for all contents in this form
+    const allContents = await Content.find({ formId: this.formId });
+    const totalScore =
+      allContents.reduce((sum, content) => {
+        return sum + (content.score || 0);
+      }, 0) + (this.score || 0);
+
+    // Update the form's total score
+    await Form.findByIdAndUpdate(this.formId, { totalscore: totalScore });
+
+    next();
+  } catch (error) {
+    next(error as never);
+  }
+});
+
+//Pre-remove middleware to update form total score
+ContentSchema.pre("deleteOne", async function (next) {
+  try {
+    const Form = require("./Form.model").default;
+    const contentToDelete = await this.model.findOne(this.getQuery());
+
+    if (contentToDelete) {
+      const remainingContents = await Content.find({
+        formId: contentToDelete.formId,
+        _id: { $ne: contentToDelete._id },
+      });
+
+      const totalScore = remainingContents.reduce((sum, content) => {
+        return sum + (content.score || 0);
+      }, 0);
+
+      await Form.findByIdAndUpdate(contentToDelete.formId, {
+        totalscore: totalScore,
+      });
+    }
+
+    next();
+  } catch (error) {
+    next(error as never);
+  }
 });
 
 //Indexes

@@ -2,8 +2,9 @@ import { Request, Response } from "express";
 import { FormatToGeneralDate, ReturnCode } from "../utilities/helper";
 import Form, { FormType } from "../model/Form.model";
 import { CustomRequest } from "../types/customType";
-import { isValidObjectId } from "mongoose";
+import { isValidObjectId, Types } from "mongoose";
 import Content from "../model/Content.model";
+import SolutionValidationService from "../services/SolutionValidationService";
 
 export async function CreateForm(req: CustomRequest, res: Response) {
   const formdata = req.body as FormType;
@@ -231,6 +232,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
         if (!detailForm) {
           return res.status(400).json(ReturnCode(400, "No Form Found"));
         }
+
         const resultContent = await Content.find({
           $and: [
             {
@@ -241,18 +243,38 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
         })
           .select(
             `_id idx title type text multiple checkbox range numrange date require page conditional parentcontent ${
-              ty === "solution" ? "answer score" : ""
+              ty === "solution" ? "answer score hasAnswer isValidated" : ""
             }`
           )
           .lean()
           .sort({ idx: 1 });
 
+        // Add validation summary for solution tab
+        let validationSummary = null;
+        if (ty === "solution") {
+          try {
+            validationSummary = await SolutionValidationService.validateForm(
+              q as string
+            );
+          } catch (error) {
+            console.error("Validation error:", error);
+          }
+        }
+
         return res.status(200).json({
           ...ReturnCode(200),
           data: {
             ...detailForm,
-            contents: resultContent || [],
+            contents:
+              resultContent.map((content) => ({
+                ...content,
+                parentcontent:
+                  content.parentcontent?.qId === content._id.toString()
+                    ? undefined
+                    : content.parentcontent,
+              })) || [],
             contentIds: undefined,
+            validationSummary,
           },
         });
       }
@@ -332,5 +354,63 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
       error instanceof Error ? error.message : error
     );
     return res.status(500).json(ReturnCode(500, "Internal Server Error"));
+  }
+}
+
+export async function ValidateFormBeforeAction(req: Request, res: Response) {
+  const { formId, action } = req.query;
+
+  if (!formId || typeof formId !== "string") {
+    return res.status(400).json(ReturnCode(400, "Form ID is required"));
+  }
+
+  try {
+    const validationSummary = await SolutionValidationService.validateForm(
+      formId
+    );
+    const errors = await SolutionValidationService.getFormValidationErrors(
+      formId
+    );
+
+    // Different validation requirements based on action
+    let canProceed = true;
+    let warnings: string[] = [];
+
+    switch (action) {
+      case "save":
+        // Allow saving even with missing answers/scores, just provide warnings
+        canProceed = true;
+        warnings = errors;
+        break;
+
+      case "next_page":
+      case "switch_tab":
+        // Allow navigation with warnings
+        canProceed = true;
+        warnings = errors;
+        break;
+
+      case "send_form":
+        // Strict validation for sending form
+        canProceed = errors.length === 0;
+        break;
+
+      default:
+        canProceed = errors.length === 0;
+    }
+
+    return res.status(200).json({
+      ...ReturnCode(200),
+      data: {
+        ...validationSummary,
+        errors,
+        warnings,
+        canProceed,
+        action,
+      },
+    });
+  } catch (error) {
+    console.error("Validate Form Before Action Error:", error);
+    return res.status(500).json(ReturnCode(500, "Failed to validate form"));
   }
 }
