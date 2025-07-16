@@ -1,5 +1,6 @@
 import { Router } from "express";
 import ConditionQuestionValidator from "../middleware/ConditionValidator";
+import TrafficControl from "../middleware/Traffic.middleware";
 
 import {
   CreateForm,
@@ -26,7 +27,9 @@ import {
   RegisterUser,
   UserValidate,
 } from "../controller/user.controller";
-import form_responseController from "../controller/form_response.controller";
+import form_responseController, {
+  FormResponseController,
+} from "../controller/form_response.controller";
 import VerifyRecaptcha from "../controller/recaptcha.controller";
 import questionController from "../controller/question.controller";
 
@@ -35,6 +38,7 @@ const UserRoute = Router();
 //RegisterUser
 UserRoute.post(
   "/registeruser",
+  TrafficControl.ApiRateLimit as any,
   validate(UserValidate) as any,
   RegisterUser as any
 );
@@ -48,6 +52,7 @@ UserRoute.delete(
 //Authentication
 UserRoute.post(
   "/login",
+  TrafficControl.LoginRateLimit as any,
   validate(UserValidate) as any,
   authenicationController.Login as any
 );
@@ -63,7 +68,11 @@ UserRoute.post(
   UserMiddleware.VerifyRefreshToken as any,
   authenicationController.RefreshToken as any
 );
-UserRoute.put("/forgotpassword", authenicationController.ForgotPassword as any);
+UserRoute.put(
+  "/forgotpassword",
+  TrafficControl.PasswordResetRateLimit as any,
+  authenicationController.ForgotPassword as any
+);
 
 //Recaptcha
 UserRoute.post("/recaptchaverify", VerifyRecaptcha as any);
@@ -152,7 +161,7 @@ UserRoute.post(
 );
 
 //Form Response Route
-UserRoute.post("/submitform", form_responseController.SubmitResponse);
+UserRoute.post("/submitform", form_responseController.SubmitResponse as never);
 UserRoute.get(
   "/validateformsubmission",
   UserMiddleware.VerifyToken as any,
@@ -172,6 +181,46 @@ UserRoute.get(
   "/getguestresponse",
   UserMiddleware.VerifyToken as any,
   form_responseController.GetGuestResponse as any
+);
+
+// Public Form Access Routes (no authentication required)
+UserRoute.get(
+  "/response/form/:formId",
+  form_responseController.GetPublicFormData as any
+);
+UserRoute.post(
+  "/response/submit-response",
+  validate(FormResponseController.publicSubmitValidate) as any,
+  form_responseController.SubmitPublicResponse as any
+);
+
+// Response Management Routes
+UserRoute.post(
+  "/response/send-links",
+  UserMiddleware.VerifyToken as any,
+  form_responseController.SendFormLinks as any
+);
+UserRoute.post(
+  "/response/generate-link",
+  UserMiddleware.VerifyToken as any,
+  form_responseController.GenerateFormLink as any
+);
+UserRoute.put(
+  "/response/update-score",
+  UserMiddleware.VerifyToken as any,
+  form_responseController.UpdateResponseScore as any
+);
+
+// Analytics Routes
+UserRoute.get(
+  "/response/analytics/:formId",
+  UserMiddleware.VerifyToken as any,
+  form_responseController.GetFormAnalytics as any
+);
+UserRoute.get(
+  "/response/analytics/:formId/export",
+  UserMiddleware.VerifyToken as any,
+  form_responseController.ExportAnalytics as any
 );
 
 export default UserRoute;

@@ -14,6 +14,8 @@ class AuthenticateMiddleWare {
       const accessToken =
         req?.cookies[process.env.ACCESS_TOKEN_COOKIE ?? "access_token"];
 
+      console.log({ url: req.url, accessToken });
+
       if (!accessToken) return res.status(401).json(ReturnCode(401));
 
       const verify = this.VerifyJWT(accessToken);

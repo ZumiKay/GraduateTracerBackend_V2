@@ -175,7 +175,8 @@ interface GetFilterFormParamType {
     | "solution"
     | "preview"
     | "hidecond"
-    | "total";
+    | "total"
+    | "response";
   q?: string;
   page?: string;
   limit?: string;
@@ -210,6 +211,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
         "preview",
         "hidecond",
         "total",
+        "response",
       ].includes(ty) &&
       !q
     ) {
@@ -222,6 +224,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
     switch (ty) {
       case "detail":
       case "solution":
+      case "response":
       case "hidecond": {
         const query = isValidObjectId(q) ? { _id: q } : { title: q };
 

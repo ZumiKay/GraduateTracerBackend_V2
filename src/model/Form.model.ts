@@ -28,6 +28,7 @@ interface FromSettingType {
   email?: boolean;
   autosave?: boolean;
   returnscore?: returnscore;
+  acceptResponses?: boolean;
 }
 
 export interface FormType {
@@ -80,6 +81,10 @@ const FormSettingSchema = new Schema<FromSettingType>({
   autosave: {
     type: Boolean,
     default: false,
+  },
+  acceptResponses: {
+    type: Boolean,
+    default: true,
   },
 });
 

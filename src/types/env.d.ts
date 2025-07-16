@@ -11,6 +11,16 @@ declare namespace NodeJS {
     ACCESS_TOKEN_COOKIE: string;
     RECAPCHA_SECRETKEY: string;
     LOGIN_ATTEMPT: string;
+    // Email service configuration
+    SMTP_HOST: string;
+    SMTP_PORT: string;
+    SMTP_USER: string;
+    SMTP_PASSWORD: string;
+    SMTP_FROM: string;
+    // Frontend URL for form links
+    FRONTEND_URL: string;
+    // Form link expiration
+    FORM_LINK_EXPIRATION: string;
     [key: string]: string | undefined; // Optional: For additional dynamic environment variables
   }
 }
