@@ -63,6 +63,10 @@ const FormSettingSchema = new mongoose_1.Schema({
         type: Boolean,
         default: false,
     },
+    acceptResponses: {
+        type: Boolean,
+        default: true,
+    },
 });
 const FormSchema = new mongoose_1.Schema({
     title: {
@@ -84,6 +88,12 @@ const FormSchema = new mongoose_1.Schema({
         type: mongoose_1.Schema.Types.ObjectId,
         ref: "User", // Reference to the related collection
         required: true,
+    },
+    owners: {
+        type: [mongoose_1.Schema.Types.ObjectId],
+        ref: "User",
+        default: [],
+        required: false,
     },
     totalpage: {
         type: Number,
@@ -108,6 +118,7 @@ const FormSchema = new mongoose_1.Schema({
     ],
 }, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 FormSchema.index({ user: 1 });
+FormSchema.index({ owners: 1 });
 FormSchema.index({ type: 1 });
 FormSchema.index({ title: "text" }); // If full-text search is needed
 FormSchema.index({ _id: 1, responses: 1 });

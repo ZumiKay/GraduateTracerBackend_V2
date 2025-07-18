@@ -10,6 +10,10 @@ import {
   GetFilterForm,
   PageHandler,
   ValidateFormBeforeAction,
+  AddFormOwner,
+  RemoveFormOwner,
+  GetFormOwners,
+  RemoveSelfFromForm,
 } from "../controller/form.controller";
 import {
   AddFormContent,
@@ -105,6 +109,28 @@ UserRoute.put(
   PageHandler as any
 );
 
+//Form Owner Management Routes
+UserRoute.post(
+  "/addformowner",
+  UserMiddleware.VerifyToken as any,
+  AddFormOwner as any
+);
+UserRoute.delete(
+  "/removeformowner",
+  UserMiddleware.VerifyToken as any,
+  RemoveFormOwner as any
+);
+UserRoute.get(
+  "/getformowners/:formId",
+  UserMiddleware.VerifyToken as any,
+  GetFormOwners as any
+);
+UserRoute.delete(
+  "/removeselfform",
+  UserMiddleware.VerifyToken as any,
+  RemoveSelfFromForm as any
+);
+
 //Form Validation Routes
 UserRoute.get(
   "/validateform",
@@ -176,6 +202,11 @@ UserRoute.get(
   "/getresponse",
   UserMiddleware.VerifyToken as any,
   form_responseController.GetResponseByUserId as any
+);
+UserRoute.get(
+  "/getuserresponses",
+  UserMiddleware.VerifyToken as any,
+  form_responseController.GetUserResponses as any
 );
 UserRoute.get(
   "/getguestresponse",

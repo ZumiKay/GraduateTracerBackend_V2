@@ -24,6 +24,13 @@ ResponseRouter.get(
   FormResponseController.GetResponseByUserId as any
 );
 
+// Get all responses by current user
+ResponseRouter.get(
+  "/user-responses",
+  UserMiddleware.VerifyToken as any,
+  FormResponseController.GetUserResponses as any
+);
+
 ResponseRouter.get(
   "/guest",
   UserMiddleware.VerifyToken as any,

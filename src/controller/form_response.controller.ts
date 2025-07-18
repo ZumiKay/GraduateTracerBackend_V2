@@ -1293,6 +1293,76 @@ class FormResponseController {
       difficultQuestions,
     };
   }
+
+  // Get all responses by current user
+  public GetUserResponses = async (req: CustomRequest, res: Response) => {
+    const user = req.user;
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+
+    if (!user) {
+      return res.status(401).json(ReturnCode(401, "User not authenticated"));
+    }
+
+    try {
+      const skip = (page - 1) * limit;
+
+      // Get all responses by the user with form details
+      const responses = await FormResponse.find({
+        userId: new Types.ObjectId(user.id),
+      })
+        .populate({
+          path: "formId",
+          select: "title type setting user createdAt",
+        })
+        .sort({ submittedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const totalCount = await FormResponse.countDocuments({
+        userId: new Types.ObjectId(user.id),
+      });
+
+      const formattedResponses = responses.map((response) => {
+        const form = response.formId as any;
+        return {
+          _id: response._id,
+          formId: form?._id || response.formId,
+          formTitle: form?.title || "Unknown Form",
+          formType: form?.type || "Unknown",
+          totalScore: response.totalScore,
+          maxScore: form?.totalscore || 0,
+          isCompleted: response.isCompleted,
+          submittedAt: response.submittedAt,
+          createdAt: response.createdAt,
+          responseCount: response.responseset?.length || 0,
+          isAutoScored: response.isAutoScored,
+          formCreatedAt: form?.createdAt,
+        };
+      });
+
+      res.status(200).json({
+        ...ReturnCode(200),
+        data: {
+          responses: formattedResponses,
+          pagination: {
+            page,
+            limit,
+            totalCount,
+            totalPages: Math.ceil(totalCount / limit),
+            hasNextPage: page < Math.ceil(totalCount / limit),
+            hasPrevPage: page > 1,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Get User Responses Error:", error);
+      res
+        .status(500)
+        .json(ReturnCode(500, "Failed to retrieve user responses"));
+    }
+  };
 }
 
 export default new FormResponseController();

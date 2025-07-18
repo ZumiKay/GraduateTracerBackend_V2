@@ -27,16 +27,26 @@ const User_model_1 = __importDefault(require("../model/User.model"));
 class FormResponseController {
     constructor() {
         this.SubmitResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             const submitdata = req.body;
-            let scoredResponses = submitdata.responseset;
             try {
+                // Validate form exists and accepts responses
+                const form = yield Form_model_2.default.findById(submitdata.formId);
+                if (!form) {
+                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses) === false) {
+                    return res
+                        .status(403)
+                        .json((0, helper_1.ReturnCode)(403, "Form is no longer accepting responses"));
+                }
+                let scoredResponses = submitdata.responseset;
                 if (submitdata.returnscore === Form_model_1.returnscore.partial) {
                     scoredResponses = yield Promise.all(submitdata.responseset.map((response) => __awaiter(this, void 0, void 0, function* () {
                         return yield this.AddScore(new mongoose_1.Types.ObjectId(response.questionId), response);
                     })));
                 }
-                yield Response_model_1.default.create(Object.assign(Object.assign({}, submitdata), { responseset: scoredResponses, userId: (_a = req.user) === null || _a === void 0 ? void 0 : _a.id }));
+                yield Response_model_1.default.create(Object.assign(Object.assign({}, submitdata), { responseset: scoredResponses, userId: (_b = req.user) === null || _b === void 0 ? void 0 : _b.id }));
                 res.status(200).json((0, helper_1.ReturnCode)(200, "Form Submitted"));
             }
             catch (error) {
@@ -45,13 +55,19 @@ class FormResponseController {
             }
         });
         this.SubmitPublicResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c;
+            var _a, _b, _c, _d;
             const { formId, responses, respondentEmail, respondentName } = req.body;
             try {
                 // Validate form exists
                 const form = yield Form_model_2.default.findById(formId);
                 if (!form) {
                     return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                // Check if form accepts responses
+                if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses) === false) {
+                    return res
+                        .status(403)
+                        .json((0, helper_1.ReturnCode)(403, "Form is no longer accepting responses"));
                 }
                 // Get form questions to validate responses
                 const questions = yield Content_model_1.default.find({
@@ -71,7 +87,7 @@ class FormResponseController {
                 // Score responses if form has scoring
                 let scoredResponses = responses;
                 let totalScore = 0;
-                if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.returnscore) &&
+                if (((_b = form.setting) === null || _b === void 0 ? void 0 : _b.returnscore) &&
                     form.setting.returnscore !== Form_model_1.returnscore.manual) {
                     scoredResponses = yield Promise.all(responses.map((response) => __awaiter(this, void 0, void 0, function* () {
                         const scored = yield this.AddScore(new mongoose_1.Types.ObjectId(response.questionId), response);
@@ -86,14 +102,14 @@ class FormResponseController {
                     formId: new mongoose_1.Types.ObjectId(formId),
                     responseset: scoredResponses,
                     totalScore,
-                    returnscore: ((_b = form.setting) === null || _b === void 0 ? void 0 : _b.returnscore) || Form_model_1.returnscore.manual,
+                    returnscore: ((_c = form.setting) === null || _c === void 0 ? void 0 : _c.returnscore) || Form_model_1.returnscore.manual,
                     completionStatus: "completed",
                     respondentEmail,
                     respondentName,
                     submittedAt: new Date(),
                 });
                 // Send email with results if it's a quiz and email is provided
-                if (((_c = form.setting) === null || _c === void 0 ? void 0 : _c.returnscore) === Form_model_1.returnscore.partial &&
+                if (((_d = form.setting) === null || _d === void 0 ? void 0 : _d.returnscore) === Form_model_1.returnscore.partial &&
                     respondentEmail) {
                     try {
                         // TODO: Implement email service for sending quiz results
@@ -796,6 +812,68 @@ class FormResponseController {
             catch (error) {
                 console.error("Export Analytics Error:", error);
                 res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to export analytics"));
+            }
+        });
+        // Get all responses by current user
+        this.GetUserResponses = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            const user = req.user;
+            const page = Number(req.query.page) || 1;
+            const limit = Number(req.query.limit) || 10;
+            if (!user) {
+                return res.status(401).json((0, helper_1.ReturnCode)(401, "User not authenticated"));
+            }
+            try {
+                const skip = (page - 1) * limit;
+                // Get all responses by the user with form details
+                const responses = yield Response_model_1.default.find({
+                    userId: new mongoose_1.Types.ObjectId(user.id),
+                })
+                    .populate({
+                    path: "formId",
+                    select: "title type setting user createdAt",
+                })
+                    .sort({ submittedAt: -1 })
+                    .skip(skip)
+                    .limit(limit)
+                    .lean();
+                const totalCount = yield Response_model_1.default.countDocuments({
+                    userId: new mongoose_1.Types.ObjectId(user.id),
+                });
+                const formattedResponses = responses.map((response) => {
+                    var _a;
+                    const form = response.formId;
+                    return {
+                        _id: response._id,
+                        formId: (form === null || form === void 0 ? void 0 : form._id) || response.formId,
+                        formTitle: (form === null || form === void 0 ? void 0 : form.title) || "Unknown Form",
+                        formType: (form === null || form === void 0 ? void 0 : form.type) || "Unknown",
+                        totalScore: response.totalScore,
+                        maxScore: (form === null || form === void 0 ? void 0 : form.totalscore) || 0,
+                        isCompleted: response.isCompleted,
+                        submittedAt: response.submittedAt,
+                        createdAt: response.createdAt,
+                        responseCount: ((_a = response.responseset) === null || _a === void 0 ? void 0 : _a.length) || 0,
+                        isAutoScored: response.isAutoScored,
+                        formCreatedAt: form === null || form === void 0 ? void 0 : form.createdAt,
+                    };
+                });
+                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: {
+                        responses: formattedResponses,
+                        pagination: {
+                            page,
+                            limit,
+                            totalCount,
+                            totalPages: Math.ceil(totalCount / limit),
+                            hasNextPage: page < Math.ceil(totalCount / limit),
+                            hasPrevPage: page > 1,
+                        },
+                    } }));
+            }
+            catch (error) {
+                console.error("Get User Responses Error:", error);
+                res
+                    .status(500)
+                    .json((0, helper_1.ReturnCode)(500, "Failed to retrieve user responses"));
             }
         });
     }

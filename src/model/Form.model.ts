@@ -39,7 +39,8 @@ export interface FormType {
   contents?: Array<ContentType>;
   requiredemail?: boolean;
   submittype: SubmitType;
-  user: Types.ObjectId;
+  user: Types.ObjectId; // Primary owner (creator)
+  owners?: Array<Types.ObjectId>; // Additional owners/collaborators
   setting?: FromSettingType;
   totalpage?: number;
   totalscore?: number;
@@ -110,6 +111,12 @@ const FormSchema = new Schema<FormType>(
       ref: "User", // Reference to the related collection
       required: true,
     },
+    owners: {
+      type: [Schema.Types.ObjectId],
+      ref: "User",
+      default: [],
+      required: false,
+    },
     totalpage: {
       type: Number,
       default: 1,
@@ -136,6 +143,7 @@ const FormSchema = new Schema<FormType>(
 );
 
 FormSchema.index({ user: 1 });
+FormSchema.index({ owners: 1 });
 FormSchema.index({ type: 1 });
 FormSchema.index({ title: "text" }); // If full-text search is needed
 FormSchema.index({ _id: 1, responses: 1 });

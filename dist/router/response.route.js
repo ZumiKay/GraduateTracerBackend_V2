@@ -11,6 +11,8 @@ const ResponseRouter = (0, express_1.Router)();
 ResponseRouter.post("/submit", User_middleware_1.default.VerifyToken, form_response_controller_1.default.SubmitResponse);
 ResponseRouter.get("/getbyformid", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponseByFormId);
 ResponseRouter.get("/getbyuserid", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponseByUserId);
+// Get all responses by current user
+ResponseRouter.get("/user-responses", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetUserResponses);
 ResponseRouter.get("/guest", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetGuestResponse);
 ResponseRouter.get("/validate", User_middleware_1.default.VerifyToken, form_response_controller_1.default.ValidateFormForSubmission);
 // New routes for enhanced response functionality

@@ -69,6 +69,11 @@ UserRoute.delete("/deleteform", User_middleware_1.default.VerifyToken, form_cont
 UserRoute.get("/getallform", User_middleware_1.default.VerifyToken, form_controller_1.GetAllForm);
 UserRoute.get("/filteredform", User_middleware_1.default.VerifyToken, form_controller_1.GetFilterForm);
 UserRoute.put("/modifypage", User_middleware_1.default.VerifyToken, form_controller_1.PageHandler);
+//Form Owner Management Routes
+UserRoute.post("/addformowner", User_middleware_1.default.VerifyToken, form_controller_1.AddFormOwner);
+UserRoute.delete("/removeformowner", User_middleware_1.default.VerifyToken, form_controller_1.RemoveFormOwner);
+UserRoute.get("/getformowners/:formId", User_middleware_1.default.VerifyToken, form_controller_1.GetFormOwners);
+UserRoute.delete("/removeselfform", User_middleware_1.default.VerifyToken, form_controller_1.RemoveSelfFromForm);
 //Form Validation Routes
 UserRoute.get("/validateform", User_middleware_1.default.VerifyToken, form_controller_1.ValidateFormBeforeAction);
 UserRoute.get("/validatecontent", User_middleware_1.default.VerifyToken, content_controller_1.ValidateFormContent);
@@ -85,6 +90,7 @@ UserRoute.post("/submitform", form_response_controller_1.default.SubmitResponse)
 UserRoute.get("/validateformsubmission", User_middleware_1.default.VerifyToken, form_response_controller_1.default.ValidateFormForSubmission);
 UserRoute.get("/getresponsebyform", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponseByFormId);
 UserRoute.get("/getresponse", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponseByUserId);
+UserRoute.get("/getuserresponses", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetUserResponses);
 UserRoute.get("/getguestresponse", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetGuestResponse);
 // Public Form Access Routes (no authentication required)
 UserRoute.get("/response/form/:formId", form_response_controller_1.default.GetPublicFormData);

@@ -35,7 +35,7 @@ class FormLinkService {
         const accessToken = this.generateAccessToken();
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + expiresInHours);
-        const url = `${this.baseUrl}/form-access/${formId}?token=${accessToken}`;
+        const url = `${this.baseUrl}/form-access/${formId}/${accessToken}`;
         return {
             url,
             accessToken,
