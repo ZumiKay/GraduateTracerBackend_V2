@@ -24,6 +24,7 @@ const EmailService_1 = __importDefault(require("../services/EmailService"));
 const FormLinkService_1 = __importDefault(require("../services/FormLinkService"));
 const Form_model_2 = __importDefault(require("../model/Form.model"));
 const User_model_1 = __importDefault(require("../model/User.model"));
+const form_controller_1 = require("./form.controller");
 class FormResponseController {
     constructor() {
         this.SubmitResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -131,10 +132,25 @@ class FormResponseController {
             const id = req.query.id;
             const page = Number(req.query.p) || FormResponseController.DEFAULT_PAGE;
             const limit = Number(req.query.lt) || FormResponseController.DEFAULT_LIMIT;
+            const user = req.user;
+            // Check if user is authenticated
+            if (!user) {
+                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+            }
             if (!id) {
                 return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
             }
             try {
+                // Verify form access
+                const form = yield Form_model_2.default.findById(id)
+                    .populate({ path: "user", select: "email" })
+                    .lean();
+                if (!form) {
+                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
+                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
+                }
                 const responses = yield Response_model_1.default.find({ formId: id })
                     .skip((page - 1) * limit)
                     .limit(limit);
@@ -399,19 +415,27 @@ class FormResponseController {
         });
         // Get responses with filtering and pagination
         this.GetResponsesWithFilters = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
             const { formId, email, startDate, endDate, minScore, maxScore, sortBy, sortOrder, } = req.query;
             const page = Number(req.query.page) || 1;
             const limit = Number(req.query.limit) || 10;
             const user = req.user;
+            // Check if user is authenticated
+            if (!user) {
+                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+            }
             if (!formId) {
                 return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
             }
             try {
-                // Verify form ownership
-                const form = yield Form_model_2.default.findById(formId);
-                if (!form || form.user.toString() !== ((_a = user === null || user === void 0 ? void 0 : user.id) === null || _a === void 0 ? void 0 : _a.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Unauthorized"));
+                // Verify form access (including collaborators)
+                const form = yield Form_model_2.default.findById(formId)
+                    .populate({ path: "user", select: "email" })
+                    .lean();
+                if (!form) {
+                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
+                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
                 }
                 // Build query
                 const query = { formId };
@@ -536,17 +560,26 @@ class FormResponseController {
         });
         // Get response analytics for charts
         this.GetResponseAnalytics = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
             const { formId } = req.query;
             const user = req.user;
+            // Check if user is authenticated
+            if (!user) {
+                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+            }
             if (!formId) {
                 return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
             }
             try {
-                // Verify form ownership
-                const form = yield Form_model_2.default.findById(formId).populate("contentIds");
-                if (!form || form.user.toString() !== ((_a = user === null || user === void 0 ? void 0 : user.id) === null || _a === void 0 ? void 0 : _a.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Unauthorized"));
+                // Verify form access (including collaborators)
+                const form = yield Form_model_2.default.findById(formId)
+                    .populate("contentIds")
+                    .populate({ path: "user", select: "email" })
+                    .lean();
+                if (!form) {
+                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
+                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
                 }
                 // Get all responses
                 const responses = yield Response_model_1.default.find({ formId });
@@ -651,10 +684,21 @@ class FormResponseController {
         this.GetFormAnalytics = (req, res) => __awaiter(this, void 0, void 0, function* () {
             const { formId } = req.params;
             const { period = "7d" } = req.query;
+            const user = req.user;
+            // Check if user is authenticated
+            if (!user) {
+                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+            }
             try {
-                const form = yield Form_model_2.default.findById(formId);
+                const form = yield Form_model_2.default.findById(formId)
+                    .populate({ path: "user", select: "email" })
+                    .lean();
                 if (!form) {
                     return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                // Check if user has access to this form
+                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
+                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
                 }
                 // Calculate date range based on period
                 const now = new Date();
@@ -746,10 +790,21 @@ class FormResponseController {
         this.ExportAnalytics = (req, res) => __awaiter(this, void 0, void 0, function* () {
             const { formId } = req.params;
             const { format = "pdf" } = req.query;
+            const user = req.user;
+            // Check if user is authenticated
+            if (!user) {
+                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+            }
             try {
-                const form = yield Form_model_2.default.findById(formId);
+                const form = yield Form_model_2.default.findById(formId)
+                    .populate({ path: "user", select: "email" })
+                    .lean();
                 if (!form) {
                     return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                // Check if user has access to this form
+                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
+                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
                 }
                 // Get analytics data (reuse the analytics logic)
                 const responses = yield Response_model_1.default.find({

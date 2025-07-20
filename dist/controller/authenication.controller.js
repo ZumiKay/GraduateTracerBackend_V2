@@ -17,6 +17,7 @@ const helper_1 = require("../utilities/helper");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const Usersession_model_1 = __importDefault(require("../model/Usersession.model"));
 const email_1 = __importDefault(require("../utilities/email"));
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 class AuthenticationController {
     constructor() {
         this.Login = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -118,23 +119,72 @@ class AuthenticationController {
             }
         });
         this.CheckSession = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             try {
                 const refreshToken = req === null || req === void 0 ? void 0 : req.cookies[(_a = process.env.REFRESH_TOKEN_COOKIE) !== null && _a !== void 0 ? _a : ""];
+                const accessToken = req === null || req === void 0 ? void 0 : req.cookies[(_b = process.env.ACCESS_TOKEN_COOKIE) !== null && _b !== void 0 ? _b : ""];
                 if (!refreshToken) {
-                    return res.status(400).json({});
+                    return res
+                        .status(204)
+                        .json({ authenticated: false, message: "No refresh token found" });
                 }
-                const isUser = yield Usersession_model_1.default.findOne({
+                // Verify the refresh token is still valid
+                const userSession = yield Usersession_model_1.default.findOne({
                     session_id: refreshToken,
+                    expireAt: { $gte: new Date() }, // Check if session hasn't expired
                 }).populate({ path: "user", select: "_id email role" });
-                if (!isUser) {
+                if (!userSession || !userSession.user) {
+                    // Clean up expired session
+                    if (userSession) {
+                        yield Usersession_model_1.default.deleteOne({ session_id: refreshToken });
+                    }
+                    // Clear cookies
+                    this.clearAccessTokenCookie(res);
+                    this.clearRefreshTokenCookie(res);
                     return res.status(401).json((0, helper_1.ReturnCode)(401, "Session Expired"));
                 }
-                return res.status(200).json({ data: isUser });
+                // Additional security checks
+                const user = userSession.user;
+                // Check if user still exists and is active
+                const currentUser = yield User_model_1.default.findById(user._id).select("_id email role");
+                if (!currentUser) {
+                    // User was deleted, clean up session
+                    yield Usersession_model_1.default.deleteOne({ session_id: refreshToken });
+                    this.clearAccessTokenCookie(res);
+                    this.clearRefreshTokenCookie(res);
+                    return res.status(401).json((0, helper_1.ReturnCode)(401, "User no longer exists"));
+                }
+                // Verify access token if present
+                let tokenValid = false;
+                if (accessToken) {
+                    try {
+                        const decoded = jsonwebtoken_1.default.verify(accessToken, process.env.JWT_SECRET || "secret");
+                        tokenValid = decoded.id === user._id.toString();
+                    }
+                    catch (error) {
+                        // Access token invalid/expired, but refresh token is valid
+                        tokenValid = false;
+                    }
+                }
+                return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: {
+                        user: {
+                            _id: currentUser._id,
+                            email: currentUser.email,
+                            role: currentUser.role,
+                        },
+                        session: {
+                            sessionId: userSession.session_id,
+                            expireAt: userSession.expireAt,
+                            createdAt: userSession.createdAt,
+                        },
+                        authenticated: true,
+                        tokenValid,
+                        requiresRefresh: !tokenValid,
+                    } }));
             }
             catch (error) {
-                console.log("Check Session", error);
-                return res.status(500).json((0, helper_1.ReturnCode)(500));
+                console.error("Check Session Error:", error);
+                return res.status(500).json((0, helper_1.ReturnCode)(500, "Internal server error"));
             }
         });
         this.RefreshToken = (req, res) => __awaiter(this, void 0, void 0, function* () {

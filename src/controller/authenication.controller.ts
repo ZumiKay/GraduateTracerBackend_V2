@@ -11,6 +11,7 @@ import {
 import bcrypt from "bcrypt";
 import Usersession from "../model/Usersession.model";
 import HandleEmail from "../utilities/email";
+import JWT from "jsonwebtoken";
 
 interface Logindata {
   email: string;
@@ -149,23 +150,85 @@ class AuthenticationController {
   public CheckSession = async (req: Request, res: Response) => {
     try {
       const refreshToken = req?.cookies[process.env.REFRESH_TOKEN_COOKIE ?? ""];
+      const accessToken = req?.cookies[process.env.ACCESS_TOKEN_COOKIE ?? ""];
 
       if (!refreshToken) {
-        return res.status(400).json({});
+        return res
+          .status(204)
+          .json({ authenticated: false, message: "No refresh token found" });
       }
 
-      const isUser = await Usersession.findOne({
+      // Verify the refresh token is still valid
+      const userSession = await Usersession.findOne({
         session_id: refreshToken,
+        expireAt: { $gte: new Date() }, // Check if session hasn't expired
       }).populate({ path: "user", select: "_id email role" });
 
-      if (!isUser) {
+      if (!userSession || !userSession.user) {
+        // Clean up expired session
+        if (userSession) {
+          await Usersession.deleteOne({ session_id: refreshToken });
+        }
+
+        // Clear cookies
+        this.clearAccessTokenCookie(res);
+        this.clearRefreshTokenCookie(res);
+
         return res.status(401).json(ReturnCode(401, "Session Expired"));
       }
 
-      return res.status(200).json({ data: isUser });
+      // Additional security checks
+      const user = userSession.user as any;
+
+      // Check if user still exists and is active
+      const currentUser = await User.findById(user._id).select(
+        "_id email role"
+      );
+      if (!currentUser) {
+        // User was deleted, clean up session
+        await Usersession.deleteOne({ session_id: refreshToken });
+        this.clearAccessTokenCookie(res);
+        this.clearRefreshTokenCookie(res);
+
+        return res.status(401).json(ReturnCode(401, "User no longer exists"));
+      }
+
+      // Verify access token if present
+      let tokenValid = false;
+      if (accessToken) {
+        try {
+          const decoded = JWT.verify(
+            accessToken,
+            process.env.JWT_SECRET || "secret"
+          ) as any;
+          tokenValid = decoded.id === user._id.toString();
+        } catch (error) {
+          // Access token invalid/expired, but refresh token is valid
+          tokenValid = false;
+        }
+      }
+
+      return res.status(200).json({
+        ...ReturnCode(200),
+        data: {
+          user: {
+            _id: currentUser._id,
+            email: currentUser.email,
+            role: currentUser.role,
+          },
+          session: {
+            sessionId: userSession.session_id,
+            expireAt: userSession.expireAt,
+            createdAt: userSession.createdAt,
+          },
+          authenticated: true,
+          tokenValid,
+          requiresRefresh: !tokenValid,
+        },
+      });
     } catch (error) {
-      console.log("Check Session", error);
-      return res.status(500).json(ReturnCode(500));
+      console.error("Check Session Error:", error);
+      return res.status(500).json(ReturnCode(500, "Internal server error"));
     }
   };
 

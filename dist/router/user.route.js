@@ -52,8 +52,9 @@ const question_controller_1 = __importDefault(require("../controller/question.co
 const UserRoute = (0, express_1.Router)();
 //RegisterUser
 UserRoute.post("/registeruser", Traffic_middleware_1.default.ApiRateLimit, (0, Validatetor_1.validate)(user_controller_1.UserValidate), user_controller_1.RegisterUser);
-UserRoute.put("/edituser", User_middleware_1.default.VerifyToken, user_controller_1.EditUser);
-UserRoute.delete("/deleteuser", User_middleware_1.default.VerifyToken, user_controller_1.DeleteUser);
+//User Management - Enhanced Security for Profile Operations
+UserRoute.put("/edituser", User_middleware_1.default.VerifyTokenAndSession, user_controller_1.EditUser);
+UserRoute.delete("/deleteuser", User_middleware_1.default.VerifyTokenAndSession, user_controller_1.DeleteUser);
 //Authentication
 UserRoute.post("/login", Traffic_middleware_1.default.LoginRateLimit, (0, Validatetor_1.validate)(user_controller_1.UserValidate), authenication_controller_1.default.Login);
 UserRoute.get("/checksession", User_middleware_1.default.VerifyToken, User_middleware_1.default.VerifyRefreshToken, authenication_controller_1.default.CheckSession);
@@ -62,10 +63,10 @@ UserRoute.post("/refreshtoken", User_middleware_1.default.VerifyRefreshToken, au
 UserRoute.put("/forgotpassword", Traffic_middleware_1.default.PasswordResetRateLimit, authenication_controller_1.default.ForgotPassword);
 //Recaptcha
 UserRoute.post("/recaptchaverify", recaptcha_controller_1.default);
-//Form Routes
-UserRoute.post("/createform", [User_middleware_1.default.VerifyToken, (0, Validatetor_1.validate)(Form_model_1.createFormValidate)], form_controller_1.CreateForm);
-UserRoute.put("/editform", User_middleware_1.default.VerifyToken, form_controller_1.EditForm);
-UserRoute.delete("/deleteform", User_middleware_1.default.VerifyToken, form_controller_1.DeleteForm);
+//Form Routes - Enhanced Security for Sensitive Operations
+UserRoute.post("/createform", [User_middleware_1.default.VerifyTokenAndSession, (0, Validatetor_1.validate)(Form_model_1.createFormValidate)], form_controller_1.CreateForm);
+UserRoute.put("/editform", User_middleware_1.default.VerifyTokenAndSession, form_controller_1.EditForm);
+UserRoute.delete("/deleteform", User_middleware_1.default.VerifyTokenAndSession, form_controller_1.DeleteForm);
 UserRoute.get("/getallform", User_middleware_1.default.VerifyToken, form_controller_1.GetAllForm);
 UserRoute.get("/filteredform", User_middleware_1.default.VerifyToken, form_controller_1.GetFilterForm);
 UserRoute.put("/modifypage", User_middleware_1.default.VerifyToken, form_controller_1.PageHandler);

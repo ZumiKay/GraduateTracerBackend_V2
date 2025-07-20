@@ -10,23 +10,43 @@ export function hasFormAccess(form: FormType, userId: string): boolean {
   try {
     const userIdStr = userId.toString();
 
+    console.log("hasFormAccess Debug:", {
+      userId: userIdStr,
+      formUser: form.user,
+      formUserType: typeof form.user,
+      formOwners: form.owners,
+      formOwnersLength: form.owners?.length || 0,
+    });
+
     // Check if user is the primary owner
     let formUserId: string;
     if (form.user && typeof form.user === "object" && form.user._id) {
       formUserId = form.user._id.toString();
+      console.log("Primary owner check (populated):", {
+        formUserId,
+        userIdStr,
+        matches: formUserId === userIdStr,
+      });
     } else if (form.user) {
       formUserId = form.user.toString();
+      console.log("Primary owner check (ObjectId):", {
+        formUserId,
+        userIdStr,
+        matches: formUserId === userIdStr,
+      });
     } else {
+      console.log("No form user found");
       return false;
     }
 
     if (formUserId === userIdStr) {
+      console.log("✓ User is primary owner");
       return true;
     }
 
     // Check if user is a collaborator
     if (form.owners && form.owners.length > 0) {
-      return form.owners.some((owner) => {
+      const isCollaborator = form.owners.some((owner) => {
         let ownerId: string;
         if (owner && typeof owner === "object" && owner._id) {
           ownerId = owner._id.toString();
@@ -35,10 +55,22 @@ export function hasFormAccess(form: FormType, userId: string): boolean {
         } else {
           return false;
         }
-        return ownerId === userIdStr;
+        const matches = ownerId === userIdStr;
+        console.log("Collaborator check:", {
+          ownerId,
+          userIdStr,
+          matches,
+        });
+        return matches;
       });
+
+      if (isCollaborator) {
+        console.log("✓ User is collaborator");
+        return true;
+      }
     }
 
+    console.log("✗ User has no access");
     return false;
   } catch (error) {
     console.error("Error in hasFormAccess:", error);
@@ -64,6 +96,19 @@ export function isPrimaryOwner(form: FormType, userId: string): boolean {
     console.error("Error in isPrimaryOwner:", error);
     return false;
   }
+}
+
+// Helper function to validate form access and return access info
+function validateFormAccess(form: FormType, userId: string) {
+  const hasAccess = hasFormAccess(form, userId);
+  const isOwner = isPrimaryOwner(form, userId);
+  const isCollaborator = hasAccess && !isOwner;
+
+  return {
+    hasAccess,
+    isOwner,
+    isCollaborator,
+  };
 }
 
 export async function AddFormOwner(req: CustomRequest, res: Response) {
@@ -514,7 +559,6 @@ interface GetFilterFormParamType {
     | "setting"
     | "solution"
     | "preview"
-    | "hidecond"
     | "total"
     | "response";
   q?: string;
@@ -549,7 +593,6 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
         "createddate",
         "modifieddate",
         "preview",
-        "hidecond",
         "total",
         "response",
       ].includes(ty) &&
@@ -564,8 +607,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
     switch (ty) {
       case "detail":
       case "solution":
-      case "response":
-      case "hidecond": {
+      case "response": {
         const user = req.user;
         if (!user) {
           return res.status(401).json(ReturnCode(401));
@@ -582,32 +624,11 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           return res.status(400).json(ReturnCode(400, "No Form Found"));
         }
 
-        // Debug form access - extract user ID from populated user object
-        const formUserId =
-          detailForm.user &&
-          typeof detailForm.user === "object" &&
-          detailForm.user._id
-            ? detailForm.user._id.toString()
-            : detailForm.user?.toString() || "";
-
-        console.log("Form Access Debug:", {
-          formId: detailForm._id,
-          userId: user.id,
-          formUser: detailForm.user,
-          formUserId,
-          formOwners: detailForm.owners,
-          userObjectId: new Types.ObjectId(user.id),
-        });
-
-        // Check if user has access to this form
-        const hasAccess = hasFormAccess(detailForm, user.id.toString());
-        const isOwner = isPrimaryOwner(detailForm, user.id.toString());
-
-        console.log("Access Check Results:", {
-          hasAccess,
-          isOwner,
-          isCollaborator: hasAccess && !isOwner,
-        });
+        // Validate form access and get ownership flags
+        const { hasAccess, isOwner, isCollaborator } = validateFormAccess(
+          detailForm,
+          user.id.toString()
+        );
 
         if (!hasAccess) {
           return res.status(403).json(ReturnCode(403, "Access denied"));
@@ -655,7 +676,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           contentIds: undefined,
           validationSummary,
           isOwner: isOwner,
-          isCollaborator: hasAccess && !isOwner,
+          isCollaborator: isCollaborator,
         };
 
         return res.status(200).json({
@@ -672,14 +693,20 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
 
         const formdata = await Form.findById(q)
           .select("totalpage totalscore contentIds user owners")
+          .populate({ path: "user", select: "email" })
           .lean();
 
         if (!formdata) {
           return res.status(404).json(ReturnCode(404, "Form not found"));
         }
 
-        // Check if user has access to this form
-        if (!hasFormAccess(formdata, user.id.toString())) {
+        // Validate form access and get access info
+        const { hasAccess, isOwner, isCollaborator } = validateFormAccess(
+          formdata,
+          user.id.toString()
+        );
+
+        if (!hasAccess) {
           return res.status(403).json(ReturnCode(403, "Access denied"));
         }
 
@@ -689,6 +716,8 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
             totalpage: formdata?.totalpage ?? 0,
             totalscore: formdata?.totalscore ?? 0,
             totalquestion: formdata?.contentIds?.length,
+            isOwner,
+            isCollaborator,
           },
         });
       }
@@ -701,14 +730,20 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
 
         const form = await Form.findById(q)
           .select("_id title type setting user owners")
+          .populate({ path: "user", select: "email" })
           .lean();
 
         if (!form) {
           return res.status(404).json(ReturnCode(404, "Form not found"));
         }
 
-        // Check if user has access to this form
-        if (!hasFormAccess(form, user.id.toString())) {
+        // Validate form access and get ownership flags
+        const { hasAccess, isOwner, isCollaborator } = validateFormAccess(
+          form,
+          user.id.toString()
+        );
+
+        if (!hasAccess) {
           return res.status(403).json(ReturnCode(403, "Access denied"));
         }
 
@@ -719,6 +754,8 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
             title: form.title,
             type: form.type,
             setting: form.setting,
+            isOwner: isOwner,
+            isCollaborator: isCollaborator,
           },
         });
       }
@@ -783,6 +820,8 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
 
       default: {
         // Handle search, type, createddate, modifieddate cases
+        const user = req.user;
+
         const conditions =
           {
             search: { title: { $regex: q, $options: "i" } },
@@ -798,7 +837,41 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           .skip((p - 1) * lt)
           .limit(lt)
           .select(basicProjection)
+          .populate({ path: "user", select: "email" })
           .lean();
+
+        // Add access information to each form if user is authenticated
+        const formattedForms = forms.map((form) => {
+          if (!user) {
+            return {
+              ...form,
+              updatedAt: form.updatedAt
+                ? FormatToGeneralDate(form.updatedAt)
+                : undefined,
+              createdAt: form.createdAt
+                ? FormatToGeneralDate(form.createdAt)
+                : undefined,
+              isOwner: false,
+              isCollaborator: false,
+            };
+          }
+
+          const { isOwner, isCollaborator } = validateFormAccess(
+            form,
+            user.id.toString()
+          );
+          return {
+            ...form,
+            updatedAt: form.updatedAt
+              ? FormatToGeneralDate(form.updatedAt)
+              : undefined,
+            createdAt: form.createdAt
+              ? FormatToGeneralDate(form.createdAt)
+              : undefined,
+            isOwner,
+            isCollaborator,
+          };
+        });
 
         // Calculate pagination metadata
         const totalPages = Math.ceil(totalCount / lt);
@@ -807,7 +880,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
 
         return res.status(200).json({
           ...ReturnCode(200),
-          data: forms,
+          data: formattedForms,
           pagination: {
             currentPage: p,
             totalPages,
@@ -845,7 +918,10 @@ export async function ValidateFormBeforeAction(
 
   try {
     // Check if user has access to this form
-    const form = await Form.findById(formId).select("user owners").lean();
+    const form = await Form.findById(formId)
+      .select("user owners")
+      .populate({ path: "user", select: "email" })
+      .lean();
 
     if (!form) {
       return res.status(404).json(ReturnCode(404, "Form not found"));

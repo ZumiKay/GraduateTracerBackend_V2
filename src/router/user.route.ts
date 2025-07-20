@@ -46,10 +46,15 @@ UserRoute.post(
   validate(UserValidate) as any,
   RegisterUser as any
 );
-UserRoute.put("/edituser", UserMiddleware.VerifyToken as any, EditUser as any);
+//User Management - Enhanced Security for Profile Operations
+UserRoute.put(
+  "/edituser",
+  UserMiddleware.VerifyTokenAndSession as any,
+  EditUser as any
+);
 UserRoute.delete(
   "/deleteuser",
-  UserMiddleware.VerifyToken as any,
+  UserMiddleware.VerifyTokenAndSession as any,
   DeleteUser as any
 );
 
@@ -81,16 +86,20 @@ UserRoute.put(
 //Recaptcha
 UserRoute.post("/recaptchaverify", VerifyRecaptcha as any);
 
-//Form Routes
+//Form Routes - Enhanced Security for Sensitive Operations
 UserRoute.post(
   "/createform",
-  [UserMiddleware.VerifyToken, validate(createFormValidate) as any],
+  [UserMiddleware.VerifyTokenAndSession, validate(createFormValidate) as any],
   CreateForm as any
 );
-UserRoute.put("/editform", UserMiddleware.VerifyToken as any, EditForm as any);
+UserRoute.put(
+  "/editform",
+  UserMiddleware.VerifyTokenAndSession as any,
+  EditForm as any
+);
 UserRoute.delete(
   "/deleteform",
-  UserMiddleware.VerifyToken as any,
+  UserMiddleware.VerifyTokenAndSession as any,
   DeleteForm as any
 );
 UserRoute.get(

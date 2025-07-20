@@ -12,48 +12,48 @@ import UserMiddleware from "../middleware/User.middleware";
 
 const router = express.Router();
 
-// Get available columns for export
+// Get available columns for export - Enhanced Security
 router.get(
   "/forms/:formId/columns",
-  UserMiddleware.VerifyToken as never,
+  UserMiddleware.VerifyTokenAndSession as never,
   getAvailableColumns
 );
 
-// Get export jobs for a form
+// Get export jobs for a form - Enhanced Security
 router.get(
   "/forms/:formId/exports",
-  UserMiddleware.VerifyToken as never,
+  UserMiddleware.VerifyTokenAndSession as never,
   getExportJobs
 );
 
-// Create new export job
+// Create new export job - Enhanced Security
 router.post(
   "/forms/:formId/exports",
-  UserMiddleware.VerifyToken as never,
+  UserMiddleware.VerifyTokenAndSession as never,
   createExportJob
 );
 
-// Get export job by ID
+// Get export job by ID - Enhanced Security
 router.get(
   "/forms/:formId/exports/:jobId",
-  UserMiddleware.VerifyToken as never,
+  UserMiddleware.VerifyTokenAndSession as never,
   getExportJob
 );
 
-// Delete export job
+// Delete export job - Enhanced Security
 router.delete(
   "/forms/:formId/exports/:jobId",
-  UserMiddleware.VerifyToken as never,
+  UserMiddleware.VerifyTokenAndSession as never,
   deleteExportJob
 );
 
-// Download export file
+// Download export file - Public access (requires valid filename token)
 router.get("/download/:filename", downloadExportFile);
 
-// Quick export
+// Quick export - Enhanced Security
 router.get(
   "/forms/:formId/quick",
-  UserMiddleware.VerifyToken as never,
+  UserMiddleware.VerifyTokenAndSession as never,
   quickExport
 );
 
