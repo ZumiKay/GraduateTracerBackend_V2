@@ -54,12 +54,15 @@ export interface ContentType {
   _id?: string;
   title: ContentTitle;
   type: QuestionType;
+  qIdx: number;
   formId: Types.ObjectId;
   multiple?: Array<CheckboxQuestionType>;
   text?: string;
   checkbox?: Array<CheckboxQuestionType>;
   range?: RangeType<string>;
   numrange?: RangeType<number>;
+  rangedate?: RangeType<Date>;
+  rangenumber?: RangeType<number>;
   date?: Date;
   score?: number;
   answer?: AnswerKey;
@@ -104,6 +107,10 @@ const ConditionalSchema = new Schema<ConditionalType>({
     ref: "Content",
     required: true,
   },
+  contentIdx: {
+    type: Number,
+    required: false,
+  },
 });
 
 const AnswerKeySchema = new Schema<AnswerKey>({
@@ -142,6 +149,10 @@ const ContentSchema = new Schema<ContentType>({
     type: Schema.ObjectId,
     required: true,
   },
+  qIdx: {
+    type: "number",
+    required: true,
+  },
   title: {
     type: TitleSchema,
     required: true,
@@ -164,6 +175,12 @@ const ContentSchema = new Schema<ContentType>({
     type: RangeSchema,
   },
   numrange: {
+    type: RangeSchema,
+  },
+  rangedate: {
+    type: RangeSchema,
+  },
+  rangenumber: {
     type: RangeSchema,
   },
   date: {
@@ -206,12 +223,14 @@ ContentSchema.pre("save", async function (next) {
   try {
     const Form = require("./Form.model").default;
 
-    // Calculate total score for all contents in this form
+    // Calculate total score for all contents in this form, excluding Text questions
     const allContents = await Content.find({ formId: this.formId });
     const totalScore =
-      allContents.reduce((sum, content) => {
-        return sum + (content.score || 0);
-      }, 0) + (this.score || 0);
+      allContents
+        .filter((content) => content.type !== QuestionType.Text) // Exclude Text questions
+        .reduce((sum, content) => {
+          return sum + (content.score || 0);
+        }, 0) + (this.type !== QuestionType.Text ? this.score || 0 : 0); // Only add this content's score if it's not Text
 
     // Update the form's total score
     await Form.findByIdAndUpdate(this.formId, { totalscore: totalScore });
@@ -234,9 +253,12 @@ ContentSchema.pre("deleteOne", async function (next) {
         _id: { $ne: contentToDelete._id },
       });
 
-      const totalScore = remainingContents.reduce((sum, content) => {
-        return sum + (content.score || 0);
-      }, 0);
+      // Calculate total score excluding Text questions
+      const totalScore = remainingContents
+        .filter((content) => content.type !== QuestionType.Text)
+        .reduce((sum, content) => {
+          return sum + (content.score || 0);
+        }, 0);
 
       await Form.findByIdAndUpdate(contentToDelete.formId, {
         totalscore: totalScore,

@@ -33,12 +33,10 @@ class QuestionController {
         maxTimeMS: 5000,
       });
 
-      // Early return if no changes
       if (await this.efficientChangeDetection(existingContent, data)) {
         return res.status(200).json(ReturnCode(200, "No changes detected"));
       }
 
-      // Prepare bulk operations
       const bulkOps = [];
       const newIds: Array<Types.ObjectId | string> = [];
       const hasConditions = data.some((item) => item.conditional);
@@ -55,7 +53,6 @@ class QuestionController {
         }
       });
 
-      // Process data and create bulk operations
       for (let i = 0; i < data.length; i++) {
         const { _id, ...rest } = data[i];
         const documentId = _id || questionIdMap.get(i);
@@ -70,15 +67,32 @@ class QuestionController {
                 const referencedId =
                   data[cond.contentIdx]?._id ||
                   questionIdMap.get(cond.contentIdx);
-                return {
-                  ...cond,
-                  contentId: referencedId,
-                };
+                if (referencedId) {
+                  return {
+                    ...cond,
+                    contentId: referencedId,
+                    contentIdx: cond.contentIdx, // Keep contentIdx for reference
+                  };
+                }
+                // If we couldn't resolve the contentIdx, keep the original condition for debugging
+                console.warn(
+                  `Could not resolve contentIdx ${cond.contentIdx} to contentId`
+                );
+                return cond;
               }
               return cond;
             })
-            .filter((cond) => cond.contentId) as ConditionalType[]; // Only keep conditions with valid contentId
+            .filter(
+              (cond) => cond.contentId || cond.contentIdx !== undefined
+            ) as ConditionalType[];
         }
+
+        // Determine qIdx: sub-questions (with parentcontent) should always have qIdx: 0
+        const questionIdx = rest.parentcontent
+          ? 0
+          : rest.qIdx !== undefined
+          ? rest.qIdx
+          : i;
 
         bulkOps.push({
           updateOne: {
@@ -87,6 +101,7 @@ class QuestionController {
               $set: {
                 ...rest,
                 conditional: processedConditional,
+                qIdx: questionIdx, // Ensure proper qIdx handling
                 formId,
                 page,
                 updatedAt: new Date(),
@@ -98,7 +113,6 @@ class QuestionController {
         });
       }
 
-      // Execute operations in parallel
       const operations = [];
 
       // Delete unnecessary content
@@ -125,6 +139,10 @@ class QuestionController {
 
           const allDeleteIds = [...deleteIds, ...conditionalIds];
 
+          const deletedIdx = toBeDeleted
+            .map((i) => i.qIdx || 0)
+            .sort((a, b) => a - b);
+
           operations.push(
             Content.deleteMany({ _id: { $in: allDeleteIds } }),
             Form.updateOne(
@@ -134,21 +152,49 @@ class QuestionController {
                 ...(deletedScore && { $inc: { totalscore: -deletedScore } }),
               }
             ),
-            // Remove references to deleted content in other conditionals
+
             Content.updateMany(
               { "conditional.contentId": { $in: allDeleteIds } },
               { $pull: { conditional: { contentId: { $in: allDeleteIds } } } }
             )
           );
+
+          // Update qIdx for remaining questions (only for non-sub-questions)
+          // Sub-questions (those with parentcontent) should always have qIdx: 0
+          const remainingQuestions = existingContent.filter(
+            (item) => idsToKeep.includes(item._id) && !item.parentcontent
+          );
+
+          // Create individual update operations for each question
+          for (const item of remainingQuestions) {
+            const currentIdx = item.qIdx || 0;
+            // Count how many deleted indices are less than current index
+            const deletedBeforeCurrent = deletedIdx.filter(
+              (delIdx) => delIdx < currentIdx
+            ).length;
+
+            if (deletedBeforeCurrent > 0) {
+              const newIdx = currentIdx - deletedBeforeCurrent;
+              operations.push(
+                Content.updateOne({ _id: item._id }, { $set: { qIdx: newIdx } })
+              );
+            }
+          }
+
+          // Ensure all sub-questions (parentcontent questions) have qIdx: 0
+          operations.push(
+            Content.updateMany(
+              { formId, parentcontent: { $exists: true, $ne: null } },
+              { $set: { qIdx: 0 } }
+            )
+          );
         }
       }
 
-      // Bulk write content
       if (bulkOps.length > 0) {
         operations.push(Content.bulkWrite(bulkOps, { ordered: false }));
       }
 
-      // Update form with new content IDs
       if (newIds.length > 0) {
         operations.push(
           Form.updateOne(
@@ -163,7 +209,6 @@ class QuestionController {
 
       await Promise.all(operations);
 
-      // Handle parent-child relationships for conditional questions
       if (hasConditions) {
         const finalData = data.map((item, index) => ({
           ...item,
@@ -192,7 +237,6 @@ class QuestionController {
         }
       }
 
-      // Update total score if changed
       const newScore = this.isScoreHasChange(data, existingContent);
       if (newScore !== null) {
         await Form.updateOne(
@@ -201,7 +245,6 @@ class QuestionController {
         );
       }
 
-      // Get final updated content
       const updatedContent = await Content.find({ formId, page }, null, {
         lean: true,
       });
@@ -237,9 +280,19 @@ class QuestionController {
         return res.status(400).json(ReturnCode(400, "Invalid request payload"));
       }
 
-      // First, validate that the parent question supports conditions
+      if (!Types.ObjectId.isValid(content.id)) {
+        return res
+          .status(400)
+          .json(ReturnCode(400, "Invalid content ID format"));
+      }
+
+      if (!Types.ObjectId.isValid(formId)) {
+        return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
+      }
+
       const parentQuestion = await Content.findById(content.id);
       if (!parentQuestion) {
+        console.error("Parent question not found:", content.id);
         return res
           .status(404)
           .json(ReturnCode(404, "Parent question not found"));
@@ -296,37 +349,74 @@ class QuestionController {
 
       const newContentId = new Types.ObjectId();
 
-      // Perform operations in parallel
-      const [newContentCreated, updateResult] = await Promise.all([
-        Content.create({
-          ...newContent,
-          _id: newContentId,
-          formId,
-          conditional: [],
-          parentcontent: { qIdx: content.idx, optIdx: key },
-        }),
-        Content.updateOne(
-          { _id: content.id },
-          {
-            $push: { conditional: { key, contentId: newContentId } },
-          }
-        ),
-        Form.updateOne(
-          { _id: formId },
-          { $push: { contentIds: newContentId } }
-        ),
-      ]);
+      try {
+        // Ensure formId is properly converted to ObjectId
+        const formObjectId = new Types.ObjectId(formId);
 
-      if (!updateResult.modifiedCount) {
-        return res.status(400).json(ReturnCode(400, "Content not found"));
+        // Perform operations in parallel
+        const [newContentCreated, updateResult] = await Promise.all([
+          Content.create({
+            ...newContent,
+            _id: newContentId,
+            formId: formObjectId,
+            conditional: [],
+            qIdx: 0,
+            parentcontent: {
+              qIdx: content.idx,
+              optIdx: key,
+              qId: content.id,
+            },
+          }),
+          Content.updateOne(
+            { _id: content.id },
+            {
+              $push: {
+                conditional: {
+                  key,
+                  contentId: newContentId,
+                  contentIdx: content.idx,
+                },
+              },
+            }
+          ),
+          Form.updateOne(
+            { _id: formObjectId },
+            { $push: { contentIds: newContentId } }
+          ),
+        ]);
+
+        if (!updateResult.modifiedCount) {
+          return res.status(400).json(ReturnCode(400, "Content not found"));
+        }
+
+        return res.status(200).json({
+          ...ReturnCode(200, "Condition created successfully"),
+          data: newContentCreated._id,
+        });
+      } catch (dbError) {
+        console.error("Database operation error:", {
+          error: dbError instanceof Error ? dbError.message : dbError,
+          stack: dbError instanceof Error ? dbError.stack : undefined,
+          newContentData: {
+            ...newContent,
+            _id: newContentId,
+            formId,
+            conditional: [],
+            parentcontent: {
+              qIdx: content.idx,
+              optIdx: key,
+              qId: content.id,
+            },
+          },
+        });
+        throw dbError; // Re-throw to be caught by outer catch block
       }
-
-      return res.status(200).json({
-        ...ReturnCode(200, "Condition created successfully"),
-        data: newContentCreated._id,
-      });
     } catch (error) {
-      console.error("Add Condition Error:", error);
+      console.error("Add Condition Error:", {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        body: req.body,
+      });
       return res.status(500).json(ReturnCode(500, "Internal Server Error"));
     }
   };

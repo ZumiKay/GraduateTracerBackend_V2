@@ -28,6 +28,17 @@ export class SolutionValidationService {
     const missingAnswers: string[] = [];
     const missingScores: string[] = [];
 
+    // Text type questions are for display only and don't need answers or scores
+    if (content.type === QuestionType.Text) {
+      return {
+        isValid: true,
+        errors: [],
+        warnings: [],
+        missingAnswers: [],
+        missingScores: [],
+      };
+    }
+
     // Check if content has answer
     if (
       !content.answer ||
@@ -216,22 +227,37 @@ export class SolutionValidationService {
     let totalScore = 0;
 
     for (const content of contents) {
+      // Text questions are display-only and should be excluded from validation counting
+      if (content.type === QuestionType.Text) {
+        const result = this.validateContent(content);
+        validationResults.push(result);
+        // Text questions are always valid and don't count toward totals or scores
+        continue;
+      }
+
       const result = this.validateContent(content);
       validationResults.push(result);
 
+      // Add score to total regardless of validation status (total represents max possible score)
+      totalScore += content.score || 0;
+
       if (result.isValid) {
         totalValidQuestions++;
-        totalScore += content.score || 0;
       } else {
         totalInvalidQuestions++;
       }
     }
 
+    // Calculate actual scorable questions (excluding Text type)
+    const scorableQuestions = contents.filter(
+      (content) => content.type !== QuestionType.Text
+    );
+
     // Determine if form can return score automatically
     const canReturnScoreAutomatically =
       form.type === TypeForm.Quiz &&
       totalInvalidQuestions === 0 &&
-      contents.length > 0 &&
+      scorableQuestions.length > 0 &&
       form.setting?.returnscore === returnscore.partial;
 
     return {
@@ -286,11 +312,14 @@ export class SolutionValidationService {
     if (!correctAnswer || maxScore === 0) return 0;
 
     switch (questionType) {
+      case QuestionType.Text:
+        // Text questions are display-only and don't contribute to scoring
+        return 0;
+
       case QuestionType.MultipleChoice:
       case QuestionType.CheckBox:
         return this.calculateArrayScore(userAnswer, correctAnswer, maxScore);
 
-      case QuestionType.Text:
       case QuestionType.ShortAnswer:
       case QuestionType.Paragraph:
         return this.calculateTextScore(userAnswer, correctAnswer, maxScore);

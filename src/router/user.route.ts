@@ -1,7 +1,6 @@
 import { Router } from "express";
 import ConditionQuestionValidator from "../middleware/ConditionValidator";
 import TrafficControl from "../middleware/Traffic.middleware";
-
 import {
   CreateForm,
   DeleteForm,

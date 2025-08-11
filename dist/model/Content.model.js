@@ -55,6 +55,10 @@ const ConditionalSchema = new mongoose_1.Schema({
         ref: "Content",
         required: true,
     },
+    contentIdx: {
+        type: Number,
+        required: false,
+    },
 });
 const AnswerKeySchema = new mongoose_1.Schema({
     answer: {
@@ -106,6 +110,12 @@ const ContentSchema = new mongoose_1.Schema({
     numrange: {
         type: RangeSchema,
     },
+    rangedate: {
+        type: RangeSchema,
+    },
+    rangenumber: {
+        type: RangeSchema,
+    },
     date: {
         type: Date,
     },
@@ -145,11 +155,13 @@ ContentSchema.pre("save", function (next) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const Form = require("./Form.model").default;
-            // Calculate total score for all contents in this form
+            // Calculate total score for all contents in this form, excluding Text questions
             const allContents = yield Content.find({ formId: this.formId });
-            const totalScore = allContents.reduce((sum, content) => {
+            const totalScore = allContents
+                .filter((content) => content.type !== QuestionType.Text) // Exclude Text questions
+                .reduce((sum, content) => {
                 return sum + (content.score || 0);
-            }, 0) + (this.score || 0);
+            }, 0) + (this.type !== QuestionType.Text ? this.score || 0 : 0); // Only add this content's score if it's not Text
             // Update the form's total score
             yield Form.findByIdAndUpdate(this.formId, { totalscore: totalScore });
             next();
@@ -170,7 +182,10 @@ ContentSchema.pre("deleteOne", function (next) {
                     formId: contentToDelete.formId,
                     _id: { $ne: contentToDelete._id },
                 });
-                const totalScore = remainingContents.reduce((sum, content) => {
+                // Calculate total score excluding Text questions
+                const totalScore = remainingContents
+                    .filter((content) => content.type !== QuestionType.Text)
+                    .reduce((sum, content) => {
                     return sum + (content.score || 0);
                 }, 0);
                 yield Form.findByIdAndUpdate(contentToDelete.formId, {

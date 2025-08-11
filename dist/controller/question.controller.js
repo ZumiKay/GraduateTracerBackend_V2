@@ -77,11 +77,9 @@ class QuestionController {
                     lean: true,
                     maxTimeMS: 5000,
                 });
-                // Early return if no changes
                 if (yield this.efficientChangeDetection(existingContent, data)) {
                     return res.status(200).json((0, helper_1.ReturnCode)(200, "No changes detected"));
                 }
-                // Prepare bulk operations
                 const bulkOps = [];
                 const newIds = [];
                 const hasConditions = data.some((item) => item.conditional);
@@ -109,11 +107,16 @@ class QuestionController {
                             if (!cond.contentId && cond.contentIdx !== undefined) {
                                 const referencedId = ((_a = data[cond.contentIdx]) === null || _a === void 0 ? void 0 : _a._id) ||
                                     questionIdMap.get(cond.contentIdx);
-                                return Object.assign(Object.assign({}, cond), { contentId: referencedId });
+                                if (referencedId) {
+                                    return Object.assign(Object.assign({}, cond), { contentId: referencedId, contentIdx: cond.contentIdx });
+                                }
+                                // If we couldn't resolve the contentIdx, keep the original condition for debugging
+                                console.warn(`Could not resolve contentIdx ${cond.contentIdx} to contentId`);
+                                return cond;
                             }
                             return cond;
                         })
-                            .filter((cond) => cond.contentId); // Only keep conditions with valid contentId
+                            .filter((cond) => cond.contentId || cond.contentIdx !== undefined);
                     }
                     bulkOps.push({
                         updateOne: {
@@ -127,7 +130,6 @@ class QuestionController {
                         },
                     });
                 }
-                // Execute operations in parallel
                 const operations = [];
                 // Delete unnecessary content
                 if (idsToKeep.length >= 0) {
@@ -140,16 +142,12 @@ class QuestionController {
                             .flatMap((item) => { var _a; return ((_a = item.conditional) === null || _a === void 0 ? void 0 : _a.map((con) => con.contentId)) || []; })
                             .filter(Boolean);
                         const allDeleteIds = [...deleteIds, ...conditionalIds];
-                        operations.push(Content_model_1.default.deleteMany({ _id: { $in: allDeleteIds } }), Form_model_1.default.updateOne({ _id: formId }, Object.assign({ $pull: { contentIds: { $in: allDeleteIds } } }, (deletedScore && { $inc: { totalscore: -deletedScore } }))), 
-                        // Remove references to deleted content in other conditionals
-                        Content_model_1.default.updateMany({ "conditional.contentId": { $in: allDeleteIds } }, { $pull: { conditional: { contentId: { $in: allDeleteIds } } } }));
+                        operations.push(Content_model_1.default.deleteMany({ _id: { $in: allDeleteIds } }), Form_model_1.default.updateOne({ _id: formId }, Object.assign({ $pull: { contentIds: { $in: allDeleteIds } } }, (deletedScore && { $inc: { totalscore: -deletedScore } }))), Content_model_1.default.updateMany({ "conditional.contentId": { $in: allDeleteIds } }, { $pull: { conditional: { contentId: { $in: allDeleteIds } } } }));
                     }
                 }
-                // Bulk write content
                 if (bulkOps.length > 0) {
                     operations.push(Content_model_1.default.bulkWrite(bulkOps, { ordered: false }));
                 }
-                // Update form with new content IDs
                 if (newIds.length > 0) {
                     operations.push(Form_model_1.default.updateOne({ _id: formId }, {
                         $addToSet: { contentIds: { $each: newIds } },
@@ -157,7 +155,6 @@ class QuestionController {
                     }));
                 }
                 yield Promise.all(operations);
-                // Handle parent-child relationships for conditional questions
                 if (hasConditions) {
                     const finalData = data.map((item, index) => (Object.assign(Object.assign({}, item), { _id: item._id || questionIdMap.get(index) })));
                     const handledConditionData = this.handleUpdateCondition(finalData);
@@ -174,12 +171,10 @@ class QuestionController {
                         yield Content_model_1.default.bulkWrite(conditionUpdates, { ordered: false });
                     }
                 }
-                // Update total score if changed
                 const newScore = this.isScoreHasChange(data, existingContent);
                 if (newScore !== null) {
                     yield Form_model_1.default.updateOne({ _id: formId }, { $set: { totalscore: newScore } });
                 }
-                // Get final updated content
                 const updatedContent = yield Content_model_1.default.find({ formId, page }, null, {
                     lean: true,
                 });
@@ -200,15 +195,51 @@ class QuestionController {
             var _a;
             try {
                 const { content, key, newContent, formId } = req.body;
+                console.log("handleCondition called with:", {
+                    contentId: content === null || content === void 0 ? void 0 : content.id,
+                    contentIdx: content === null || content === void 0 ? void 0 : content.idx,
+                    key,
+                    formId,
+                    hasNewContent: !!newContent,
+                });
                 if (!content || key === undefined || !newContent || !formId) {
+                    console.error("Invalid request payload:", {
+                        hasContent: !!content,
+                        hasKey: key !== undefined,
+                        hasNewContent: !!newContent,
+                        hasFormId: !!formId,
+                    });
                     return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid request payload"));
+                }
+                // Validate ObjectId formats
+                if (!mongoose_1.Types.ObjectId.isValid(content.id)) {
+                    console.error("Invalid content ID format:", content.id);
+                    return res
+                        .status(400)
+                        .json((0, helper_1.ReturnCode)(400, "Invalid content ID format"));
+                }
+                if (!mongoose_1.Types.ObjectId.isValid(formId)) {
+                    console.error("Invalid form ID format:", formId);
+                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
                 }
                 // First, validate that the parent question supports conditions
                 const parentQuestion = yield Content_model_1.default.findById(content.id);
                 if (!parentQuestion) {
+                    console.error("Parent question not found:", content.id);
                     return res
                         .status(404)
                         .json((0, helper_1.ReturnCode)(404, "Parent question not found"));
+                }
+                console.log("Parent question found:", {
+                    id: parentQuestion._id,
+                    type: parentQuestion.type,
+                    hasParentContent: !!parentQuestion.parentcontent,
+                    parentContent: parentQuestion.parentcontent,
+                });
+                // Additional validation: Check if the parent question itself is a conditional question
+                // This helps prevent deep nesting issues and circular references
+                if (parentQuestion.parentcontent) {
+                    console.log("Warning: Adding condition to a question that already has a parent. This creates nested conditions.");
                 }
                 // Check if parent question type supports conditions
                 const allowedTypes = [Content_model_1.QuestionType.CheckBox, Content_model_1.QuestionType.MultipleChoice];
@@ -240,21 +271,58 @@ class QuestionController {
                         .json((0, helper_1.ReturnCode)(400, `Condition already exists for option key: ${key}`));
                 }
                 const newContentId = new mongoose_1.Types.ObjectId();
-                // Perform operations in parallel
-                const [newContentCreated, updateResult] = yield Promise.all([
-                    Content_model_1.default.create(Object.assign(Object.assign({}, newContent), { _id: newContentId, formId, conditional: [], parentcontent: { qIdx: content.idx, optIdx: key } })),
-                    Content_model_1.default.updateOne({ _id: content.id }, {
-                        $push: { conditional: { key, contentId: newContentId } },
-                    }),
-                    Form_model_1.default.updateOne({ _id: formId }, { $push: { contentIds: newContentId } }),
-                ]);
-                if (!updateResult.modifiedCount) {
-                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Content not found"));
+                console.log("Creating new conditional content with ID:", newContentId.toString());
+                try {
+                    // Ensure formId is properly converted to ObjectId
+                    const formObjectId = new mongoose_1.Types.ObjectId(formId);
+                    // Perform operations in parallel
+                    const [newContentCreated, updateResult] = yield Promise.all([
+                        Content_model_1.default.create(Object.assign(Object.assign({}, newContent), { _id: newContentId, formId: formObjectId, conditional: [], parentcontent: {
+                                qIdx: content.idx, // This is the frontend array index for reference
+                                optIdx: key,
+                                qId: content.id, // This is the actual MongoDB ObjectId of the parent question
+                            } })),
+                        Content_model_1.default.updateOne({ _id: content.id }, {
+                            $push: {
+                                conditional: {
+                                    key,
+                                    contentId: newContentId,
+                                    contentIdx: content.idx, // Include contentIdx for reference
+                                },
+                            },
+                        }),
+                        Form_model_1.default.updateOne({ _id: formObjectId }, { $push: { contentIds: newContentId } }),
+                    ]);
+                    console.log("Database operations completed:", {
+                        newContentCreated: !!newContentCreated,
+                        updateResultModified: updateResult.modifiedCount,
+                    });
+                    if (!updateResult.modifiedCount) {
+                        console.error("Failed to update parent question with conditional");
+                        return res.status(400).json((0, helper_1.ReturnCode)(400, "Content not found"));
+                    }
+                    console.log("Condition created successfully:", newContentCreated._id);
+                    return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200, "Condition created successfully")), { data: newContentCreated._id }));
                 }
-                return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200, "Condition created successfully")), { data: newContentCreated._id }));
+                catch (dbError) {
+                    console.error("Database operation error:", {
+                        error: dbError instanceof Error ? dbError.message : dbError,
+                        stack: dbError instanceof Error ? dbError.stack : undefined,
+                        newContentData: Object.assign(Object.assign({}, newContent), { _id: newContentId, formId, conditional: [], parentcontent: {
+                                qIdx: content.idx,
+                                optIdx: key,
+                                qId: content.id,
+                            } }),
+                    });
+                    throw dbError; // Re-throw to be caught by outer catch block
+                }
             }
             catch (error) {
-                console.error("Add Condition Error:", error);
+                console.error("Add Condition Error:", {
+                    error: error instanceof Error ? error.message : error,
+                    stack: error instanceof Error ? error.stack : undefined,
+                    body: req.body,
+                });
                 return res.status(500).json((0, helper_1.ReturnCode)(500, "Internal Server Error"));
             }
         });

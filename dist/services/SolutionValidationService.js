@@ -55,6 +55,16 @@ class SolutionValidationService {
         const warnings = [];
         const missingAnswers = [];
         const missingScores = [];
+        // Text type questions are for display only and don't need answers or scores
+        if (content.type === Content_model_1.QuestionType.Text) {
+            return {
+                isValid: true,
+                errors: [],
+                warnings: [],
+                missingAnswers: [],
+                missingScores: [],
+            };
+        }
         // Check if content has answer
         if (!content.answer ||
             content.answer.answer === null ||
@@ -197,20 +207,30 @@ class SolutionValidationService {
             let totalInvalidQuestions = 0;
             let totalScore = 0;
             for (const content of contents) {
+                // Text questions are display-only and should be excluded from validation counting
+                if (content.type === Content_model_1.QuestionType.Text) {
+                    const result = this.validateContent(content);
+                    validationResults.push(result);
+                    // Text questions are always valid and don't count toward totals or scores
+                    continue;
+                }
                 const result = this.validateContent(content);
                 validationResults.push(result);
+                // Add score to total regardless of validation status (total represents max possible score)
+                totalScore += content.score || 0;
                 if (result.isValid) {
                     totalValidQuestions++;
-                    totalScore += content.score || 0;
                 }
                 else {
                     totalInvalidQuestions++;
                 }
             }
+            // Calculate actual scorable questions (excluding Text type)
+            const scorableQuestions = contents.filter((content) => content.type !== Content_model_1.QuestionType.Text);
             // Determine if form can return score automatically
             const canReturnScoreAutomatically = form.type === Form_model_1.TypeForm.Quiz &&
                 totalInvalidQuestions === 0 &&
-                contents.length > 0 &&
+                scorableQuestions.length > 0 &&
                 ((_a = form.setting) === null || _a === void 0 ? void 0 : _a.returnscore) === Form_model_1.returnscore.partial;
             return {
                 canReturnScoreAutomatically,
@@ -249,10 +269,12 @@ class SolutionValidationService {
         if (!correctAnswer || maxScore === 0)
             return 0;
         switch (questionType) {
+            case Content_model_1.QuestionType.Text:
+                // Text questions are display-only and don't contribute to scoring
+                return 0;
             case Content_model_1.QuestionType.MultipleChoice:
             case Content_model_1.QuestionType.CheckBox:
                 return this.calculateArrayScore(userAnswer, correctAnswer, maxScore);
-            case Content_model_1.QuestionType.Text:
             case Content_model_1.QuestionType.ShortAnswer:
             case Content_model_1.QuestionType.Paragraph:
                 return this.calculateTextScore(userAnswer, correctAnswer, maxScore);

@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -39,43 +72,27 @@ exports.ValidateFormBeforeAction = ValidateFormBeforeAction;
 const helper_1 = require("../utilities/helper");
 const Form_model_1 = __importDefault(require("../model/Form.model"));
 const mongoose_1 = require("mongoose");
-const Content_model_1 = __importDefault(require("../model/Content.model"));
+const Content_model_1 = __importStar(require("../model/Content.model"));
 const SolutionValidationService_1 = __importDefault(require("../services/SolutionValidationService"));
+// Helper function to validate ObjectId format
+function isValidObjectIdString(id) {
+    return (typeof id === "string" && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id));
+}
 function hasFormAccess(form, userId) {
-    var _a;
     try {
         const userIdStr = userId.toString();
-        console.log("hasFormAccess Debug:", {
-            userId: userIdStr,
-            formUser: form.user,
-            formUserType: typeof form.user,
-            formOwners: form.owners,
-            formOwnersLength: ((_a = form.owners) === null || _a === void 0 ? void 0 : _a.length) || 0,
-        });
         // Check if user is the primary owner
         let formUserId;
         if (form.user && typeof form.user === "object" && form.user._id) {
             formUserId = form.user._id.toString();
-            console.log("Primary owner check (populated):", {
-                formUserId,
-                userIdStr,
-                matches: formUserId === userIdStr,
-            });
         }
         else if (form.user) {
             formUserId = form.user.toString();
-            console.log("Primary owner check (ObjectId):", {
-                formUserId,
-                userIdStr,
-                matches: formUserId === userIdStr,
-            });
         }
         else {
-            console.log("No form user found");
             return false;
         }
         if (formUserId === userIdStr) {
-            console.log("✓ User is primary owner");
             return true;
         }
         // Check if user is a collaborator
@@ -92,19 +109,12 @@ function hasFormAccess(form, userId) {
                     return false;
                 }
                 const matches = ownerId === userIdStr;
-                console.log("Collaborator check:", {
-                    ownerId,
-                    userIdStr,
-                    matches,
-                });
                 return matches;
             });
             if (isCollaborator) {
-                console.log("✓ User is collaborator");
                 return true;
             }
         }
-        console.log("✗ User has no access");
         return false;
     }
     catch (error) {
@@ -154,6 +164,10 @@ function AddFormOwner(req, res) {
             return res
                 .status(400)
                 .json((0, helper_1.ReturnCode)(400, "Form ID and user email are required"));
+        }
+        // Validate formId format
+        if (!isValidObjectIdString(formId)) {
+            return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
         }
         try {
             const form = yield Form_model_1.default.findById(formId);
@@ -207,6 +221,13 @@ function RemoveFormOwner(req, res) {
                 .status(400)
                 .json((0, helper_1.ReturnCode)(400, "Form ID and user ID are required"));
         }
+        // Validate formId and userId formats
+        if (!isValidObjectIdString(formId)) {
+            return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
+        }
+        if (!isValidObjectIdString(userId)) {
+            return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid user ID format"));
+        }
         try {
             const form = yield Form_model_1.default.findById(formId);
             if (!form) {
@@ -241,6 +262,10 @@ function GetFormOwners(req, res) {
         }
         if (!formId) {
             return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
+        }
+        // Validate formId format
+        if (!isValidObjectIdString(formId)) {
+            return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
         }
         try {
             const form = yield Form_model_1.default.findById(formId)
@@ -293,6 +318,10 @@ function RemoveSelfFromForm(req, res) {
         if (!formId) {
             return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
         }
+        // Validate formId format
+        if (!isValidObjectIdString(formId)) {
+            return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
+        }
         try {
             const form = yield Form_model_1.default.findById(formId);
             if (!form) {
@@ -329,13 +358,13 @@ function CreateForm(req, res) {
             return res.status(401).json((0, helper_1.ReturnCode)(404));
         try {
             //Form Creation
-            const isForm = yield Form_model_1.default.findOne({ title: formdata.title, user: user.id });
+            const isForm = yield Form_model_1.default.findOne({
+                $and: [{ title: formdata.title }, { user: user.id }],
+            });
             if (isForm)
                 return res.status(400).json((0, helper_1.ReturnCode)(400, "Form already exist"));
-            yield Form_model_1.default.create(Object.assign(Object.assign({}, formdata), { user: user.id }));
-            return res
-                .status(200)
-                .json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(201, "Form Created")), { data: formdata }));
+            const createdForm = yield Form_model_1.default.create(Object.assign(Object.assign({}, formdata), { user: user.id }));
+            return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(201, "Form Created")), { data: Object.assign(Object.assign({}, formdata), { _id: createdForm._id }) }));
         }
         catch (error) {
             console.log("Create Form", error);
@@ -357,6 +386,10 @@ function PageHandler(req, res) {
             return res
                 .status(400)
                 .json((0, helper_1.ReturnCode)(400, "Missing required fields: formId or ty"));
+        }
+        // Validate formId format
+        if (!isValidObjectIdString(formId)) {
+            return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
         }
         if (ty === "delete" && (deletepage === undefined || isNaN(deletepage))) {
             return res
@@ -406,6 +439,12 @@ function EditForm(req, res) {
             // Validate _id
             if (!_id)
                 return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid Form ID"));
+            // Convert _id to string for validation
+            const idString = _id.toString();
+            // Validate _id format
+            if (!isValidObjectIdString(idString)) {
+                return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
+            }
             // Check if user has access to edit this form
             const form = yield Form_model_1.default.findById(_id);
             if (!form) {
@@ -511,7 +550,7 @@ function GetAllForm(req, res) {
 }
 function GetFilterForm(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c;
+        var _a;
         try {
             const { ty, q, page = "1", limit = "5", } = req.query;
             if (!ty) {
@@ -545,7 +584,21 @@ function GetFilterForm(req, res) {
                     if (!user) {
                         return res.status(401).json((0, helper_1.ReturnCode)(401));
                     }
-                    const query = (0, mongoose_1.isValidObjectId)(q) ? { _id: q } : { title: q };
+                    let query;
+                    if (q &&
+                        typeof q === "string" &&
+                        q.length === 24 &&
+                        /^[0-9a-fA-F]{24}$/.test(q)) {
+                        query = { _id: q };
+                    }
+                    else if (q && typeof q === "string") {
+                        query = { title: q };
+                    }
+                    else {
+                        return res
+                            .status(400)
+                            .json((0, helper_1.ReturnCode)(400, "Invalid query parameter"));
+                    }
                     const detailForm = yield Form_model_1.default.findOne(query)
                         .select(`${basicProjection} totalpage setting contentIds user owners`)
                         .populate({ path: "user", select: "email" })
@@ -566,7 +619,7 @@ function GetFilterForm(req, res) {
                             { page: p },
                         ],
                     })
-                        .select(`_id idx title type text multiple checkbox range numrange date require page conditional parentcontent ${ty === "solution" ? "answer score hasAnswer isValidated" : ""}`)
+                        .select(`_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent ${ty === "solution" ? "answer score hasAnswer isValidated" : ""}`)
                         .lean()
                         .sort({ idx: 1 });
                     // Add validation summary for solution tab
@@ -593,6 +646,10 @@ function GetFilterForm(req, res) {
                     if (!user) {
                         return res.status(401).json((0, helper_1.ReturnCode)(401));
                     }
+                    // Validate that q is a valid ObjectId before using findById
+                    if (!q || !isValidObjectIdString(q)) {
+                        return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID"));
+                    }
                     const formdata = yield Form_model_1.default.findById(q)
                         .select("totalpage totalscore contentIds user owners")
                         .populate({ path: "user", select: "email" })
@@ -605,10 +662,21 @@ function GetFilterForm(req, res) {
                     if (!hasAccess) {
                         return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
                     }
+                    // Calculate actual total score from ALL questions in the form (not per page)
+                    // This query gets ALL content/questions for the entire form across all pages
+                    const allContents = yield Content_model_1.default.find({ formId: formdata._id })
+                        .select("type score")
+                        .lean();
+                    // Calculate total score excluding Text questions (which are display-only)
+                    const actualTotalScore = allContents
+                        .filter((content) => content.type !== Content_model_1.QuestionType.Text)
+                        .reduce((sum, content) => sum + (content.score || 0), 0);
+                    // Get total count of actual questions (all content, not just contentIds)
+                    const totalQuestionCount = allContents.length;
                     return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: {
                             totalpage: (_a = formdata === null || formdata === void 0 ? void 0 : formdata.totalpage) !== null && _a !== void 0 ? _a : 0,
-                            totalscore: (_b = formdata === null || formdata === void 0 ? void 0 : formdata.totalscore) !== null && _b !== void 0 ? _b : 0,
-                            totalquestion: (_c = formdata === null || formdata === void 0 ? void 0 : formdata.contentIds) === null || _c === void 0 ? void 0 : _c.length,
+                            totalscore: actualTotalScore,
+                            totalquestion: totalQuestionCount,
                             isOwner,
                             isCollaborator,
                         } }));
@@ -617,6 +685,10 @@ function GetFilterForm(req, res) {
                     const user = req.user;
                     if (!user) {
                         return res.status(401).json((0, helper_1.ReturnCode)(401));
+                    }
+                    // Validate that q is a valid ObjectId before using findById
+                    if (!q || !isValidObjectIdString(q)) {
+                        return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID"));
                     }
                     const form = yield Form_model_1.default.findById(q)
                         .select("_id title type setting user owners")
@@ -697,18 +769,10 @@ function GetFilterForm(req, res) {
                     // Add access information to each form if user is authenticated
                     const formattedForms = forms.map((form) => {
                         if (!user) {
-                            return Object.assign(Object.assign({}, form), { updatedAt: form.updatedAt
-                                    ? (0, helper_1.FormatToGeneralDate)(form.updatedAt)
-                                    : undefined, createdAt: form.createdAt
-                                    ? (0, helper_1.FormatToGeneralDate)(form.createdAt)
-                                    : undefined, isOwner: false, isCollaborator: false });
+                            return Object.assign(Object.assign({}, form), { updatedAt: form.updatedAt, createdAt: form.createdAt, isOwner: false, isCollaborator: false });
                         }
                         const { isOwner, isCollaborator } = validateFormAccess(form, user.id.toString());
-                        return Object.assign(Object.assign({}, form), { updatedAt: form.updatedAt
-                                ? (0, helper_1.FormatToGeneralDate)(form.updatedAt)
-                                : undefined, createdAt: form.createdAt
-                                ? (0, helper_1.FormatToGeneralDate)(form.createdAt)
-                                : undefined, isOwner,
+                        return Object.assign(Object.assign({}, form), { updatedAt: form.updatedAt, createdAt: form.createdAt, isOwner,
                             isCollaborator });
                     });
                     // Calculate pagination metadata
@@ -741,6 +805,10 @@ function ValidateFormBeforeAction(req, res) {
         }
         if (!formId || typeof formId !== "string") {
             return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
+        }
+        // Validate that formId is a valid ObjectId
+        if (!isValidObjectIdString(formId)) {
+            return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
         }
         try {
             // Check if user has access to this form

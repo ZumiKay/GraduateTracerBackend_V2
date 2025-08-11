@@ -2,45 +2,32 @@ import { Request, Response } from "express";
 import { FormatToGeneralDate, ReturnCode } from "../utilities/helper";
 import Form, { FormType } from "../model/Form.model";
 import { CustomRequest } from "../types/customType";
-import { isValidObjectId, Types } from "mongoose";
-import Content from "../model/Content.model";
+import { Types } from "mongoose";
+import Content, { QuestionType } from "../model/Content.model";
 import SolutionValidationService from "../services/SolutionValidationService";
+
+// Helper function to validate ObjectId format
+function isValidObjectIdString(id: string): boolean {
+  return (
+    typeof id === "string" && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)
+  );
+}
 
 export function hasFormAccess(form: FormType, userId: string): boolean {
   try {
     const userIdStr = userId.toString();
 
-    console.log("hasFormAccess Debug:", {
-      userId: userIdStr,
-      formUser: form.user,
-      formUserType: typeof form.user,
-      formOwners: form.owners,
-      formOwnersLength: form.owners?.length || 0,
-    });
-
     // Check if user is the primary owner
     let formUserId: string;
     if (form.user && typeof form.user === "object" && form.user._id) {
       formUserId = form.user._id.toString();
-      console.log("Primary owner check (populated):", {
-        formUserId,
-        userIdStr,
-        matches: formUserId === userIdStr,
-      });
     } else if (form.user) {
       formUserId = form.user.toString();
-      console.log("Primary owner check (ObjectId):", {
-        formUserId,
-        userIdStr,
-        matches: formUserId === userIdStr,
-      });
     } else {
-      console.log("No form user found");
       return false;
     }
 
     if (formUserId === userIdStr) {
-      console.log("✓ User is primary owner");
       return true;
     }
 
@@ -56,21 +43,15 @@ export function hasFormAccess(form: FormType, userId: string): boolean {
           return false;
         }
         const matches = ownerId === userIdStr;
-        console.log("Collaborator check:", {
-          ownerId,
-          userIdStr,
-          matches,
-        });
+
         return matches;
       });
 
       if (isCollaborator) {
-        console.log("✓ User is collaborator");
         return true;
       }
     }
 
-    console.log("✗ User has no access");
     return false;
   } catch (error) {
     console.error("Error in hasFormAccess:", error);
@@ -123,6 +104,11 @@ export async function AddFormOwner(req: CustomRequest, res: Response) {
     return res
       .status(400)
       .json(ReturnCode(400, "Form ID and user email are required"));
+  }
+
+  // Validate formId format
+  if (!isValidObjectIdString(formId)) {
+    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
   }
 
   try {
@@ -190,6 +176,14 @@ export async function RemoveFormOwner(req: CustomRequest, res: Response) {
       .json(ReturnCode(400, "Form ID and user ID are required"));
   }
 
+  // Validate formId and userId formats
+  if (!isValidObjectIdString(formId)) {
+    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
+  }
+  if (!isValidObjectIdString(userId)) {
+    return res.status(400).json(ReturnCode(400, "Invalid user ID format"));
+  }
+
   try {
     const form = await Form.findById(formId);
     if (!form) {
@@ -234,6 +228,11 @@ export async function GetFormOwners(req: CustomRequest, res: Response) {
 
   if (!formId) {
     return res.status(400).json(ReturnCode(400, "Form ID is required"));
+  }
+
+  // Validate formId format
+  if (!isValidObjectIdString(formId)) {
+    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
   }
 
   try {
@@ -293,6 +292,11 @@ export async function RemoveSelfFromForm(req: CustomRequest, res: Response) {
     return res.status(400).json(ReturnCode(400, "Form ID is required"));
   }
 
+  // Validate formId format
+  if (!isValidObjectIdString(formId)) {
+    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
+  }
+
   try {
     const form = await Form.findById(formId);
     if (!form) {
@@ -337,16 +341,19 @@ export async function CreateForm(req: CustomRequest, res: Response) {
   try {
     //Form Creation
 
-    const isForm = await Form.findOne({ title: formdata.title, user: user.id });
+    const isForm = await Form.findOne({
+      $and: [{ title: formdata.title }, { user: user.id }],
+    });
 
     if (isForm)
       return res.status(400).json(ReturnCode(400, "Form already exist"));
 
-    await Form.create({ ...formdata, user: user.id });
+    const createdForm = await Form.create({ ...formdata, user: user.id });
 
-    return res
-      .status(200)
-      .json({ ...ReturnCode(201, "Form Created"), data: formdata });
+    return res.status(200).json({
+      ...ReturnCode(201, "Form Created"),
+      data: { ...formdata, _id: createdForm._id },
+    });
   } catch (error: any) {
     console.log("Create Form", error);
 
@@ -374,6 +381,11 @@ export async function PageHandler(req: CustomRequest, res: Response) {
     return res
       .status(400)
       .json(ReturnCode(400, "Missing required fields: formId or ty"));
+  }
+
+  // Validate formId format
+  if (!isValidObjectIdString(formId)) {
+    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
   }
 
   if (ty === "delete" && (deletepage === undefined || isNaN(deletepage))) {
@@ -434,6 +446,14 @@ export async function EditForm(req: CustomRequest, res: Response) {
 
     // Validate _id
     if (!_id) return res.status(400).json(ReturnCode(400, "Invalid Form ID"));
+
+    // Convert _id to string for validation
+    const idString = _id.toString();
+
+    // Validate _id format
+    if (!isValidObjectIdString(idString)) {
+      return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
+    }
 
     // Check if user has access to edit this form
     const form = await Form.findById(_id);
@@ -613,7 +633,21 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           return res.status(401).json(ReturnCode(401));
         }
 
-        const query = isValidObjectId(q) ? { _id: q } : { title: q };
+        let query: any;
+        if (
+          q &&
+          typeof q === "string" &&
+          q.length === 24 &&
+          /^[0-9a-fA-F]{24}$/.test(q)
+        ) {
+          query = { _id: q };
+        } else if (q && typeof q === "string") {
+          query = { title: q };
+        } else {
+          return res
+            .status(400)
+            .json(ReturnCode(400, "Invalid query parameter"));
+        }
 
         const detailForm = await Form.findOne(query)
           .select(`${basicProjection} totalpage setting contentIds user owners`)
@@ -643,12 +677,12 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           ],
         })
           .select(
-            `_id idx title type text multiple checkbox range numrange date require page conditional parentcontent ${
+            `_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent ${
               ty === "solution" ? "answer score hasAnswer isValidated" : ""
             }`
           )
           .lean()
-          .sort({ idx: 1 });
+          .sort({ qIdx: 1 });
 
         // Add validation summary for solution tab
         let validationSummary = null;
@@ -691,6 +725,11 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           return res.status(401).json(ReturnCode(401));
         }
 
+        // Validate that q is a valid ObjectId before using findById
+        if (!q || !isValidObjectIdString(q)) {
+          return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+        }
+
         const formdata = await Form.findById(q)
           .select("totalpage totalscore contentIds user owners")
           .populate({ path: "user", select: "email" })
@@ -710,12 +749,26 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           return res.status(403).json(ReturnCode(403, "Access denied"));
         }
 
+        // Calculate actual total score from ALL questions in the form (not per page)
+        // This query gets ALL content/questions for the entire form across all pages
+        const allContents = await Content.find({ formId: formdata._id })
+          .select("type score")
+          .lean();
+
+        // Calculate total score excluding Text questions (which are display-only)
+        const actualTotalScore = allContents
+          .filter((content) => content.type !== QuestionType.Text)
+          .reduce((sum, content) => sum + (content.score || 0), 0);
+
+        // Get total count of actual questions (all content, not just contentIds)
+        const totalQuestionCount = allContents.length;
+
         return res.status(200).json({
           ...ReturnCode(200),
           data: {
             totalpage: formdata?.totalpage ?? 0,
-            totalscore: formdata?.totalscore ?? 0,
-            totalquestion: formdata?.contentIds?.length,
+            totalscore: actualTotalScore,
+            totalquestion: totalQuestionCount,
             isOwner,
             isCollaborator,
           },
@@ -726,6 +779,11 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
         const user = req.user;
         if (!user) {
           return res.status(401).json(ReturnCode(401));
+        }
+
+        // Validate that q is a valid ObjectId before using findById
+        if (!q || !isValidObjectIdString(q)) {
+          return res.status(400).json(ReturnCode(400, "Invalid form ID"));
         }
 
         const form = await Form.findById(q)
@@ -845,12 +903,8 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           if (!user) {
             return {
               ...form,
-              updatedAt: form.updatedAt
-                ? FormatToGeneralDate(form.updatedAt)
-                : undefined,
-              createdAt: form.createdAt
-                ? FormatToGeneralDate(form.createdAt)
-                : undefined,
+              updatedAt: form.updatedAt,
+              createdAt: form.createdAt,
               isOwner: false,
               isCollaborator: false,
             };
@@ -862,12 +916,9 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           );
           return {
             ...form,
-            updatedAt: form.updatedAt
-              ? FormatToGeneralDate(form.updatedAt)
-              : undefined,
-            createdAt: form.createdAt
-              ? FormatToGeneralDate(form.createdAt)
-              : undefined,
+            updatedAt: form.updatedAt,
+
+            createdAt: form.createdAt,
             isOwner,
             isCollaborator,
           };
@@ -914,6 +965,11 @@ export async function ValidateFormBeforeAction(
 
   if (!formId || typeof formId !== "string") {
     return res.status(400).json(ReturnCode(400, "Form ID is required"));
+  }
+
+  // Validate that formId is a valid ObjectId
+  if (!isValidObjectIdString(formId)) {
+    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
   }
 
   try {

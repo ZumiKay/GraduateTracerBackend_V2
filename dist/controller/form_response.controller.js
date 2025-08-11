@@ -28,7 +28,7 @@ const form_controller_1 = require("./form.controller");
 class FormResponseController {
     constructor() {
         this.SubmitResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
+            var _a, _b, _c, _d;
             const submitdata = req.body;
             try {
                 // Validate form exists and accepts responses
@@ -41,13 +41,25 @@ class FormResponseController {
                         .status(403)
                         .json((0, helper_1.ReturnCode)(403, "Form is no longer accepting responses"));
                 }
+                // Check for submitonce setting - prevent multiple submissions by the same user
+                if (((_b = form.setting) === null || _b === void 0 ? void 0 : _b.submitonce) === true && ((_c = req.user) === null || _c === void 0 ? void 0 : _c.id)) {
+                    const existingResponse = yield Response_model_1.default.findOne({
+                        formId: submitdata.formId,
+                        userId: req.user.id,
+                    });
+                    if (existingResponse) {
+                        return res
+                            .status(400)
+                            .json((0, helper_1.ReturnCode)(400, "You have already submitted a response for this form"));
+                    }
+                }
                 let scoredResponses = submitdata.responseset;
                 if (submitdata.returnscore === Form_model_1.returnscore.partial) {
                     scoredResponses = yield Promise.all(submitdata.responseset.map((response) => __awaiter(this, void 0, void 0, function* () {
                         return yield this.AddScore(new mongoose_1.Types.ObjectId(response.questionId), response);
                     })));
                 }
-                yield Response_model_1.default.create(Object.assign(Object.assign({}, submitdata), { responseset: scoredResponses, userId: (_b = req.user) === null || _b === void 0 ? void 0 : _b.id }));
+                yield Response_model_1.default.create(Object.assign(Object.assign({}, submitdata), { responseset: scoredResponses, userId: (_d = req.user) === null || _d === void 0 ? void 0 : _d.id }));
                 res.status(200).json((0, helper_1.ReturnCode)(200, "Form Submitted"));
             }
             catch (error) {
@@ -56,7 +68,7 @@ class FormResponseController {
             }
         });
         this.SubmitPublicResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d;
+            var _a, _b, _c, _d, _e;
             const { formId, responses, respondentEmail, respondentName } = req.body;
             try {
                 // Validate form exists
@@ -69,6 +81,18 @@ class FormResponseController {
                     return res
                         .status(403)
                         .json((0, helper_1.ReturnCode)(403, "Form is no longer accepting responses"));
+                }
+                // Check for submitonce setting - prevent multiple submissions by the same email
+                if (((_b = form.setting) === null || _b === void 0 ? void 0 : _b.submitonce) === true && respondentEmail) {
+                    const existingResponse = yield Response_model_1.default.findOne({
+                        formId: new mongoose_1.Types.ObjectId(formId),
+                        respondentEmail: respondentEmail,
+                    });
+                    if (existingResponse) {
+                        return res
+                            .status(400)
+                            .json((0, helper_1.ReturnCode)(400, "This email has already submitted a response for this form"));
+                    }
                 }
                 // Get form questions to validate responses
                 const questions = yield Content_model_1.default.find({
@@ -88,7 +112,7 @@ class FormResponseController {
                 // Score responses if form has scoring
                 let scoredResponses = responses;
                 let totalScore = 0;
-                if (((_b = form.setting) === null || _b === void 0 ? void 0 : _b.returnscore) &&
+                if (((_c = form.setting) === null || _c === void 0 ? void 0 : _c.returnscore) &&
                     form.setting.returnscore !== Form_model_1.returnscore.manual) {
                     scoredResponses = yield Promise.all(responses.map((response) => __awaiter(this, void 0, void 0, function* () {
                         const scored = yield this.AddScore(new mongoose_1.Types.ObjectId(response.questionId), response);
@@ -103,14 +127,14 @@ class FormResponseController {
                     formId: new mongoose_1.Types.ObjectId(formId),
                     responseset: scoredResponses,
                     totalScore,
-                    returnscore: ((_c = form.setting) === null || _c === void 0 ? void 0 : _c.returnscore) || Form_model_1.returnscore.manual,
+                    returnscore: ((_d = form.setting) === null || _d === void 0 ? void 0 : _d.returnscore) || Form_model_1.returnscore.manual,
                     completionStatus: "completed",
                     respondentEmail,
                     respondentName,
                     submittedAt: new Date(),
                 });
                 // Send email with results if it's a quiz and email is provided
-                if (((_d = form.setting) === null || _d === void 0 ? void 0 : _d.returnscore) === Form_model_1.returnscore.partial &&
+                if (((_e = form.setting) === null || _e === void 0 ? void 0 : _e.returnscore) === Form_model_1.returnscore.partial &&
                     respondentEmail) {
                     try {
                         // TODO: Implement email service for sending quiz results
@@ -308,10 +332,18 @@ class FormResponseController {
                 return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
             }
             try {
-                // Get form with contents
-                const form = yield Form_model_2.default.findById(formId).populate("contentIds");
+                // Get form basic info
+                const form = yield Form_model_2.default.findById(formId)
+                    .select("title type setting totalpage requiredemail totalscore")
+                    .lean();
                 if (!form) {
                     return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                // Check if form accepts responses
+                if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses) === false) {
+                    return res
+                        .status(403)
+                        .json((0, helper_1.ReturnCode)(403, "Form is no longer accepting responses"));
                 }
                 // If token is provided, validate it
                 if (token && typeof token === "string") {
@@ -321,8 +353,24 @@ class FormResponseController {
                         return res.status(401).json((0, helper_1.ReturnCode)(401, "Invalid access token"));
                     }
                 }
-                // Return form data (without answers for security)
-                const formData = Object.assign(Object.assign({}, form.toObject()), { contentIds: (_a = form.contentIds) === null || _a === void 0 ? void 0 : _a.map((content) => (Object.assign(Object.assign({}, content.toObject()), { answer: undefined }))) });
+                // Get form contents with proper conditional data
+                const contents = yield Content_model_1.default.find({ formId })
+                    .select("_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent")
+                    .lean()
+                    .sort({ idx: 1 });
+                // Format content data and clean parentcontent for respondent form
+                const formattedContents = contents.map((content) => {
+                    var _a;
+                    return (Object.assign(Object.assign({}, content), { 
+                        // Remove self-referential parentcontent to prevent circular references
+                        parentcontent: ((_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) === content._id.toString()
+                            ? undefined
+                            : content.parentcontent, 
+                        // Remove answer key for security (respondents shouldn't see correct answers)
+                        answer: undefined }));
+                });
+                // Return form data with properly formatted contents
+                const formData = Object.assign(Object.assign({}, form), { contentIds: formattedContents });
                 res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: formData }));
             }
             catch (error) {
@@ -655,10 +703,18 @@ class FormResponseController {
                 return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
             }
             try {
-                // Get form with contents
-                const form = yield Form_model_2.default.findById(formId).populate("contentIds");
+                // Get form basic info
+                const form = yield Form_model_2.default.findById(formId)
+                    .select("title type setting totalpage requiredemail totalscore")
+                    .lean();
                 if (!form) {
                     return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                // Check if form accepts responses
+                if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses) === false) {
+                    return res
+                        .status(403)
+                        .json((0, helper_1.ReturnCode)(403, "Form is no longer accepting responses"));
                 }
                 // If token is provided, validate it
                 if (token && typeof token === "string") {
@@ -668,8 +724,24 @@ class FormResponseController {
                         return res.status(401).json((0, helper_1.ReturnCode)(401, "Invalid access token"));
                     }
                 }
-                // Return form data (without answers for security)
-                const formData = Object.assign(Object.assign({}, form.toObject()), { contentIds: (_a = form.contentIds) === null || _a === void 0 ? void 0 : _a.map((content) => (Object.assign(Object.assign({}, content.toObject()), { answer: undefined }))) });
+                // Get form contents with proper conditional data
+                const contents = yield Content_model_1.default.find({ formId })
+                    .select("_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent")
+                    .lean()
+                    .sort({ idx: 1 });
+                // Format content data and clean parentcontent for respondent form
+                const formattedContents = contents.map((content) => {
+                    var _a;
+                    return (Object.assign(Object.assign({}, content), { 
+                        // Remove self-referential parentcontent to prevent circular references
+                        parentcontent: ((_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) === content._id.toString()
+                            ? undefined
+                            : content.parentcontent, 
+                        // Remove answer key for security (respondents shouldn't see correct answers)
+                        answer: undefined }));
+                });
+                // Return form data with properly formatted contents
+                const formData = Object.assign(Object.assign({}, form), { contentIds: formattedContents });
                 res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: formData }));
             }
             catch (error) {

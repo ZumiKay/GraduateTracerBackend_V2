@@ -63,6 +63,25 @@ class FormResponseController {
           .json(ReturnCode(403, "Form is no longer accepting responses"));
       }
 
+      // Check for submitonce setting - prevent multiple submissions by the same user
+      if (form.setting?.submitonce === true && req.user?.id) {
+        const existingResponse = await FormResponse.findOne({
+          formId: submitdata.formId,
+          userId: req.user.id,
+        });
+
+        if (existingResponse) {
+          return res
+            .status(400)
+            .json(
+              ReturnCode(
+                400,
+                "You have already submitted a response for this form"
+              )
+            );
+        }
+      }
+
       let scoredResponses = submitdata.responseset;
 
       if (submitdata.returnscore === returnscore.partial) {
@@ -103,6 +122,25 @@ class FormResponseController {
         return res
           .status(403)
           .json(ReturnCode(403, "Form is no longer accepting responses"));
+      }
+
+      // Check for submitonce setting - prevent multiple submissions by the same email
+      if (form.setting?.submitonce === true && respondentEmail) {
+        const existingResponse = await FormResponse.findOne({
+          formId: new Types.ObjectId(formId),
+          respondentEmail: respondentEmail,
+        });
+
+        if (existingResponse) {
+          return res
+            .status(400)
+            .json(
+              ReturnCode(
+                400,
+                "This email has already submitted a response for this form"
+              )
+            );
+        }
       }
 
       // Get form questions to validate responses
@@ -417,10 +455,20 @@ class FormResponseController {
     }
 
     try {
-      // Get form with contents
-      const form = await Form.findById(formId).populate("contentIds");
+      // Get form basic info
+      const form = await Form.findById(formId)
+        .select("title type setting totalpage requiredemail totalscore")
+        .lean();
+
       if (!form) {
         return res.status(404).json(ReturnCode(404, "Form not found"));
+      }
+
+      // Check if form accepts responses
+      if (form.setting?.acceptResponses === false) {
+        return res
+          .status(403)
+          .json(ReturnCode(403, "Form is no longer accepting responses"));
       }
 
       // If token is provided, validate it
@@ -435,13 +483,30 @@ class FormResponseController {
         }
       }
 
-      // Return form data (without answers for security)
+      // Get form contents with proper conditional data
+      const contents = await Content.find({ formId })
+        .select(
+          "_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent"
+        )
+        .lean()
+        .sort({ idx: 1 });
+
+      // Format content data and clean parentcontent for respondent form
+      const formattedContents = contents.map((content) => ({
+        ...content,
+        // Remove self-referential parentcontent to prevent circular references
+        parentcontent:
+          content.parentcontent?.qId === content._id.toString()
+            ? undefined
+            : content.parentcontent,
+        // Remove answer key for security (respondents shouldn't see correct answers)
+        answer: undefined,
+      }));
+
+      // Return form data with properly formatted contents
       const formData = {
-        ...form.toObject(),
-        contentIds: form.contentIds?.map((content: any) => ({
-          ...content.toObject(),
-          answer: undefined, // Remove answer key for security
-        })),
+        ...form,
+        contentIds: formattedContents, // Use the formatted contents array
       };
 
       res.status(200).json({ ...ReturnCode(200), data: formData });
@@ -860,10 +925,20 @@ class FormResponseController {
     }
 
     try {
-      // Get form with contents
-      const form = await Form.findById(formId).populate("contentIds");
+      // Get form basic info
+      const form = await Form.findById(formId)
+        .select("title type setting totalpage requiredemail totalscore")
+        .lean();
+
       if (!form) {
         return res.status(404).json(ReturnCode(404, "Form not found"));
+      }
+
+      // Check if form accepts responses
+      if (form.setting?.acceptResponses === false) {
+        return res
+          .status(403)
+          .json(ReturnCode(403, "Form is no longer accepting responses"));
       }
 
       // If token is provided, validate it
@@ -878,13 +953,30 @@ class FormResponseController {
         }
       }
 
-      // Return form data (without answers for security)
+      // Get form contents with proper conditional data
+      const contents = await Content.find({ formId })
+        .select(
+          "_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent"
+        )
+        .lean()
+        .sort({ idx: 1 });
+
+      // Format content data and clean parentcontent for respondent form
+      const formattedContents = contents.map((content) => ({
+        ...content,
+        // Remove self-referential parentcontent to prevent circular references
+        parentcontent:
+          content.parentcontent?.qId === content._id.toString()
+            ? undefined
+            : content.parentcontent,
+        // Remove answer key for security (respondents shouldn't see correct answers)
+        answer: undefined,
+      }));
+
+      // Return form data with properly formatted contents
       const formData = {
-        ...form.toObject(),
-        contentIds: form.contentIds?.map((content: any) => ({
-          ...content.toObject(),
-          answer: undefined, // Remove answer key for security
-        })),
+        ...form,
+        contentIds: formattedContents, // Use the formatted contents array
       };
 
       res.status(200).json({ ...ReturnCode(200), data: formData });
