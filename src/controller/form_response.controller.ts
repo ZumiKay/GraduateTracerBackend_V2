@@ -377,9 +377,8 @@ class FormResponseController {
     }
 
     try {
-      // Get form details
       const form = await Form.findById(formId);
-      if (!form) {
+      if (!form || !form.setting?.acceptResponses) {
         return res.status(404).json(ReturnCode(404, "Form not found"));
       }
 
@@ -420,13 +419,11 @@ class FormResponseController {
     }
 
     try {
-      // Get form details
       const form = await Form.findById(formId);
       if (!form) {
         return res.status(404).json(ReturnCode(404, "Form not found"));
       }
 
-      // Check if user owns the form
       if (form.user.toString() !== user?.id?.toString()) {
         return res.status(403).json(ReturnCode(403, "Unauthorized"));
       }
@@ -447,73 +444,8 @@ class FormResponseController {
 
   // Get form for respondent (public access)
   public GetFormForRespondent = async (req: CustomRequest, res: Response) => {
-    const { formId } = req.params;
-    const { token } = req.query;
-
-    if (!formId) {
-      return res.status(400).json(ReturnCode(400, "Form ID is required"));
-    }
-
-    try {
-      // Get form basic info
-      const form = await Form.findById(formId)
-        .select("title type setting totalpage requiredemail totalscore")
-        .lean();
-
-      if (!form) {
-        return res.status(404).json(ReturnCode(404, "Form not found"));
-      }
-
-      // Check if form accepts responses
-      if (form.setting?.acceptResponses === false) {
-        return res
-          .status(403)
-          .json(ReturnCode(403, "Form is no longer accepting responses"));
-      }
-
-      // If token is provided, validate it
-      if (token && typeof token === "string") {
-        const linkService = new FormLinkService();
-        const isValidToken = await linkService.validateAccessToken(
-          formId,
-          token
-        );
-        if (!isValidToken) {
-          return res.status(401).json(ReturnCode(401, "Invalid access token"));
-        }
-      }
-
-      // Get form contents with proper conditional data
-      const contents = await Content.find({ formId })
-        .select(
-          "_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent"
-        )
-        .lean()
-        .sort({ idx: 1 });
-
-      // Format content data and clean parentcontent for respondent form
-      const formattedContents = contents.map((content) => ({
-        ...content,
-        // Remove self-referential parentcontent to prevent circular references
-        parentcontent:
-          content.parentcontent?.qId === content._id.toString()
-            ? undefined
-            : content.parentcontent,
-        // Remove answer key for security (respondents shouldn't see correct answers)
-        answer: undefined,
-      }));
-
-      // Return form data with properly formatted contents
-      const formData = {
-        ...form,
-        contentIds: formattedContents, // Use the formatted contents array
-      };
-
-      res.status(200).json({ ...ReturnCode(200), data: formData });
-    } catch (error) {
-      console.error("Get Form For Respondent Error:", error);
-      res.status(500).json(ReturnCode(500, "Failed to retrieve form"));
-    }
+    // Delegate to GetPublicFormData method to avoid duplication
+    return this.GetPublicFormData(req, res);
   };
 
   // Submit form response (for respondents)
@@ -915,33 +847,30 @@ class FormResponseController {
     }
   };
 
-  // Get public form data (for displaying form to respondents)
   public GetPublicFormData = async (req: CustomRequest, res: Response) => {
     const { formId } = req.params;
-    const { token } = req.query;
+    const { token, p } = req.query;
+    const page = Number(p ?? "1");
 
     if (!formId) {
       return res.status(400).json(ReturnCode(400, "Form ID is required"));
     }
 
     try {
-      // Get form basic info
       const form = await Form.findById(formId)
-        .select("title type setting totalpage requiredemail totalscore")
+        .select("title type setting totalpage totalscore")
         .lean();
 
       if (!form) {
         return res.status(404).json(ReturnCode(404, "Form not found"));
       }
 
-      // Check if form accepts responses
       if (form.setting?.acceptResponses === false) {
         return res
           .status(403)
           .json(ReturnCode(403, "Form is no longer accepting responses"));
       }
 
-      // If token is provided, validate it
       if (token && typeof token === "string") {
         const linkService = new FormLinkService();
         const isValidToken = await linkService.validateAccessToken(
@@ -953,31 +882,29 @@ class FormResponseController {
         }
       }
 
-      // Get form contents with proper conditional data
-      const contents = await Content.find({ formId })
+      const contents = await Content.find({ $and: [{ formId }, { page }] })
         .select(
-          "_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent"
+          "_id qIdx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent score"
         )
         .lean()
         .sort({ idx: 1 });
 
-      // Format content data and clean parentcontent for respondent form
       const formattedContents = contents.map((content) => ({
         ...content,
-        // Remove self-referential parentcontent to prevent circular references
         parentcontent:
           content.parentcontent?.qId === content._id.toString()
             ? undefined
             : content.parentcontent,
-        // Remove answer key for security (respondents shouldn't see correct answers)
         answer: undefined,
       }));
 
-      // Return form data with properly formatted contents
+      form.contentIds = undefined;
       const formData = {
         ...form,
-        contentIds: formattedContents, // Use the formatted contents array
+        contents: formattedContents,
       };
+
+      console.log({ formData });
 
       res.status(200).json({ ...ReturnCode(200), data: formData });
     } catch (error) {

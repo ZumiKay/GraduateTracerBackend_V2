@@ -27,6 +27,7 @@ import UserMiddleware from "../middleware/User.middleware";
 import {
   DeleteUser,
   EditUser,
+  GetRespondentProfile,
   RegisterUser,
   UserValidate,
 } from "../controller/user.controller";
@@ -37,6 +38,9 @@ import VerifyRecaptcha from "../controller/recaptcha.controller";
 import questionController from "../controller/question.controller";
 
 const UserRoute = Router();
+
+//Get User Profile
+UserRoute.get("/user/profile", GetRespondentProfile as any);
 
 //RegisterUser
 UserRoute.post(
@@ -117,6 +121,12 @@ UserRoute.put(
   PageHandler as any
 );
 
+// Public Form Access Route (no authentication required)
+UserRoute.get(
+  "/form/:formId",
+  form_responseController.GetPublicFormData as any
+);
+
 //Form Owner Management Routes
 UserRoute.post(
   "/addformowner",
@@ -173,6 +183,13 @@ UserRoute.delete(
   UserMiddleware.VerifyToken as any,
   questionController.DeleteQuestion as any
 );
+
+// Question Routes - Get questions
+UserRoute.get(
+  "/question/getAllQuestion",
+  questionController.GetAllQuestion as any
+);
+
 UserRoute.post(
   "/handlecondition",
   UserMiddleware.VerifyToken as any,
@@ -223,10 +240,6 @@ UserRoute.get(
 );
 
 // Public Form Access Routes (no authentication required)
-UserRoute.get(
-  "/response/form/:formId",
-  form_responseController.GetPublicFormData as any
-);
 UserRoute.post(
   "/response/submit-response",
   validate(FormResponseController.publicSubmitValidate) as any,

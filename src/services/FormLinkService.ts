@@ -88,20 +88,16 @@ class FormLinkService {
     return links;
   }
 
-  // Get form link with form validation
   async getValidatedFormLink(
     formId: string,
     secure: boolean = false
   ): Promise<GeneratedLink | null> {
     try {
-      // Validate that the form exists and is accessible
       const form = await Form.findById(formId);
-      if (!form) {
+      const isFormActive = form?.setting?.acceptResponses;
+      if (!form || !isFormActive) {
         return null;
       }
-
-      // Check if form is active (you might want to add an 'active' field to FormType)
-      // For now, we'll assume all forms are active
 
       if (secure) {
         return this.generateSecureFormLink(formId);

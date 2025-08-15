@@ -20,6 +20,22 @@ export const UserValidate = z.object({
   }),
 });
 
+export async function GetRespondentProfile(req: Request, res: Response) {
+  const data = req.body as { email: string };
+  try {
+    const profile = await User.findOne({ email: data.email })
+      .select("_id")
+      .lean();
+
+    if (profile) {
+      return res.status(200).json({ ...ReturnCode(200), data: profile });
+    }
+    return res.status(404).json(ReturnCode(404, "No User Found"));
+  } catch (error) {
+    return res.status(500).json(ReturnCode(500));
+  }
+}
+
 export async function RegisterUser(req: Request, res: Response) {
   const data = req.body as UserType;
   try {

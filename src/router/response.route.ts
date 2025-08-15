@@ -1,7 +1,6 @@
 import { Router } from "express";
 import FormResponseController from "../controller/form_response.controller";
 import UserMiddleware from "../middleware/User.middleware";
-import { validate } from "../middleware/Validatetor";
 
 const ResponseRouter = Router();
 
@@ -59,7 +58,7 @@ ResponseRouter.post(
   FormResponseController.GenerateFormLink as any
 );
 
-// Get form for respondent (public access)
+// Get form for respondent (public access) - Note: Duplicate of user route, keeping for backward compatibility
 ResponseRouter.get(
   "/form/:formId",
   FormResponseController.GetFormForRespondent as any

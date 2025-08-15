@@ -18,12 +18,10 @@ class QuestionController {
         page?: number;
       };
 
-      // Validate input
       if (!Array.isArray(data) || !formId || page === undefined) {
         return res.status(400).json(ReturnCode(400, "Invalid request payload"));
       }
 
-      // Extract valid IDs and get existing content in parallel
       const idsToKeep = data
         .map((item) => item._id)
         .filter((id) => id && id.length > 0);
@@ -41,7 +39,6 @@ class QuestionController {
       const newIds: Array<Types.ObjectId | string> = [];
       const hasConditions = data.some((item) => item.conditional);
 
-      // Create a map to track new IDs for questions that need them
       const questionIdMap = new Map<number, Types.ObjectId>();
 
       // Pre-generate IDs for questions that don't have them
@@ -74,10 +71,7 @@ class QuestionController {
                     contentIdx: cond.contentIdx, // Keep contentIdx for reference
                   };
                 }
-                // If we couldn't resolve the contentIdx, keep the original condition for debugging
-                console.warn(
-                  `Could not resolve contentIdx ${cond.contentIdx} to contentId`
-                );
+
                 return cond;
               }
               return cond;
@@ -409,7 +403,7 @@ class QuestionController {
             },
           },
         });
-        throw dbError; // Re-throw to be caught by outer catch block
+        throw dbError;
       }
     } catch (error) {
       console.error("Add Condition Error:", {
@@ -522,14 +516,43 @@ class QuestionController {
         return res.status(400).json(ReturnCode(400, "Form ID is required"));
       }
 
-      const query =
-        page !== undefined ? { formId: formid, page } : { formId: formid };
-      const questions = await Content.find(query).lean();
+      // Validate formid is a valid ObjectId
+      if (!Types.ObjectId.isValid(formid as string)) {
+        return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
+      }
+
+      // Build query - if page is provided, filter by page, otherwise get all
+      const query: any = { formId: new Types.ObjectId(formid as string) };
+
+      if (page !== undefined && page !== null && page !== "") {
+        const pageNum = Number(page);
+        if (!isNaN(pageNum) && pageNum > 0) {
+          query.page = pageNum;
+        }
+      }
+
+      const questions = await Content.find(query)
+        .select(
+          "_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent qIdx"
+        )
+        .lean()
+        .sort({ page: 1, qIdx: 1 }); // Sort by page first, then by question index
+
+      if (process.env.NODE_ENV === "DEV") {
+        console.log("GetAllQuestion:", {
+          formid,
+          page,
+          query,
+          questionsFound: questions.length,
+        });
+      }
 
       return res.status(200).json({ ...ReturnCode(200), data: questions });
     } catch (error) {
-      console.log("Get All Question", error);
-      return res.status(500).json(ReturnCode(500));
+      console.error("Get All Question Error:", error);
+      return res
+        .status(500)
+        .json(ReturnCode(500, "Failed to retrieve questions"));
     }
   }
 

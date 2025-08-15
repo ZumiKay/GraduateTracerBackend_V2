@@ -1,5 +1,9 @@
 import { Request, Response } from "express";
-import { FormatToGeneralDate, ReturnCode } from "../utilities/helper";
+import {
+  FormatToGeneralDate,
+  groupContentByParent,
+  ReturnCode,
+} from "../utilities/helper";
 import Form, { FormType } from "../model/Form.model";
 import { CustomRequest } from "../types/customType";
 import { Types } from "mongoose";
@@ -677,12 +681,11 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           ],
         })
           .select(
-            `_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent ${
+            `_id qIdx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent ${
               ty === "solution" ? "answer score hasAnswer isValidated" : ""
             }`
           )
-          .lean()
-          .sort({ qIdx: 1 });
+          .lean();
 
         // Add validation summary for solution tab
         let validationSummary = null;
@@ -699,19 +702,16 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
         // Add access information to the response
         const responseData = {
           ...detailForm,
-          contents:
-            resultContent.map((content) => ({
-              ...content,
-              parentcontent:
-                content.parentcontent?.qId === content._id.toString()
-                  ? undefined
-                  : content.parentcontent,
-            })) || [],
+          contents: groupContentByParent(
+            resultContent.map((i) => ({ ...i, _id: i._id.toString() }))
+          ),
           contentIds: undefined,
           validationSummary,
           isOwner: isOwner,
           isCollaborator: isCollaborator,
         };
+
+        console.log(Array.from(responseData.contents.map((i) => i.qIdx)));
 
         return res.status(200).json({
           ...ReturnCode(200),

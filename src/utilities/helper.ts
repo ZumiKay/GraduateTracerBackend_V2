@@ -159,3 +159,79 @@ export const CheckCondition = (
       )?.key ?? 0,
   };
 };
+
+export const groupContentByParent = (data: Array<ContentType>) => {
+  if (!data.length) return [];
+
+  const childrenMap = new Map<string, Array<ContentType>>();
+
+  //  avoid duplicates
+  const processed = new Set<string>();
+
+  const result: Array<ContentType> = [];
+
+  //Extract Child
+  for (let i = 0; i < data.length; i++) {
+    const item = data[i];
+
+    if (!item._id) continue;
+
+    if (item.parentcontent?.qId) {
+      const parentId = item.parentcontent.qId;
+
+      if (!childrenMap.has(parentId)) {
+        childrenMap.set(parentId, []);
+      }
+
+      childrenMap.get(parentId)!.push(item);
+    }
+  }
+
+  const addWithChildren = (item: ContentType): void => {
+    if (!item._id || processed.has(item._id)) return;
+
+    // Add the item itself
+    result.push(item);
+    processed.add(item._id);
+
+    const children = childrenMap.get(item._id);
+    if (children && children.length > 0) {
+      // Sort children by qIdx in descending order (higher qIdx first)
+      children.sort((a, b) => {
+        const aIdx = a.qIdx || 0;
+        const bIdx = b.qIdx || 0;
+        return bIdx - aIdx; // Descending order
+      });
+
+      for (const child of children) {
+        addWithChildren(child);
+      }
+    }
+  };
+
+  const topLevelItems = data.filter((item) => item._id && !item.parentcontent);
+
+  // Sort top-level items by qIdx in ascending order
+  topLevelItems.sort((a, b) => {
+    const aIdx = a.qIdx || 0;
+    const bIdx = b.qIdx || 0;
+    return aIdx - bIdx; // Ascending order for top-level items
+  });
+
+  for (const item of topLevelItems) {
+    if (!processed.has(item._id!)) {
+      addWithChildren(item);
+    }
+  }
+
+  //Others
+  for (let i = 0; i < data.length; i++) {
+    const item = data[i];
+
+    if (item._id && !processed.has(item._id)) {
+      addWithChildren(item);
+    }
+  }
+
+  return result;
+};
