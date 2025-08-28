@@ -20,9 +20,11 @@ ResponseRouter.get("/validate", User_middleware_1.default.VerifyToken, form_resp
 ResponseRouter.post("/send-links", User_middleware_1.default.VerifyToken, form_response_controller_1.default.SendFormLinks);
 // Generate form link
 ResponseRouter.post("/generate-link", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GenerateFormLink);
-// Get form for respondent (public access)
+// Get form for respondent (public access) - Note: Duplicate of user route, keeping for backward compatibility
 ResponseRouter.get("/form/:formId", form_response_controller_1.default.GetFormForRespondent);
-// Submit form response (for respondents)
+//Public Access Form
+ResponseRouter.post("/public-response", form_response_controller_1.default.SubmitPublicResponse);
+// Submit form response for registered user
 ResponseRouter.post("/submit-response", form_response_controller_1.default.SubmitFormResponse);
 // Get responses with filters and pagination
 ResponseRouter.get("/responses", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponsesWithFilters);
@@ -30,4 +32,8 @@ ResponseRouter.get("/responses", User_middleware_1.default.VerifyToken, form_res
 ResponseRouter.put("/score", User_middleware_1.default.VerifyToken, form_response_controller_1.default.UpdateResponseScore);
 // Get response analytics for charts
 ResponseRouter.get("/analytics", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponseAnalytics);
+// Delete a response
+ResponseRouter.delete("/:responseId", User_middleware_1.default.VerifyToken, form_response_controller_1.default.DeleteResponse);
+// Bulk delete responses
+ResponseRouter.delete("/bulk/delete", User_middleware_1.default.VerifyToken, form_response_controller_1.default.BulkDeleteResponses);
 exports.default = ResponseRouter;

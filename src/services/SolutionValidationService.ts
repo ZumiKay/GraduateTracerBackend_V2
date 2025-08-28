@@ -1,5 +1,5 @@
 import Content, { ContentType, QuestionType } from "../model/Content.model";
-import Form, { FormType, TypeForm, returnscore } from "../model/Form.model";
+import Form, { TypeForm, returnscore } from "../model/Form.model";
 import { Types } from "mongoose";
 
 export interface ValidationResult {
@@ -19,16 +19,19 @@ export interface FormValidationSummary {
 }
 
 export class SolutionValidationService {
-  /**
-   * Validates a single content/question for quiz requirements
-   */
-  static validateContent(content: ContentType): ValidationResult {
+  //Check the valid of question answers and scores
+  static validateContent(
+    content: ContentType,
+    parentScore?: number
+  ): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
     const missingAnswers: string[] = [];
     const missingScores: string[] = [];
+    const questionTitle = content.qIdx
+      ? `Question ${content.qIdx}`
+      : `Condition of Question ${content.parentcontent?.qIdx}`;
 
-    // Text type questions are for display only and don't need answers or scores
     if (content.type === QuestionType.Text) {
       return {
         isValid: true,
@@ -54,7 +57,15 @@ export class SolutionValidationService {
       content.score === undefined ||
       content.score === 0
     ) {
-      missingScores.push(`Question "${content.title}" has no score assigned`);
+      missingScores.push(`${questionTitle} has no score assigned`);
+    }
+
+    //validate conditioned question score
+    if (content.score && content.parentcontent && parentScore) {
+      const isValid = content.score > parentScore;
+      if (!isValid) {
+        missingScores.push(`${questionTitle} has wrong score`);
+      }
     }
 
     // Validate answer format based on question type
@@ -71,9 +82,7 @@ export class SolutionValidationService {
 
     // Check if required question has proper setup
     if (content.require && (!content.answer || !content.score)) {
-      errors.push(
-        `Required question "${content.title}" must have both answer and score`
-      );
+      errors.push(`Required ${questionTitle} must have both answer and score`);
     }
 
     const isValid =
@@ -90,9 +99,6 @@ export class SolutionValidationService {
     };
   }
 
-  /**
-   * Validates answer format based on question type
-   */
   private static validateAnswerFormat(
     questionType: QuestionType,
     answer: any,
@@ -107,7 +113,6 @@ export class SolutionValidationService {
             "Multiple choice answer must be an array with at least one selection"
           );
         } else {
-          // Validate that answer indices exist in multiple options
           const maxIndex = (content.multiple?.length || 0) - 1;
           const invalidIndices = answer.filter(
             (idx: number) => idx > maxIndex || idx < 0
@@ -122,7 +127,6 @@ export class SolutionValidationService {
         if (!Array.isArray(answer)) {
           errors.push("Checkbox answer must be an array");
         } else {
-          // Validate that answer indices exist in checkbox options
           const maxIndex = (content.checkbox?.length || 0) - 1;
           const invalidIndices = answer.filter(
             (idx: number) => idx > maxIndex || idx < 0
@@ -192,9 +196,6 @@ export class SolutionValidationService {
     return { isValid: errors.length === 0, errors };
   }
 
-  /**
-   * Helper method to validate date strings
-   */
   private static isValidDateString(date: any): boolean {
     if (date instanceof Date) return !isNaN(date.getTime());
     if (typeof date === "string") {
@@ -204,9 +205,6 @@ export class SolutionValidationService {
     return false;
   }
 
-  /**
-   * Helper method to validate range objects
-   */
   private static isValidRangeObject(obj: any): boolean {
     return obj && typeof obj === "object" && "start" in obj && "end" in obj;
   }
@@ -220,26 +218,28 @@ export class SolutionValidationService {
       throw new Error("Form not found");
     }
 
-    const contents = await Content.find({ formId: new Types.ObjectId(formId) });
+    const contents = await Content.find({
+      formId: new Types.ObjectId(formId),
+    }).lean();
     const validationResults: ValidationResult[] = [];
     let totalValidQuestions = 0;
     let totalInvalidQuestions = 0;
     let totalScore = 0;
 
     for (const content of contents) {
-      // Text questions are display-only and should be excluded from validation counting
       if (content.type === QuestionType.Text) {
         const result = this.validateContent(content);
         validationResults.push(result);
-        // Text questions are always valid and don't count toward totals or scores
         continue;
       }
 
-      const result = this.validateContent(content);
+      const parentScore = contents.find(
+        (ques) => ques._id.toString() === content.parentcontent?.qId
+      )?.score;
+      const result = this.validateContent(content, parentScore);
       validationResults.push(result);
 
-      // Add score to total regardless of validation status (total represents max possible score)
-      totalScore += content.score || 0;
+      if (!content.parentcontent) totalScore += content.score || 0;
 
       if (result.isValid) {
         totalValidQuestions++;
@@ -248,12 +248,10 @@ export class SolutionValidationService {
       }
     }
 
-    // Calculate actual scorable questions (excluding Text type)
     const scorableQuestions = contents.filter(
       (content) => content.type !== QuestionType.Text
     );
 
-    // Determine if form can return score automatically
     const canReturnScoreAutomatically =
       form.type === TypeForm.Quiz &&
       totalInvalidQuestions === 0 &&
@@ -269,9 +267,6 @@ export class SolutionValidationService {
     };
   }
 
-  /**
-   * Get validation errors for form before saving/sending
-   */
   static async getFormValidationErrors(formId: string): Promise<string[]> {
     const summary = await this.validateForm(formId);
     const errors: string[] = [];
@@ -300,9 +295,6 @@ export class SolutionValidationService {
     return errors;
   }
 
-  /**
-   * Calculate response score
-   */
   static calculateResponseScore(
     userAnswer: any,
     correctAnswer: any,
@@ -313,12 +305,12 @@ export class SolutionValidationService {
 
     switch (questionType) {
       case QuestionType.Text:
-        // Text questions are display-only and don't contribute to scoring
         return 0;
 
       case QuestionType.MultipleChoice:
-      case QuestionType.CheckBox:
+      case QuestionType.CheckBox: {
         return this.calculateArrayScore(userAnswer, correctAnswer, maxScore);
+      }
 
       case QuestionType.ShortAnswer:
       case QuestionType.Paragraph:
@@ -346,8 +338,8 @@ export class SolutionValidationService {
    * Calculate score for array-based answers (multiple choice, checkbox, selection)
    */
   private static calculateArrayScore(
-    userAnswer: any[],
-    correctAnswer: any[],
+    userAnswer: number[],
+    correctAnswer: number[],
     maxScore: number
   ): number {
     if (!Array.isArray(userAnswer) || !Array.isArray(correctAnswer)) return 0;
@@ -355,7 +347,6 @@ export class SolutionValidationService {
     const userSet = new Set(userAnswer);
     const correctSet = new Set(correctAnswer);
 
-    // Calculate intersection and union for partial scoring
     const intersection = new Set([...userSet].filter((x) => correctSet.has(x)));
     const union = new Set([...userSet, ...correctSet]);
 
@@ -363,10 +354,9 @@ export class SolutionValidationService {
       intersection.size === correctSet.size &&
       userSet.size === correctSet.size
     ) {
-      return maxScore; // Perfect match
+      return maxScore;
     }
 
-    // Partial scoring based on Jaccard similarity
     const similarity = intersection.size / union.size;
     return Math.round(maxScore * similarity);
   }
@@ -387,7 +377,6 @@ export class SolutionValidationService {
 
     if (userText === correctText) return maxScore;
 
-    // Simple similarity check (can be enhanced with more sophisticated algorithms)
     const similarity = this.calculateTextSimilarity(userText, correctText);
     return similarity > 0.8 ? maxScore : 0;
   }
@@ -396,8 +385,8 @@ export class SolutionValidationService {
    * Calculate score for date answers
    */
   private static calculateDateScore(
-    userAnswer: any,
-    correctAnswer: any,
+    userAnswer: string,
+    correctAnswer: string,
     maxScore: number
   ): number {
     const userDate = new Date(userAnswer);
@@ -432,9 +421,6 @@ export class SolutionValidationService {
     return userStart === correctStart && userEnd === correctEnd ? maxScore : 0;
   }
 
-  /**
-   * Simple text similarity calculation (can be enhanced)
-   */
   private static calculateTextSimilarity(text1: string, text2: string): number {
     const words1 = text1.split(/\s+/);
     const words2 = text2.split(/\s+/);

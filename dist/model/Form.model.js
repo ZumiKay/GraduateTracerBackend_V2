@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createFormValidate = exports.returnscore = exports.TypeForm = exports.SubmitType = void 0;
+exports.createFormValidate = exports.CollaboratorType = exports.returnscore = exports.TypeForm = exports.SubmitType = void 0;
 const mongoose_1 = require("mongoose");
 const zod_1 = __importDefault(require("zod"));
 const Response_model_1 = __importDefault(require("./Response.model"));
@@ -31,6 +31,12 @@ var returnscore;
     returnscore["partial"] = "PARTIAL";
     returnscore["manual"] = "MANUAL";
 })(returnscore || (exports.returnscore = returnscore = {}));
+var CollaboratorType;
+(function (CollaboratorType) {
+    CollaboratorType["owner"] = "OWNER";
+    CollaboratorType["editor"] = "EDITOR";
+    CollaboratorType["creator"] = "CREATOR";
+})(CollaboratorType || (exports.CollaboratorType = CollaboratorType = {}));
 const FormSettingSchema = new mongoose_1.Schema({
     qcolor: {
         type: String,
@@ -95,6 +101,12 @@ const FormSchema = new mongoose_1.Schema({
         default: [],
         required: false,
     },
+    editors: {
+        type: [mongoose_1.Schema.Types.ObjectId],
+        ref: "User",
+        default: null,
+        required: false,
+    },
     totalpage: {
         type: Number,
         default: 1,
@@ -119,6 +131,7 @@ const FormSchema = new mongoose_1.Schema({
 }, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 FormSchema.index({ user: 1 });
 FormSchema.index({ owners: 1 });
+FormSchema.index({ editors: 1 });
 FormSchema.index({ type: 1 });
 FormSchema.index({ title: "text" }); // If full-text search is needed
 FormSchema.index({ _id: 1, responses: 1 });

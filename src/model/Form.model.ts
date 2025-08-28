@@ -18,6 +18,12 @@ export enum returnscore {
   manual = "MANUAL",
 }
 
+export enum CollaboratorType {
+  owner = "OWNER",
+  editor = "EDITOR",
+  creator = "CREATOR",
+}
+
 interface FromSettingType {
   _id?: string;
   qcolor?: string;
@@ -40,7 +46,8 @@ export interface FormType {
   requiredemail?: boolean;
   submittype: SubmitType;
   user: Types.ObjectId; // Primary owner (creator)
-  owners?: Array<Types.ObjectId>; // Additional owners/collaborators
+  owners?: Array<Types.ObjectId>; // Additional owners
+  editors?: Array<Types.ObjectId>; // Additional editors
   setting?: FromSettingType;
   totalpage?: number;
   totalscore?: number;
@@ -117,6 +124,12 @@ const FormSchema = new Schema<FormType>(
       default: [],
       required: false,
     },
+    editors: {
+      type: [Schema.Types.ObjectId],
+      ref: "User",
+      default: null,
+      required: false,
+    },
     totalpage: {
       type: Number,
       default: 1,
@@ -144,6 +157,7 @@ const FormSchema = new Schema<FormType>(
 
 FormSchema.index({ user: 1 });
 FormSchema.index({ owners: 1 });
+FormSchema.index({ editors: 1 });
 FormSchema.index({ type: 1 });
 FormSchema.index({ title: "text" }); // If full-text search is needed
 FormSchema.index({ _id: 1, responses: 1 });

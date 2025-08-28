@@ -161,11 +161,10 @@ class AuthenticationController {
       // Verify the refresh token is still valid
       const userSession = await Usersession.findOne({
         session_id: refreshToken,
-        expireAt: { $gte: new Date() }, // Check if session hasn't expired
+        expireAt: { $gte: new Date() },
       }).populate({ path: "user", select: "_id email role" });
 
       if (!userSession || !userSession.user) {
-        // Clean up expired session
         if (userSession) {
           await Usersession.deleteOne({ session_id: refreshToken });
         }
@@ -177,10 +176,8 @@ class AuthenticationController {
         return res.status(401).json(ReturnCode(401, "Session Expired"));
       }
 
-      // Additional security checks
       const user = userSession.user as any;
 
-      // Check if user still exists and is active
       const currentUser = await User.findById(user._id).select(
         "_id email role"
       );

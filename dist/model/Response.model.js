@@ -1,17 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.completionStatus = void 0;
 const mongoose_1 = require("mongoose");
 const Form_model_1 = require("./Form.model");
+var completionStatus;
+(function (completionStatus) {
+    completionStatus["completed"] = "completed";
+    completionStatus["partial"] = "partial";
+    completionStatus["abandoned"] = "abandoned";
+})(completionStatus || (exports.completionStatus = completionStatus = {}));
 //Sub Doc
 const ResponseSetSchema = new mongoose_1.Schema({
     questionId: {
         type: mongoose_1.Schema.Types.ObjectId,
         ref: "Content",
         required: true,
-        index: true, // Indexing `questionId` for faster lookups
+        index: true,
     },
     response: {
-        type: mongoose_1.Schema.Types.Mixed, // Allows flexible response types
+        type: mongoose_1.Schema.Types.Mixed,
         required: true,
     },
     score: {
@@ -39,13 +46,13 @@ const ResponseSchema = new mongoose_1.Schema({
         type: mongoose_1.Schema.Types.ObjectId,
         ref: "Form",
         required: true,
-        index: true, // Indexing `formId` for faster retrieval by form
+        index: true,
     },
     userId: {
         type: mongoose_1.Schema.Types.ObjectId,
         ref: "User",
         required: false,
-        index: true, // Indexing `userId` for faster retrieval by user
+        index: true,
     },
     guest: {
         type: GuestSchema,
@@ -82,7 +89,7 @@ const ResponseSchema = new mongoose_1.Schema({
     },
     completionStatus: {
         type: String,
-        enum: ["completed", "partial", "abandoned"],
+        enum: completionStatus,
         default: "partial",
     },
     respondentEmail: {
@@ -94,7 +101,6 @@ const ResponseSchema = new mongoose_1.Schema({
         required: false,
     },
 }, { timestamps: true });
-// Compound index for queries involving both `userId` and `formId`
 ResponseSchema.index({ userId: 1, formId: 1 });
 ResponseSchema.index({ createdAt: 1 });
 ResponseSchema.index({ submittedAt: 1 });

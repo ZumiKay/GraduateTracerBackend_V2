@@ -1,19 +1,33 @@
 import { model, Schema, Types } from "mongoose";
-import { RangeType } from "./Content.model";
+import { ContentType, RangeType } from "./Content.model";
 import { returnscore } from "./Form.model";
+
+export type ResponseAnswerType =
+  | string
+  | number
+  | boolean
+  | RangeType<number>
+  | RangeType<Date>
+  | Date
+  | Array<number>;
+
+export type ResponseAnswerReturnType = {
+  key: number;
+  val: ResponseAnswerType;
+};
 
 export interface ResponseSetType {
   questionId: Types.ObjectId;
-  response:
-    | string
-    | number
-    | boolean
-    | RangeType<number>
-    | RangeType<Date>
-    | Date
-    | Array<number>; // Added array for multiple choice/checkbox responses
+  question: ContentType;
+  response: ResponseAnswerType | ResponseAnswerReturnType;
   score?: number;
-  isManuallyScored?: boolean; // Flag to indicate if manually scored
+  isManuallyScored?: boolean;
+}
+
+export enum completionStatus {
+  completed = "completed",
+  partial = "partial",
+  abandoned = "abandoned",
 }
 
 export interface FormResponseType {
@@ -27,9 +41,9 @@ export interface FormResponseType {
   isCompleted?: boolean; // Flag to indicate if response is completed
   submittedAt?: Date; // Timestamp when response was submitted
   isAutoScored?: boolean; // Flag to indicate if response was auto-scored
-  completionStatus?: "completed" | "partial" | "abandoned"; // Status of the response
-  respondentEmail?: string; // Email for public submissions
-  respondentName?: string; // Name for public submissions
+  completionStatus?: completionStatus;
+  respondentEmail?: string;
+  respondentName?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -37,19 +51,18 @@ export interface FormResponseType {
 export interface GuestType {
   _id?: Types.ObjectId;
   email: string;
-  name?: string; // Optional name for guests
+  name?: string;
 }
-
 //Sub Doc
 const ResponseSetSchema = new Schema<ResponseSetType>({
   questionId: {
     type: Schema.Types.ObjectId,
     ref: "Content",
     required: true,
-    index: true, // Indexing `questionId` for faster lookups
+    index: true,
   },
   response: {
-    type: Schema.Types.Mixed, // Allows flexible response types
+    type: Schema.Types.Mixed,
     required: true,
   },
   score: {
@@ -80,13 +93,13 @@ const ResponseSchema = new Schema<FormResponseType>(
       type: Schema.Types.ObjectId,
       ref: "Form",
       required: true,
-      index: true, // Indexing `formId` for faster retrieval by form
+      index: true,
     },
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: false,
-      index: true, // Indexing `userId` for faster retrieval by user
+      index: true,
     },
     guest: {
       type: GuestSchema,
@@ -123,7 +136,7 @@ const ResponseSchema = new Schema<FormResponseType>(
     },
     completionStatus: {
       type: String,
-      enum: ["completed", "partial", "abandoned"],
+      enum: completionStatus,
       default: "partial",
     },
     respondentEmail: {
@@ -138,7 +151,6 @@ const ResponseSchema = new Schema<FormResponseType>(
   { timestamps: true }
 );
 
-// Compound index for queries involving both `userId` and `formId`
 ResponseSchema.index({ userId: 1, formId: 1 });
 ResponseSchema.index({ createdAt: 1 });
 ResponseSchema.index({ submittedAt: 1 });

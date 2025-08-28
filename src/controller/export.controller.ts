@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 import Form from "../model/Form.model";
 import FormResponse from "../model/Response.model";
+import Content from "../model/Content.model";
 import { CustomRequest } from "../types/customType";
+import { getResponseDisplayName } from "../utilities/respondentUtils";
 import { ReturnCode } from "../utilities/helper";
 
 // Get available columns for export
@@ -330,7 +332,7 @@ const generateExportFile = async (config: any, responses: any[]) => {
           row[column] = response.guest?.email || "";
           break;
         case "guestName":
-          row[column] = response.guest?.name || response.respondentName || "";
+          row[column] = getResponseDisplayName(response);
           break;
         case "totalScore":
           row[column] = response.totalScore || 0;

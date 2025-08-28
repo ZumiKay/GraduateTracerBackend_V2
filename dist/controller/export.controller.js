@@ -22,6 +22,7 @@ exports.downloadExportFile = downloadExportFile;
 exports.quickExport = quickExport;
 const Form_model_1 = __importDefault(require("../model/Form.model"));
 const Response_model_1 = __importDefault(require("../model/Response.model"));
+const respondentUtils_1 = require("../utilities/respondentUtils");
 const helper_1 = require("../utilities/helper");
 // Get available columns for export
 function getAvailableColumns(req, res) {
@@ -302,7 +303,7 @@ const generateExportFile = (config, responses) => __awaiter(void 0, void 0, void
     const processedData = responses.map((response) => {
         const row = {};
         columns.forEach((column) => {
-            var _a, _b, _c, _d, _e;
+            var _a, _b, _c, _d;
             switch (column) {
                 case "id":
                     row[column] = response._id;
@@ -323,7 +324,7 @@ const generateExportFile = (config, responses) => __awaiter(void 0, void 0, void
                     row[column] = ((_c = response.guest) === null || _c === void 0 ? void 0 : _c.email) || "";
                     break;
                 case "guestName":
-                    row[column] = ((_d = response.guest) === null || _d === void 0 ? void 0 : _d.name) || response.respondentName || "";
+                    row[column] = (0, respondentUtils_1.getResponseDisplayName)(response);
                     break;
                 case "totalScore":
                     row[column] = response.totalScore || 0;
@@ -336,7 +337,7 @@ const generateExportFile = (config, responses) => __awaiter(void 0, void 0, void
                     break;
                 default:
                     // Handle form field data
-                    const fieldData = (_e = response.responseset) === null || _e === void 0 ? void 0 : _e.find((r) => r.questionId.toString() === column);
+                    const fieldData = (_d = response.responseset) === null || _d === void 0 ? void 0 : _d.find((r) => r.questionId.toString() === column);
                     row[column] = fieldData ? fieldData.response : "";
             }
         });

@@ -25,7 +25,7 @@ var QuestionType;
     QuestionType["Paragraph"] = "paragraph";
 })(QuestionType || (exports.QuestionType = QuestionType = {}));
 //Sub Documents
-const CheckboxQuestionSchema = new mongoose_1.Schema({
+const ChoiceQuestionSchema = new mongoose_1.Schema({
     idx: {
         type: Number,
         required: true,
@@ -86,6 +86,10 @@ const ContentSchema = new mongoose_1.Schema({
         type: mongoose_1.Schema.ObjectId,
         required: true,
     },
+    qIdx: {
+        type: "number",
+        required: true,
+    },
     title: {
         type: TitleSchema,
         required: true,
@@ -99,13 +103,16 @@ const ContentSchema = new mongoose_1.Schema({
         type: "string",
     },
     checkbox: {
-        type: [CheckboxQuestionSchema],
+        type: [ChoiceQuestionSchema],
     },
     multiple: {
-        type: [CheckboxQuestionSchema],
+        type: [ChoiceQuestionSchema],
     },
     range: {
         type: RangeSchema,
+    },
+    selection: {
+        type: [ChoiceQuestionSchema],
     },
     numrange: {
         type: RangeSchema,

@@ -131,10 +131,9 @@ class AuthenticationController {
                 // Verify the refresh token is still valid
                 const userSession = yield Usersession_model_1.default.findOne({
                     session_id: refreshToken,
-                    expireAt: { $gte: new Date() }, // Check if session hasn't expired
+                    expireAt: { $gte: new Date() },
                 }).populate({ path: "user", select: "_id email role" });
                 if (!userSession || !userSession.user) {
-                    // Clean up expired session
                     if (userSession) {
                         yield Usersession_model_1.default.deleteOne({ session_id: refreshToken });
                     }
@@ -143,9 +142,7 @@ class AuthenticationController {
                     this.clearRefreshTokenCookie(res);
                     return res.status(401).json((0, helper_1.ReturnCode)(401, "Session Expired"));
                 }
-                // Additional security checks
                 const user = userSession.user;
-                // Check if user still exists and is active
                 const currentUser = yield User_model_1.default.findById(user._id).select("_id email role");
                 if (!currentUser) {
                     // User was deleted, clean up session

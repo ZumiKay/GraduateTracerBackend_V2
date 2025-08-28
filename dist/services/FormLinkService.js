@@ -71,17 +71,15 @@ class FormLinkService {
         }
         return links;
     }
-    // Get form link with form validation
     getValidatedFormLink(formId_1) {
         return __awaiter(this, arguments, void 0, function* (formId, secure = false) {
+            var _a;
             try {
-                // Validate that the form exists and is accessible
                 const form = yield Form_model_1.default.findById(formId);
-                if (!form) {
+                const isFormActive = (_a = form === null || form === void 0 ? void 0 : form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses;
+                if (!form || !isFormActive) {
                     return null;
                 }
-                // Check if form is active (you might want to add an 'active' field to FormType)
-                // For now, we'll assume all forms are active
                 if (secure) {
                     return this.generateSecureFormLink(formId);
                 }

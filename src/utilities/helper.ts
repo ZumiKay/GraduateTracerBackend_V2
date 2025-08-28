@@ -1,7 +1,12 @@
 import Bcrypt from "bcrypt";
-
 import JWT from "jsonwebtoken";
-import { ContentType, ParentContentType } from "../model/Content.model";
+import {
+  ChoiceQuestionType,
+  ContentType,
+  ParentContentType,
+  QuestionType,
+} from "../model/Content.model";
+import { ResponseSetType } from "../model/Response.model";
 
 export function ReturnCode(
   code: 200 | 201 | 204 | 400 | 401 | 403 | 404 | 500,
@@ -151,7 +156,7 @@ export const CheckCondition = (
   }
 
   return {
-    qId: isConditional._id ?? qId,
+    qId: isConditional._id?.toString() ?? qId,
     qIdx: undefined,
     optIdx:
       isConditional.conditional?.find(
@@ -165,7 +170,6 @@ export const groupContentByParent = (data: Array<ContentType>) => {
 
   const childrenMap = new Map<string, Array<ContentType>>();
 
-  //  avoid duplicates
   const processed = new Set<string>();
 
   const result: Array<ContentType> = [];
@@ -188,13 +192,13 @@ export const groupContentByParent = (data: Array<ContentType>) => {
   }
 
   const addWithChildren = (item: ContentType): void => {
-    if (!item._id || processed.has(item._id)) return;
+    if (!item._id || processed.has(item._id.toString())) return;
 
     // Add the item itself
     result.push(item);
-    processed.add(item._id);
+    processed.add(item._id.toString());
 
-    const children = childrenMap.get(item._id);
+    const children = childrenMap.get(item._id.toString());
     if (children && children.length > 0) {
       // Sort children by qIdx in descending order (higher qIdx first)
       children.sort((a, b) => {
@@ -211,7 +215,6 @@ export const groupContentByParent = (data: Array<ContentType>) => {
 
   const topLevelItems = data.filter((item) => item._id && !item.parentcontent);
 
-  // Sort top-level items by qIdx in ascending order
   topLevelItems.sort((a, b) => {
     const aIdx = a.qIdx || 0;
     const bIdx = b.qIdx || 0;
@@ -219,7 +222,7 @@ export const groupContentByParent = (data: Array<ContentType>) => {
   });
 
   for (const item of topLevelItems) {
-    if (!processed.has(item._id!)) {
+    if (!processed.has(item._id?.toString()!)) {
       addWithChildren(item);
     }
   }
@@ -228,10 +231,82 @@ export const groupContentByParent = (data: Array<ContentType>) => {
   for (let i = 0; i < data.length; i++) {
     const item = data[i];
 
-    if (item._id && !processed.has(item._id)) {
+    if (item._id && !processed.has(item._id.toString())) {
       addWithChildren(item);
     }
   }
 
   return result;
+};
+
+//Extract Answer Key Value
+export const GetAnswerKeyPairValue = (content: ResponseSetType) => {
+  const questionContent = content.question;
+  const questionType = questionContent.type;
+  const response = content.response;
+
+  if (
+    questionType !== QuestionType.CheckBox &&
+    questionType !== QuestionType.MultipleChoice &&
+    questionType !== QuestionType.Selection
+  ) {
+    return response;
+  }
+
+  const choices = questionContent[questionType] as Array<ChoiceQuestionType>;
+  if (!choices || !Array.isArray(choices)) {
+    return { key: response, val: response };
+  }
+
+  if (questionType === QuestionType.CheckBox && Array.isArray(response)) {
+    const selectedChoices = choices
+      .filter((choice) => response.includes(choice.idx))
+      .map((choice) => choice.content);
+
+    return { key: response, val: selectedChoices };
+  }
+
+  const matchingChoice = choices.find((choice) => choice.idx === response);
+  const val = matchingChoice?.content ?? response;
+
+  return { key: response, val };
+};
+
+export const GetAnswerKeyForQuestion = (content: ContentType) => {
+  if (
+    content.type !== QuestionType.CheckBox &&
+    content.type !== QuestionType.MultipleChoice &&
+    content.type !== QuestionType.Selection
+  ) {
+    return content.answer;
+  }
+
+  if (content.type === QuestionType.CheckBox) {
+    const val = content.checkbox;
+    const answerkey = content.answer?.answer as Array<number>;
+
+    if (!answerkey || !val) return;
+
+    const result = val
+      .map((i) => {
+        if (answerkey.includes(i.idx)) {
+          return { key: i.idx, val: i.content };
+        }
+      })
+      .filter(Boolean);
+    return result;
+  }
+  return content[content.type]?.filter(
+    (i) => i.idx === content.answer?.answer
+  )?.[0];
+};
+
+export const isObject = (value: any) => {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    !(value instanceof Date) &&
+    !(value instanceof RegExp)
+  );
 };

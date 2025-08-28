@@ -4,283 +4,188 @@ import {
   groupContentByParent,
   ReturnCode,
 } from "../utilities/helper";
-import Form, { FormType } from "../model/Form.model";
+import Form, { CollaboratorType, FormType } from "../model/Form.model";
 import { CustomRequest } from "../types/customType";
 import { Types } from "mongoose";
 import Content, { QuestionType } from "../model/Content.model";
 import SolutionValidationService from "../services/SolutionValidationService";
+import User, { UserType } from "../model/User.model";
+import {
+  isValidObjectIdString,
+  hasFormAccess,
+  isPrimaryOwner,
+  verifyRole,
+  validateAccess,
+  projections,
+  validateFormRequest,
+} from "../utilities/formHelpers";
 
-// Helper function to validate ObjectId format
-function isValidObjectIdString(id: string): boolean {
-  return (
-    typeof id === "string" && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)
-  );
+interface CollaboratorRequest {
+  formId: string;
+  userEmail?: Array<string>;
+  userId?: string;
+  role?: CollaboratorType;
 }
 
-export function hasFormAccess(form: FormType, userId: string): boolean {
+// Unified collaborator management function
+
+interface ManageFormCollaboratorBodyType {
+  formId: string;
+  email: string;
+  role: CollaboratorType;
+  action: "add" | "remove";
+}
+
+export const ManageFormCollaborator = async (
+  req: CustomRequest,
+  res: Response
+) => {
   try {
-    const userIdStr = userId.toString();
+    const { formId, email, role, action } =
+      req.body as ManageFormCollaboratorBodyType;
+    const user = req.user;
 
-    // Check if user is the primary owner
-    let formUserId: string;
-    if (form.user && typeof form.user === "object" && form.user._id) {
-      formUserId = form.user._id.toString();
-    } else if (form.user) {
-      formUserId = form.user.toString();
-    } else {
-      return false;
-    }
+    if (!user) return res.status(401).json(ReturnCode(401));
+    if (!email || !role || !action || !formId)
+      return res.status(400).json(ReturnCode(400, "Missing required fields"));
+    if (!isValidObjectIdString(formId))
+      return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+    if (!["owner", "editor"].includes(role))
+      return res.status(400).json(ReturnCode(400, "Invalid role"));
+    if (!["add", "remove"].includes(action))
+      return res.status(400).json(ReturnCode(400, "Invalid action"));
 
-    if (formUserId === userIdStr) {
-      return true;
-    }
+    const form = await Form.findById(formId)
+      .populate("user", "email _id")
+      .exec();
+    if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
+    if (form.user._id.toString() !== user.id.toString())
+      return res
+        .status(403)
+        .json(ReturnCode(403, "Only form owner can manage collaborators"));
 
-    // Check if user is a collaborator
-    if (form.owners && form.owners.length > 0) {
-      const isCollaborator = form.owners.some((owner) => {
-        let ownerId: string;
-        if (owner && typeof owner === "object" && owner._id) {
-          ownerId = owner._id.toString();
-        } else if (owner) {
-          ownerId = owner.toString();
-        } else {
-          return false;
+    const targetUser = await User.findOne({ email }).exec();
+    if (!targetUser)
+      return res.status(404).json(ReturnCode(404, "User not found"));
+    if (targetUser._id.toString() === user.id.toString())
+      return res
+        .status(400)
+        .json(ReturnCode(400, "Cannot modify your own permissions"));
+
+    const collaboratorId = targetUser._id;
+    const currentField =
+      role === CollaboratorType.editor
+        ? "editors"
+        : role === CollaboratorType.owner
+        ? "owners"
+        : undefined;
+    const currentList =
+      (currentField &&
+        (form[currentField as keyof typeof form] as Types.ObjectId[])) ||
+      [];
+
+    if (currentField) {
+      if (action === "add") {
+        if (
+          currentList.some((id) => id.toString() === collaboratorId.toString())
+        ) {
+          return res
+            .status(400)
+            .json(ReturnCode(400, `User is already a ${role}`));
         }
-        const matches = ownerId === userIdStr;
-
-        return matches;
-      });
-
-      if (isCollaborator) {
-        return true;
+        await Form.findByIdAndUpdate(formId, {
+          $addToSet: { [currentField]: collaboratorId },
+        });
+      } else {
+        if (
+          !currentList.some((id) => id.toString() === collaboratorId.toString())
+        ) {
+          return res.status(400).json(ReturnCode(400, `User is not a ${role}`));
+        }
+        await Form.findByIdAndUpdate(formId, {
+          $pull: { [currentField]: collaboratorId },
+        });
       }
     }
 
-    return false;
-  } catch (error) {
-    console.error("Error in hasFormAccess:", error);
-    return false;
-  }
-}
-
-export function isPrimaryOwner(form: FormType, userId: string): boolean {
-  try {
-    const userIdStr = userId.toString();
-
-    let formUserId: string;
-    if (form.user && typeof form.user === "object" && form.user._id) {
-      formUserId = form.user._id.toString();
-    } else if (form.user) {
-      formUserId = form.user.toString();
-    } else {
-      return false;
-    }
-
-    return formUserId === userIdStr;
-  } catch (error) {
-    console.error("Error in isPrimaryOwner:", error);
-    return false;
-  }
-}
-
-// Helper function to validate form access and return access info
-function validateFormAccess(form: FormType, userId: string) {
-  const hasAccess = hasFormAccess(form, userId);
-  const isOwner = isPrimaryOwner(form, userId);
-  const isCollaborator = hasAccess && !isOwner;
-
-  return {
-    hasAccess,
-    isOwner,
-    isCollaborator,
-  };
-}
-
-export async function AddFormOwner(req: CustomRequest, res: Response) {
-  const { formId, userEmail } = req.body;
-  const currentUser = req.user;
-
-  if (!currentUser) {
-    return res.status(401).json(ReturnCode(401, "Unauthorized"));
-  }
-
-  if (!formId || !userEmail) {
+    const actionText = action === "add" ? "added as" : "removed from";
     return res
-      .status(400)
-      .json(ReturnCode(400, "Form ID and user email are required"));
-  }
-
-  // Validate formId format
-  if (!isValidObjectIdString(formId)) {
-    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
-  }
-
-  try {
-    const form = await Form.findById(formId);
-    if (!form) {
-      return res.status(404).json(ReturnCode(404, "Form not found"));
-    }
-
-    if (!isPrimaryOwner(form, currentUser.id.toString())) {
-      return res
-        .status(403)
-        .json(ReturnCode(403, "Only the form creator can add owners"));
-    }
-
-    const User = require("../model/User.model").default;
-    const userToAdd = await User.findOne({ email: userEmail });
-    if (!userToAdd) {
-      return res.status(404).json(ReturnCode(404, "User not found"));
-    }
-
-    if (hasFormAccess(form, userToAdd._id.toString())) {
-      return res
-        .status(400)
-        .json(ReturnCode(400, "User already has access to this form"));
-    }
-
-    const updatedForm = await Form.findByIdAndUpdate(
-      formId,
-      { $addToSet: { owners: userToAdd._id } },
-      { new: true }
-    ).populate("owners", "email");
-
-    return res.status(200).json({
-      ...ReturnCode(200, "Owner added successfully"),
-      data: {
-        form: {
-          _id: updatedForm?._id,
-          title: updatedForm?.title,
-          owners: updatedForm?.owners,
-        },
-        addedUser: {
-          _id: userToAdd._id,
-          name: userToAdd.email.split("@")[0], // Use email prefix as name
-          email: userToAdd.email,
-        },
-      },
-    });
+      .status(200)
+      .json(ReturnCode(200, `User successfully ${actionText} ${role}`));
   } catch (error) {
-    console.error("Add Form Owner Error:", error);
-    return res.status(500).json(ReturnCode(500, "Failed to add owner"));
+    console.error("Error managing form collaborator:", error);
+    return res.status(500).json(ReturnCode(500, "Internal server error"));
   }
+};
+
+interface FormCollarboratorDataType {
+  _id: string;
+  name?: string;
+  email: string;
+  role: CollaboratorType;
+  isPrimary?: boolean;
 }
 
-export async function RemoveFormOwner(req: CustomRequest, res: Response) {
-  const { formId, userId } = req.body;
-  const currentUser = req.user;
-
-  if (!currentUser) {
-    return res.status(401).json(ReturnCode(401, "Unauthorized"));
-  }
-
-  if (!formId || !userId) {
-    return res
-      .status(400)
-      .json(ReturnCode(400, "Form ID and user ID are required"));
-  }
-
-  // Validate formId and userId formats
-  if (!isValidObjectIdString(formId)) {
-    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
-  }
-  if (!isValidObjectIdString(userId)) {
-    return res.status(400).json(ReturnCode(400, "Invalid user ID format"));
-  }
-
-  try {
-    const form = await Form.findById(formId);
-    if (!form) {
-      return res.status(404).json(ReturnCode(404, "Form not found"));
-    }
-
-    if (!isPrimaryOwner(form, currentUser.id.toString())) {
-      return res
-        .status(403)
-        .json(ReturnCode(403, "Only the form creator can remove owners"));
-    }
-
-    if (form.user.equals(new Types.ObjectId(userId))) {
-      return res
-        .status(400)
-        .json(ReturnCode(400, "Cannot remove the form creator"));
-    }
-
-    const updatedForm = await Form.findByIdAndUpdate(
-      formId,
-      { $pull: { owners: new Types.ObjectId(userId) } },
-      { new: true }
-    ).populate("owners", "email");
-
-    return res.status(200).json({
-      ...ReturnCode(200, "Owner removed successfully"),
-      data: updatedForm?.owners,
-    });
-  } catch (error) {
-    console.error("Remove Form Owner Error:", error);
-    return res.status(500).json(ReturnCode(500, "Failed to remove owner"));
-  }
-}
-
-export async function GetFormOwners(req: CustomRequest, res: Response) {
+export async function GetFormCollaborators(req: CustomRequest, res: Response) {
   const { formId } = req.params;
   const currentUser = req.user;
 
-  if (!currentUser) {
+  if (!currentUser)
     return res.status(401).json(ReturnCode(401, "Unauthorized"));
-  }
 
-  if (!formId) {
-    return res.status(400).json(ReturnCode(400, "Form ID is required"));
-  }
-
-  // Validate formId format
-  if (!isValidObjectIdString(formId)) {
-    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
-  }
+  const validation = validateFormRequest(formId);
+  if (!validation.isValid)
+    return res.status(400).json(ReturnCode(400, validation.error));
 
   try {
     const form = await Form.findById(formId)
-      .populate("user", "email")
-      .populate("owners", "email");
-
-    if (!form) {
-      return res.status(404).json(ReturnCode(404, "Form not found"));
-    }
-
-    if (!hasFormAccess(form, currentUser.id.toString())) {
+      .populate("user owners editors", "email")
+      .lean();
+    if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
+    if (!verifyRole(CollaboratorType.owner, form, currentUser.id))
       return res.status(403).json(ReturnCode(403, "Access denied"));
-    }
 
-    const primaryOwner = {
-      _id: (form.user as any)._id,
-      name: (form.user as any).email?.split("@")[0] || "Unknown",
-      email: (form.user as any).email,
-      role: "creator",
+    const formCreator = form.user as unknown as UserType;
+    const primaryOwner: FormCollarboratorDataType = {
+      _id: formCreator._id.toString(),
+      name: formCreator.email?.split("@")[0] || "Unknown",
+      email: formCreator.email,
+      role: CollaboratorType.creator,
       isPrimary: true,
     };
 
-    const additionalOwners = (form.owners || []).map((owner: any) => ({
-      _id: owner._id,
-      name: owner.email?.split("@")[0] || "Unknown",
-      email: owner.email,
-      role: "collaborator",
-      isPrimary: false,
-    }));
+    const allOwners =
+      form.owners &&
+      (form.owners as unknown as UserType[])?.map((i) => ({
+        _id: i._id,
+        email: i.email,
+        name: formCreator.email?.split("@")[0] || "Unknown",
+        role: CollaboratorType.owner,
+      }));
+    const allEditors =
+      form.editors &&
+      (form.editors as unknown as UserType[])?.map((i) => ({
+        _id: i._id,
+        email: i.email,
+        name: formCreator.email?.split("@")[0] || "Unknown",
+        role: CollaboratorType.owner,
+      }));
 
     return res.status(200).json({
-      ...ReturnCode(200, "Form owners retrieved successfully"),
+      ...ReturnCode(200, "Form collaborators retrieved successfully"),
       data: {
         primaryOwner,
-        additionalOwners,
-        totalOwners: additionalOwners.length + 1,
+        allOwners,
+        allEditors,
+        totalCollaborators:
+          (allOwners?.length ?? 0) + (allEditors?.length ?? 0),
       },
     });
   } catch (error) {
-    console.error("Get Form Owners Error:", error);
+    console.error("Get Form Collaborators Error:", error);
     return res
       .status(500)
-      .json(ReturnCode(500, "Failed to retrieve form owners"));
+      .json(ReturnCode(500, "Failed to retrieve collaborators"));
   }
 }
 
@@ -292,13 +197,9 @@ export async function RemoveSelfFromForm(req: CustomRequest, res: Response) {
     return res.status(401).json(ReturnCode(401, "Unauthorized"));
   }
 
-  if (!formId) {
-    return res.status(400).json(ReturnCode(400, "Form ID is required"));
-  }
-
-  // Validate formId format
-  if (!isValidObjectIdString(formId)) {
-    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
+  const validation = validateFormRequest(formId);
+  if (!validation.isValid) {
+    return res.status(400).json(ReturnCode(400, validation.error));
   }
 
   try {
@@ -318,14 +219,14 @@ export async function RemoveSelfFromForm(req: CustomRequest, res: Response) {
         );
     }
 
-    if (!hasFormAccess(form, currentUser.id.toString())) {
+    if (!hasFormAccess(form, currentUser.id)) {
       return res
         .status(403)
         .json(ReturnCode(403, "You don't have access to this form"));
     }
 
     await Form.findByIdAndUpdate(formId, {
-      $pull: { owners: new Types.ObjectId(currentUser.id) },
+      $pull: { owners: currentUser.id, editors: currentUser.id },
     });
 
     return res
@@ -337,88 +238,180 @@ export async function RemoveSelfFromForm(req: CustomRequest, res: Response) {
   }
 }
 
-export async function CreateForm(req: CustomRequest, res: Response) {
-  const formdata = req.body as FormType;
-  const user = req.user;
+export async function ChangePrimaryOwner(req: CustomRequest, res: Response) {
+  const { formId, userId } = req.body as CollaboratorRequest;
+  const currentUser = req.user;
 
-  if (!user) return res.status(401).json(ReturnCode(404));
+  if (!currentUser) return res.status(403).json(ReturnCode(403));
+
+  const validation = validateFormRequest(formId, userId);
+  if (!validation.isValid) {
+    return res.status(400).json(ReturnCode(400, validation.error));
+  }
+
   try {
-    //Form Creation
-
-    const isForm = await Form.findOne({
-      $and: [{ title: formdata.title }, { user: user.id }],
-    });
-
-    if (isForm)
-      return res.status(400).json(ReturnCode(400, "Form already exist"));
-
-    const createdForm = await Form.create({ ...formdata, user: user.id });
-
-    return res.status(200).json({
-      ...ReturnCode(201, "Form Created"),
-      data: { ...formdata, _id: createdForm._id },
-    });
-  } catch (error: any) {
-    console.log("Create Form", error);
-
-    if (error.name === "Validation Error") {
-      return res.status(400).json(ReturnCode(400));
+    const form = (await Form.findById(formId).lean()) as FormType;
+    if (!form) {
+      return res.status(404).json(ReturnCode(404, "Form not found"));
     }
 
+    if (!isPrimaryOwner(form, currentUser.id.toString())) {
+      return res
+        .status(403)
+        .json(ReturnCode(403, "Only primary owner can transfer ownership"));
+    }
+
+    await Form.updateOne({ _id: formId }, { user: new Types.ObjectId(userId) });
+    return res.status(200).json(ReturnCode(200, "Transfer completed"));
+  } catch (error) {
+    console.error("Transfer Owner Error:", error);
     return res.status(500).json(ReturnCode(500));
   }
 }
 
-export async function PageHandler(req: CustomRequest, res: Response) {
-  const {
-    ty,
-    formId,
-    deletepage,
-  }: { ty: "add" | "delete"; formId: string; deletepage?: number } = req.body;
-
+export async function CreateForm(req: CustomRequest, res: Response) {
+  const formdata = req.body as FormType;
   const user = req.user;
+
+  if (!user) return res.status(401).json(ReturnCode(401, "Unauthorized"));
+
+  try {
+    const existingForm = await Form.findOne({
+      $and: [{ title: formdata.title }, { user: user.id }],
+    });
+    if (existingForm)
+      return res.status(400).json(ReturnCode(400, "Form already exists"));
+
+    const createdForm = await Form.create({ ...formdata, user: user.id });
+    return res.status(201).json({
+      ...ReturnCode(201, "Form Created"),
+      data: { ...formdata, _id: createdForm._id },
+    });
+  } catch (error: any) {
+    console.error("Create Form Error:", error);
+    return res.status(500).json(ReturnCode(500, "Failed to create form"));
+  }
+}
+
+export async function EditForm(req: CustomRequest, res: Response) {
+  const { _id, setting, ...updateData } = req.body.data as FormType;
+  const user = req.user;
+
+  if (!user) return res.status(401).json(ReturnCode(401, "Unauthorized"));
+
+  const validation = validateFormRequest(_id?.toString() || "");
+  if (!validation.isValid)
+    return res.status(400).json(ReturnCode(400, validation.error));
+
+  try {
+    const form = await Form.findById(_id);
+    if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
+    if (!hasFormAccess(form, user.id))
+      return res.status(403).json(ReturnCode(403, "Access denied"));
+
+    const updateQuery: any = { ...updateData };
+    if (setting) {
+      Object.keys(setting).forEach((key) => {
+        updateQuery[`setting.${key}`] = setting[key as never];
+      });
+    }
+
+    await Form.findByIdAndUpdate(_id, { $set: updateQuery }, { new: true });
+    return res.status(200).json(ReturnCode(200, "Form Updated"));
+  } catch (error: any) {
+    console.error("Edit Form Error:", error);
+    return res.status(500).json(ReturnCode(500, "Failed to update form"));
+  }
+}
+
+export async function DeleteForm(req: CustomRequest, res: Response) {
+  const { ids } = req.body as { ids: string[] };
+  const user = req.user;
+
+  if (!user) return res.status(401).json(ReturnCode(401, "Unauthorized"));
+  if (!Array.isArray(ids) || ids.length === 0)
+    return res.status(400).json(ReturnCode(400, "No IDs provided"));
+
+  try {
+    const forms = await Form.find({ _id: { $in: ids } });
+    const userIdString = user.id.toString();
+
+    for (const form of forms) {
+      if (!hasFormAccess(form, user.id))
+        return res
+          .status(403)
+          .json(ReturnCode(403, "Access denied to one or more forms"));
+    }
+
+    let deletedCount = 0;
+    let removedCount = 0;
+
+    for (const form of forms) {
+      if (isPrimaryOwner(form, userIdString)) {
+        await Form.deleteOne({ _id: form._id });
+        deletedCount++;
+      } else {
+        await Form.findByIdAndUpdate(form._id, {
+          $pull: { owners: user.id, editors: user.id },
+        });
+        removedCount++;
+      }
+    }
+
+    const message =
+      deletedCount > 0 && removedCount > 0
+        ? `${deletedCount} forms deleted, removed from ${removedCount} forms`
+        : deletedCount > 0
+        ? `${deletedCount} forms deleted successfully`
+        : `Removed from ${removedCount} forms successfully`;
+
+    return res.status(200).json(ReturnCode(200, message));
+  } catch (error) {
+    console.error("Delete Form Error:", error);
+    return res.status(500).json(ReturnCode(500, "Failed to delete forms"));
+  }
+}
+
+export async function PageHandler(req: CustomRequest, res: Response) {
+  const { ty, formId, deletepage } = req.body as {
+    ty: "add" | "delete";
+    formId: string;
+    deletepage?: number;
+  };
+  const user = req.user;
+
   if (!user) {
     return res.status(401).json(ReturnCode(401, "Unauthorized"));
   }
 
-  if (!formId || !ty) {
-    return res
-      .status(400)
-      .json(ReturnCode(400, "Missing required fields: formId or ty"));
+  const validation = validateFormRequest(formId);
+  if (!validation.isValid) {
+    return res.status(400).json(ReturnCode(400, validation.error));
   }
 
-  // Validate formId format
-  if (!isValidObjectIdString(formId)) {
-    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
+  if (!ty) {
+    return res.status(400).json(ReturnCode(400, "Missing operation type"));
   }
 
   if (ty === "delete" && (deletepage === undefined || isNaN(deletepage))) {
     return res
       .status(400)
-      .json(
-        ReturnCode(
-          400,
-          "deletepage is required and must be a valid number for delete operation"
-        )
-      );
+      .json(ReturnCode(400, "Valid page number required for delete"));
   }
 
   try {
-    // Check if user has access to edit this form
     const form = await Form.findById(formId);
     if (!form) {
       return res.status(404).json(ReturnCode(404, "Form not found"));
     }
 
-    if (!hasFormAccess(form, user.id.toString())) {
+    if (!hasFormAccess(form, user.id)) {
       return res.status(403).json(ReturnCode(403, "Access denied"));
     }
 
     if (ty === "add") {
-      // Add page: increment totalpage
       await Form.updateOne({ _id: formId }, { $inc: { totalpage: 1 } });
     } else if (ty === "delete") {
-      // Delete page: fetch content IDs, update form, and delete content
       const toBeDeleteContent = await Content.find({ page: deletepage })
         .select("_id")
         .lean();
@@ -432,142 +425,28 @@ export async function PageHandler(req: CustomRequest, res: Response) {
       await Content.deleteMany({ page: deletepage });
     }
 
-    return res.status(200).json(ReturnCode(200, "Success"));
+    return res
+      .status(200)
+      .json(ReturnCode(200, "Operation completed successfully"));
   } catch (error) {
-    console.error("PageHandler Error:", error);
-    return res.status(500).json(ReturnCode(500, "Internal Server Error"));
-  }
-}
-
-export async function EditForm(req: CustomRequest, res: Response) {
-  const { _id, setting, ...updateData } = req.body.data as FormType;
-
-  try {
-    const user = req.user;
-    if (!user) {
-      return res.status(401).json(ReturnCode(401, "Unauthorized"));
-    }
-
-    // Validate _id
-    if (!_id) return res.status(400).json(ReturnCode(400, "Invalid Form ID"));
-
-    // Convert _id to string for validation
-    const idString = _id.toString();
-
-    // Validate _id format
-    if (!isValidObjectIdString(idString)) {
-      return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
-    }
-
-    // Check if user has access to edit this form
-    const form = await Form.findById(_id);
-    if (!form) {
-      return res.status(404).json(ReturnCode(404, "Form not found"));
-    }
-
-    if (!hasFormAccess(form, user.id.toString())) {
-      return res.status(403).json(ReturnCode(403, "Access denied"));
-    }
-
-    // Construct update query dynamically
-    const updateQuery: any = { ...updateData };
-
-    if (setting) {
-      Object.keys(setting).forEach((key) => {
-        updateQuery[`setting.${key}`] = setting[key as never]; // Use dot notation
-      });
-    }
-
-    // Update the form
-    const updatedForm = await Form.findByIdAndUpdate(
-      _id,
-      { $set: updateQuery }, // Apply update query
-      { new: true, projection: "_id" } // Return `_id` for confirmation
-    );
-
-    return res.status(200).json(ReturnCode(200, "Form Updated"));
-  } catch (error: any) {
-    console.error("Edit Form Error:", error.message);
-    return res.status(500).json(ReturnCode(500, "Internal Server Error"));
-  }
-}
-
-export async function DeleteForm(req: CustomRequest, res: Response) {
-  try {
-    const { ids } = req.body as { ids: string[] };
-    const user = req.user;
-
-    if (!user) {
-      return res.status(401).json(ReturnCode(401, "Unauthorized"));
-    }
-
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return res
-        .status(400)
-        .json(ReturnCode(400, "Invalid request: No IDs provided"));
-    }
-
-    // Check access for each form
-    const forms = await Form.find({ _id: { $in: ids } });
-    const userIdString = user.id.toString();
-
-    for (const form of forms) {
-      if (!hasFormAccess(form, userIdString)) {
-        return res
-          .status(403)
-          .json(ReturnCode(403, "Access denied to one or more forms"));
-      }
-    }
-
-    // For primary owners, delete the form completely
-    // For collaborators, remove them from the form
-    let deletedCount = 0;
-    let removedCount = 0;
-
-    for (const form of forms) {
-      if (isPrimaryOwner(form, userIdString)) {
-        // Primary owner - delete form
-        await Form.deleteOne({ _id: form._id });
-        deletedCount++;
-      } else {
-        // Collaborator - remove from form
-        await Form.findByIdAndUpdate(form._id, {
-          $pull: { owners: user.id },
-        });
-        removedCount++;
-      }
-    }
-
-    let message = "";
-    if (deletedCount > 0 && removedCount > 0) {
-      message = `${deletedCount} forms deleted, removed from ${removedCount} forms`;
-    } else if (deletedCount > 0) {
-      message = `${deletedCount} forms deleted successfully`;
-    } else if (removedCount > 0) {
-      message = `Removed from ${removedCount} forms successfully`;
-    }
-
-    return res.status(200).json(ReturnCode(200, message));
-  } catch (error) {
-    console.error("Delete Form Error:", error);
-    return res.status(500).json(ReturnCode(500, "Internal Server Error"));
+    console.error("Page Handler Error:", error);
+    return res.status(500).json(ReturnCode(500, "Operation failed"));
   }
 }
 
 export async function GetAllForm(req: Request, res: Response) {
+  const { limit = "5", page = "1" } = req.query;
+  const p = Number(page);
+  const lt = Number(limit);
+
   try {
-    const { limit = "5", page = "1" } = req.query;
-
-    const p = Number(page);
-    const lt = Number(limit);
-
     const allForm = await Form.find()
       .skip((p - 1) * lt)
       .limit(lt);
 
     return res.status(200).json({ ...ReturnCode(200), data: allForm });
   } catch (error) {
-    console.log("Get All Form", error);
+    console.error("Get All Form Error:", error);
     return res.status(500).json(ReturnCode(500));
   }
 }
@@ -604,344 +483,44 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
     }
 
     const p = Number(page);
-    const lt = Number(limit);
+    const lt = Math.min(Number(limit), 50);
 
-    // Early validation for query parameter
-    if (
-      [
-        "detail",
-        "solution",
-        "setting",
-        "search",
-        "type",
-        "createddate",
-        "modifieddate",
-        "preview",
-        "total",
-        "response",
-      ].includes(ty) &&
-      !q
-    ) {
+    const requiresQuery = [
+      "detail",
+      "solution",
+      "setting",
+      "search",
+      "type",
+      "createddate",
+      "modifieddate",
+      "preview",
+      "total",
+      "response",
+    ];
+    if (requiresQuery.includes(ty) && !q) {
       return res.status(400).json(ReturnCode(400, "Invalid query"));
     }
 
-    // Cache commonly used projections
-    const basicProjection = "title type createdAt updatedAt";
+    const user = req.user;
 
+    // Handle different query types with optimized logic
     switch (ty) {
       case "detail":
       case "solution":
-      case "response": {
-        const user = req.user;
-        if (!user) {
-          return res.status(401).json(ReturnCode(401));
-        }
+      case "response":
+        return await handleDetailQuery(res, ty, q as string, p, user);
 
-        let query: any;
-        if (
-          q &&
-          typeof q === "string" &&
-          q.length === 24 &&
-          /^[0-9a-fA-F]{24}$/.test(q)
-        ) {
-          query = { _id: q };
-        } else if (q && typeof q === "string") {
-          query = { title: q };
-        } else {
-          return res
-            .status(400)
-            .json(ReturnCode(400, "Invalid query parameter"));
-        }
+      case "total":
+        return await handleTotalQuery(res, q as string, user);
 
-        const detailForm = await Form.findOne(query)
-          .select(`${basicProjection} totalpage setting contentIds user owners`)
-          .populate({ path: "user", select: "email" })
-          .lean();
+      case "setting":
+        return await handleSettingQuery(res, q as string, user);
 
-        if (!detailForm) {
-          return res.status(400).json(ReturnCode(400, "No Form Found"));
-        }
+      case "user":
+        return await handleUserQuery(res, p, lt, user);
 
-        // Validate form access and get ownership flags
-        const { hasAccess, isOwner, isCollaborator } = validateFormAccess(
-          detailForm,
-          user.id.toString()
-        );
-
-        if (!hasAccess) {
-          return res.status(403).json(ReturnCode(403, "Access denied"));
-        }
-
-        const resultContent = await Content.find({
-          $and: [
-            {
-              _id: { $in: detailForm.contentIds },
-            },
-            { page: p },
-          ],
-        })
-          .select(
-            `_id qIdx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent ${
-              ty === "solution" ? "answer score hasAnswer isValidated" : ""
-            }`
-          )
-          .lean();
-
-        // Add validation summary for solution tab
-        let validationSummary = null;
-        if (ty === "solution") {
-          try {
-            validationSummary = await SolutionValidationService.validateForm(
-              q as string
-            );
-          } catch (error) {
-            console.error("Validation error:", error);
-          }
-        }
-
-        // Add access information to the response
-        const responseData = {
-          ...detailForm,
-          contents: groupContentByParent(
-            resultContent.map((i) => ({ ...i, _id: i._id.toString() }))
-          ),
-          contentIds: undefined,
-          validationSummary,
-          isOwner: isOwner,
-          isCollaborator: isCollaborator,
-        };
-
-        console.log(Array.from(responseData.contents.map((i) => i.qIdx)));
-
-        return res.status(200).json({
-          ...ReturnCode(200),
-          data: responseData,
-        });
-      }
-
-      case "total": {
-        const user = req.user;
-        if (!user) {
-          return res.status(401).json(ReturnCode(401));
-        }
-
-        // Validate that q is a valid ObjectId before using findById
-        if (!q || !isValidObjectIdString(q)) {
-          return res.status(400).json(ReturnCode(400, "Invalid form ID"));
-        }
-
-        const formdata = await Form.findById(q)
-          .select("totalpage totalscore contentIds user owners")
-          .populate({ path: "user", select: "email" })
-          .lean();
-
-        if (!formdata) {
-          return res.status(404).json(ReturnCode(404, "Form not found"));
-        }
-
-        // Validate form access and get access info
-        const { hasAccess, isOwner, isCollaborator } = validateFormAccess(
-          formdata,
-          user.id.toString()
-        );
-
-        if (!hasAccess) {
-          return res.status(403).json(ReturnCode(403, "Access denied"));
-        }
-
-        // Calculate actual total score from ALL questions in the form (not per page)
-        // This query gets ALL content/questions for the entire form across all pages
-        const allContents = await Content.find({ formId: formdata._id })
-          .select("type score")
-          .lean();
-
-        // Calculate total score excluding Text questions (which are display-only)
-        const actualTotalScore = allContents
-          .filter((content) => content.type !== QuestionType.Text)
-          .reduce((sum, content) => sum + (content.score || 0), 0);
-
-        // Get total count of actual questions (all content, not just contentIds)
-        const totalQuestionCount = allContents.length;
-
-        return res.status(200).json({
-          ...ReturnCode(200),
-          data: {
-            totalpage: formdata?.totalpage ?? 0,
-            totalscore: actualTotalScore,
-            totalquestion: totalQuestionCount,
-            isOwner,
-            isCollaborator,
-          },
-        });
-      }
-
-      case "setting": {
-        const user = req.user;
-        if (!user) {
-          return res.status(401).json(ReturnCode(401));
-        }
-
-        // Validate that q is a valid ObjectId before using findById
-        if (!q || !isValidObjectIdString(q)) {
-          return res.status(400).json(ReturnCode(400, "Invalid form ID"));
-        }
-
-        const form = await Form.findById(q)
-          .select("_id title type setting user owners")
-          .populate({ path: "user", select: "email" })
-          .lean();
-
-        if (!form) {
-          return res.status(404).json(ReturnCode(404, "Form not found"));
-        }
-
-        // Validate form access and get ownership flags
-        const { hasAccess, isOwner, isCollaborator } = validateFormAccess(
-          form,
-          user.id.toString()
-        );
-
-        if (!hasAccess) {
-          return res.status(403).json(ReturnCode(403, "Access denied"));
-        }
-
-        return res.status(200).json({
-          ...ReturnCode(200),
-          data: {
-            _id: form._id,
-            title: form.title,
-            type: form.type,
-            setting: form.setting,
-            isOwner: isOwner,
-            isCollaborator: isCollaborator,
-          },
-        });
-      }
-
-      case "user": {
-        const user = req.user;
-        if (!user) {
-          return res.status(401).json(ReturnCode(401));
-        }
-
-        // Build the query for user forms
-        const userQuery = {
-          $or: [{ user: user.id }, { owners: user.id }],
-        };
-
-        // Get total count for pagination
-        const totalCount = await Form.countDocuments(userQuery);
-
-        // Find forms where user is either the primary owner or a collaborator
-        const userForms = await Form.find(userQuery)
-          .skip((p - 1) * lt)
-          .limit(lt)
-          .select(basicProjection)
-          .populate({ path: "responses", select: "_id" })
-          .populate({ path: "user", select: "email" })
-          .lean();
-
-        const formattedForms = userForms.map((form) => ({
-          ...form,
-          updatedAt: form.updatedAt
-            ? FormatToGeneralDate(form.updatedAt)
-            : undefined,
-          createdAt: form.createdAt
-            ? FormatToGeneralDate(form.createdAt)
-            : undefined,
-          isOwner: form.user._id.toString() === user.id.toString(),
-          isCollaborator:
-            form.owners &&
-            form.owners.some(
-              (owner: any) => owner.toString() === user.id.toString()
-            ),
-        }));
-
-        // Calculate pagination metadata
-        const totalPages = Math.ceil(totalCount / lt);
-        const hasNextPage = p < totalPages;
-        const hasPrevPage = p > 1;
-
-        return res.status(200).json({
-          ...ReturnCode(200),
-          data: formattedForms,
-          pagination: {
-            currentPage: p,
-            totalPages,
-            totalCount,
-            limit: lt,
-            hasNextPage,
-            hasPrevPage,
-          },
-        });
-      }
-
-      default: {
-        // Handle search, type, createddate, modifieddate cases
-        const user = req.user;
-
-        const conditions =
-          {
-            search: { title: { $regex: q, $options: "i" } },
-            type: { type: q },
-            createddate: { createdAt: new Date(q as string) },
-            modifieddate: { updatedAt: new Date(q as string) },
-          }[ty as never] || {};
-
-        // Get total count for pagination
-        const totalCount = await Form.countDocuments(conditions);
-
-        const forms = await Form.find(conditions)
-          .skip((p - 1) * lt)
-          .limit(lt)
-          .select(basicProjection)
-          .populate({ path: "user", select: "email" })
-          .lean();
-
-        // Add access information to each form if user is authenticated
-        const formattedForms = forms.map((form) => {
-          if (!user) {
-            return {
-              ...form,
-              updatedAt: form.updatedAt,
-              createdAt: form.createdAt,
-              isOwner: false,
-              isCollaborator: false,
-            };
-          }
-
-          const { isOwner, isCollaborator } = validateFormAccess(
-            form,
-            user.id.toString()
-          );
-          return {
-            ...form,
-            updatedAt: form.updatedAt,
-
-            createdAt: form.createdAt,
-            isOwner,
-            isCollaborator,
-          };
-        });
-
-        // Calculate pagination metadata
-        const totalPages = Math.ceil(totalCount / lt);
-        const hasNextPage = p < totalPages;
-        const hasPrevPage = p > 1;
-
-        return res.status(200).json({
-          ...ReturnCode(200),
-          data: formattedForms,
-          pagination: {
-            currentPage: p,
-            totalPages,
-            totalCount,
-            limit: lt,
-            hasNextPage,
-            hasPrevPage,
-          },
-        });
-      }
+      default:
+        return await handleSearchQuery(res, ty, q as string, p, lt, user);
     }
   } catch (error) {
     console.error(
@@ -952,6 +531,278 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
   }
 }
 
+// Helper functions for GetFilterForm
+async function handleDetailQuery(
+  res: Response,
+  ty: string,
+  q: string,
+  p: number,
+  user: any,
+  page?: number
+) {
+  if (!user) return res.status(401).json(ReturnCode(401));
+
+  const query = isValidObjectIdString(q) ? { _id: q } : { title: q };
+  const detailForm = await Form.findOne(query)
+    .select(projections.detail)
+    .populate({ path: "user", select: "email", options: { lean: true } })
+    .lean()
+    .exec();
+
+  if (!detailForm)
+    return res.status(404).json(ReturnCode(404, "No Form Found"));
+
+  const accessInfo = validateAccess(detailForm, user.id);
+  if (!accessInfo.hasAccess)
+    return res.status(403).json(ReturnCode(403, "Access denied"));
+
+  const contentProjection =
+    ty === "solution"
+      ? "_id qIdx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent answer score hasAnswer isValidated"
+      : "_id qIdx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent";
+
+  const resultContent = await Content.find({
+    _id: { $in: detailForm.contentIds },
+    page: p,
+  })
+    .select(contentProjection)
+    .lean()
+    .exec();
+
+  let validationSummary = null;
+  if (ty === "solution") {
+    try {
+      validationSummary = await SolutionValidationService.validateForm(q);
+    } catch (error) {
+      console.error("Validation error:", error);
+    }
+  }
+
+  return res.status(200).json({
+    ...ReturnCode(200),
+    data: {
+      ...detailForm,
+      contents: groupContentByParent(resultContent),
+      contentIds: undefined,
+      validationSummary,
+      ...accessInfo,
+      ...(page &&
+        page > 1 && { lastqIdx: resultContent[resultContent.length - 1].qIdx }),
+    },
+  });
+}
+
+async function handleTotalQuery(res: Response, q: string, user: any) {
+  if (!user) return res.status(401).json(ReturnCode(401));
+  if (!isValidObjectIdString(q))
+    return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+
+  const formdata = await Form.findById(q)
+    .select(projections.total)
+    .populate({ path: "user", select: "email", options: { lean: true } })
+    .lean()
+    .exec();
+  if (!formdata) return res.status(404).json(ReturnCode(404, "Form not found"));
+
+  const accessInfo = validateAccess(formdata, user.id);
+  if (!accessInfo.hasAccess)
+    return res.status(403).json(ReturnCode(403, "Access denied"));
+
+  const contentStats = await Content.aggregate([
+    { $match: { formId: formdata._id } },
+    {
+      $group: {
+        _id: null,
+        totalQuestions: { $sum: 1 },
+        totalScore: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $ne: ["$type", QuestionType.Text] },
+                  { $not: { $ifNull: ["$parentcontent", false] } },
+                ],
+              },
+              { $ifNull: ["$score", 0] },
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  const stats = contentStats[0] || { totalQuestions: 0, totalScore: 0 };
+  return res.status(200).json({
+    ...ReturnCode(200),
+    data: {
+      totalpage: formdata.totalpage ?? 0,
+      totalscore: stats.totalScore,
+      totalquestion: stats.totalQuestions,
+      ...accessInfo,
+    },
+  });
+}
+
+async function handleSettingQuery(res: Response, q: string, user: any) {
+  if (!user) return res.status(401).json(ReturnCode(401));
+  if (!isValidObjectIdString(q))
+    return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+
+  const form = await Form.findById(q)
+    .select(projections.setting)
+    .populate({ path: "user", select: "email", options: { lean: true } })
+    .lean()
+    .exec();
+  if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
+
+  const accessInfo = validateAccess(form, user.id);
+  if (!accessInfo.hasAccess)
+    return res.status(403).json(ReturnCode(403, "Access denied"));
+
+  return res.status(200).json({
+    ...ReturnCode(200),
+    data: {
+      _id: form._id,
+      title: form.title,
+      type: form.type,
+      setting: form.setting,
+      ...accessInfo,
+    },
+  });
+}
+
+async function handleUserQuery(
+  res: Response,
+  p: number,
+  lt: number,
+  user: any
+) {
+  if (!user) return res.status(401).json(ReturnCode(401));
+
+  const userQuery = {
+    $or: [{ user: user.id }, { owners: user.id }, { editors: user.id }],
+  };
+  const [totalCount, userForms] = await Promise.all([
+    Form.countDocuments(userQuery),
+    Form.find(userQuery)
+      .skip((p - 1) * lt)
+      .limit(lt)
+      .select(projections.basic)
+      .populate({ path: "responses", select: "_id", options: { lean: true } })
+      .populate({ path: "user", select: "email", options: { lean: true } })
+      .sort({ updatedAt: -1 })
+      .lean()
+      .exec(),
+  ]);
+
+  const userIdStr = user.id.toString();
+  const formattedForms = userForms.map((form) => ({
+    ...form,
+    updatedAt: form.updatedAt ? FormatToGeneralDate(form.updatedAt) : undefined,
+    createdAt: form.createdAt ? FormatToGeneralDate(form.createdAt) : undefined,
+    isOwner: form.user._id.toString() === userIdStr,
+    isCollaborator:
+      form.owners?.some((owner: any) => owner.toString() === userIdStr) ||
+      form.editors?.some((editor: any) => editor.toString() === userIdStr),
+  }));
+
+  const totalPages = Math.ceil(totalCount / lt);
+  return res.status(200).json({
+    ...ReturnCode(200),
+    data: formattedForms,
+    pagination: {
+      currentPage: p,
+      totalPages,
+      totalCount,
+      limit: lt,
+      hasNextPage: p < totalPages,
+      hasPrevPage: p > 1,
+    },
+  });
+}
+
+async function handleSearchQuery(
+  res: Response,
+  ty: string,
+  q: string,
+  p: number,
+  lt: number,
+  user: any
+) {
+  let conditions: any = {};
+
+  switch (ty) {
+    case "search":
+      conditions = {
+        $or: [
+          { title: { $regex: q, $options: "i" } },
+          { description: { $regex: q, $options: "i" } },
+        ],
+      };
+      break;
+    case "type":
+      conditions = { type: q };
+      break;
+    case "createddate":
+      const createdDate = new Date(q);
+      conditions = {
+        createdAt: {
+          $gte: new Date(createdDate.setHours(0, 0, 0, 0)),
+          $lt: new Date(createdDate.setHours(23, 59, 59, 999)),
+        },
+      };
+      break;
+    case "modifieddate":
+      const modifiedDate = new Date(q);
+      conditions = {
+        updatedAt: {
+          $gte: new Date(modifiedDate.setHours(0, 0, 0, 0)),
+          $lt: new Date(modifiedDate.setHours(23, 59, 59, 999)),
+        },
+      };
+      break;
+  }
+
+  const [totalCount, forms] = await Promise.all([
+    Form.countDocuments(conditions),
+    Form.find(conditions)
+      .skip((p - 1) * lt)
+      .limit(lt)
+      .select(projections.basic)
+      .populate({ path: "user", select: "email", options: { lean: true } })
+      .sort({ updatedAt: -1 })
+      .lean()
+      .exec(),
+  ]);
+
+  const formattedForms = forms.map((form) => {
+    const accessInfo = user
+      ? validateAccess(form, user.id)
+      : { isPrimaryOwner: false, isOwner: false, isEditor: false };
+    return {
+      ...form,
+      updatedAt: form.updatedAt,
+      createdAt: form.createdAt,
+      ...accessInfo,
+    };
+  });
+
+  const totalPages = Math.ceil(totalCount / lt);
+  return res.status(200).json({
+    ...ReturnCode(200),
+    data: formattedForms,
+    pagination: {
+      currentPage: p,
+      totalPages,
+      totalCount,
+      limit: lt,
+      hasNextPage: p < totalPages,
+      hasPrevPage: p > 1,
+    },
+  });
+}
+
 export async function ValidateFormBeforeAction(
   req: CustomRequest,
   res: Response
@@ -960,22 +811,17 @@ export async function ValidateFormBeforeAction(
   const user = req.user;
 
   if (!user) {
-    return res.status(401).json(ReturnCode(401));
+    return res.status(401).json(ReturnCode(401, "Unauthorized"));
   }
 
-  if (!formId || typeof formId !== "string") {
-    return res.status(400).json(ReturnCode(400, "Form ID is required"));
-  }
-
-  // Validate that formId is a valid ObjectId
-  if (!isValidObjectIdString(formId)) {
-    return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
+  const validation = validateFormRequest(formId as string);
+  if (!validation.isValid) {
+    return res.status(400).json(ReturnCode(400, validation.error));
   }
 
   try {
-    // Check if user has access to this form
     const form = await Form.findById(formId)
-      .select("user owners")
+      .select("user owners editors")
       .populate({ path: "user", select: "email" })
       .lean();
 
@@ -983,52 +829,29 @@ export async function ValidateFormBeforeAction(
       return res.status(404).json(ReturnCode(404, "Form not found"));
     }
 
-    if (!hasFormAccess(form, user.id.toString())) {
+    if (!hasFormAccess(form, user.id)) {
       return res.status(403).json(ReturnCode(403, "Access denied"));
     }
 
-    const validationSummary = await SolutionValidationService.validateForm(
-      formId
-    );
-    const errors = await SolutionValidationService.getFormValidationErrors(
-      formId
-    );
+    const [validationSummary, errors] = await Promise.all([
+      SolutionValidationService.validateForm(formId as string),
+      SolutionValidationService.getFormValidationErrors(formId as string),
+    ]);
 
-    // Different validation requirements based on action
-    let canProceed = true;
-    let warnings: string[] = [];
-
-    switch (action) {
-      case "save":
-        // Allow saving even with missing answers/scores, just provide warnings
-        canProceed = true;
-        warnings = errors;
-        break;
-
-      case "next_page":
-      case "switch_tab":
-        // Allow navigation with warnings
-        canProceed = true;
-        warnings = errors;
-        break;
-
-      case "send_form":
-        // Strict validation for sending form
-        canProceed = errors.length === 0;
-        break;
-
-      default:
-        canProceed = errors.length === 0;
-    }
+    const canProceed = action === "send_form" ? errors.length === 0 : true;
+    const warnings = action === "send_form" ? [] : errors;
 
     return res.status(200).json({
       ...ReturnCode(200),
       data: {
         ...validationSummary,
-        errors,
+        errors: action === "send_form" ? errors : [],
         warnings,
         canProceed,
         action,
+        hasAccess: hasFormAccess,
+        isOwner: verifyRole(CollaboratorType.owner, form, user.id),
+        isEditor: verifyRole(CollaboratorType.editor, form, user.id),
       },
     });
   } catch (error) {
@@ -1036,3 +859,10 @@ export async function ValidateFormBeforeAction(
     return res.status(500).json(ReturnCode(500, "Failed to validate form"));
   }
 }
+
+// Re-export utilities for backward compatibility
+export {
+  hasFormAccess,
+  isPrimaryOwner,
+  verifyRole,
+} from "../utilities/formHelpers";

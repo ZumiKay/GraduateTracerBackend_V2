@@ -47,15 +47,15 @@ const Content_model_1 = __importStar(require("../model/Content.model"));
 const Form_model_1 = __importStar(require("../model/Form.model"));
 const mongoose_1 = require("mongoose");
 class SolutionValidationService {
-    /**
-     * Validates a single content/question for quiz requirements
-     */
-    static validateContent(content) {
+    static validateContent(content, parentScore) {
+        var _a;
         const errors = [];
         const warnings = [];
         const missingAnswers = [];
         const missingScores = [];
-        // Text type questions are for display only and don't need answers or scores
+        const questionTitle = content.qIdx
+            ? `Question ${content.qIdx}`
+            : `Condition of Question ${(_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qIdx}`;
         if (content.type === Content_model_1.QuestionType.Text) {
             return {
                 isValid: true,
@@ -75,7 +75,14 @@ class SolutionValidationService {
         if (content.score === null ||
             content.score === undefined ||
             content.score === 0) {
-            missingScores.push(`Question "${content.title}" has no score assigned`);
+            missingScores.push(`${questionTitle} has no score assigned`);
+        }
+        //validate conditioned question score
+        if (content.score && content.parentcontent && parentScore) {
+            const isValid = content.score > parentScore;
+            if (!isValid) {
+                missingScores.push(`${questionTitle} has wrong score`);
+            }
         }
         // Validate answer format based on question type
         if (content.answer && content.answer.answer) {
@@ -86,7 +93,7 @@ class SolutionValidationService {
         }
         // Check if required question has proper setup
         if (content.require && (!content.answer || !content.score)) {
-            errors.push(`Required question "${content.title}" must have both answer and score`);
+            errors.push(`Required ${questionTitle} must have both answer and score`);
         }
         const isValid = errors.length === 0 &&
             missingAnswers.length === 0 &&
@@ -99,9 +106,6 @@ class SolutionValidationService {
             missingScores,
         };
     }
-    /**
-     * Validates answer format based on question type
-     */
     static validateAnswerFormat(questionType, answer, content) {
         var _a, _b;
         const errors = [];
@@ -111,7 +115,6 @@ class SolutionValidationService {
                     errors.push("Multiple choice answer must be an array with at least one selection");
                 }
                 else {
-                    // Validate that answer indices exist in multiple options
                     const maxIndex = (((_a = content.multiple) === null || _a === void 0 ? void 0 : _a.length) || 0) - 1;
                     const invalidIndices = answer.filter((idx) => idx > maxIndex || idx < 0);
                     if (invalidIndices.length > 0) {
@@ -124,7 +127,6 @@ class SolutionValidationService {
                     errors.push("Checkbox answer must be an array");
                 }
                 else {
-                    // Validate that answer indices exist in checkbox options
                     const maxIndex = (((_b = content.checkbox) === null || _b === void 0 ? void 0 : _b.length) || 0) - 1;
                     const invalidIndices = answer.filter((idx) => idx > maxIndex || idx < 0);
                     if (invalidIndices.length > 0) {
@@ -173,9 +175,6 @@ class SolutionValidationService {
         }
         return { isValid: errors.length === 0, errors };
     }
-    /**
-     * Helper method to validate date strings
-     */
     static isValidDateString(date) {
         if (date instanceof Date)
             return !isNaN(date.getTime());
@@ -185,9 +184,6 @@ class SolutionValidationService {
         }
         return false;
     }
-    /**
-     * Helper method to validate range objects
-     */
     static isValidRangeObject(obj) {
         return obj && typeof obj === "object" && "start" in obj && "end" in obj;
     }
@@ -196,28 +192,29 @@ class SolutionValidationService {
      */
     static validateForm(formId) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             const form = yield Form_model_1.default.findById(formId);
             if (!form) {
                 throw new Error("Form not found");
             }
-            const contents = yield Content_model_1.default.find({ formId: new mongoose_1.Types.ObjectId(formId) });
+            const contents = yield Content_model_1.default.find({
+                formId: new mongoose_1.Types.ObjectId(formId),
+            }).lean();
             const validationResults = [];
             let totalValidQuestions = 0;
             let totalInvalidQuestions = 0;
             let totalScore = 0;
             for (const content of contents) {
-                // Text questions are display-only and should be excluded from validation counting
                 if (content.type === Content_model_1.QuestionType.Text) {
                     const result = this.validateContent(content);
                     validationResults.push(result);
-                    // Text questions are always valid and don't count toward totals or scores
                     continue;
                 }
-                const result = this.validateContent(content);
+                const parentScore = (_a = contents.find((ques) => { var _a; return ques._id === ((_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qId); })) === null || _a === void 0 ? void 0 : _a.score;
+                const result = this.validateContent(content, parentScore);
                 validationResults.push(result);
-                // Add score to total regardless of validation status (total represents max possible score)
-                totalScore += content.score || 0;
+                if (!content.parentcontent)
+                    totalScore += content.score || 0;
                 if (result.isValid) {
                     totalValidQuestions++;
                 }
@@ -225,13 +222,11 @@ class SolutionValidationService {
                     totalInvalidQuestions++;
                 }
             }
-            // Calculate actual scorable questions (excluding Text type)
             const scorableQuestions = contents.filter((content) => content.type !== Content_model_1.QuestionType.Text);
-            // Determine if form can return score automatically
             const canReturnScoreAutomatically = form.type === Form_model_1.TypeForm.Quiz &&
                 totalInvalidQuestions === 0 &&
                 scorableQuestions.length > 0 &&
-                ((_a = form.setting) === null || _a === void 0 ? void 0 : _a.returnscore) === Form_model_1.returnscore.partial;
+                ((_b = form.setting) === null || _b === void 0 ? void 0 : _b.returnscore) === Form_model_1.returnscore.partial;
             return {
                 canReturnScoreAutomatically,
                 totalValidQuestions,
@@ -241,9 +236,6 @@ class SolutionValidationService {
             };
         });
     }
-    /**
-     * Get validation errors for form before saving/sending
-     */
     static getFormValidationErrors(formId) {
         return __awaiter(this, void 0, void 0, function* () {
             const summary = yield this.validateForm(formId);
@@ -262,19 +254,16 @@ class SolutionValidationService {
             return errors;
         });
     }
-    /**
-     * Calculate response score
-     */
     static calculateResponseScore(userAnswer, correctAnswer, questionType, maxScore) {
         if (!correctAnswer || maxScore === 0)
             return 0;
         switch (questionType) {
             case Content_model_1.QuestionType.Text:
-                // Text questions are display-only and don't contribute to scoring
                 return 0;
             case Content_model_1.QuestionType.MultipleChoice:
-            case Content_model_1.QuestionType.CheckBox:
+            case Content_model_1.QuestionType.CheckBox: {
                 return this.calculateArrayScore(userAnswer, correctAnswer, maxScore);
+            }
             case Content_model_1.QuestionType.ShortAnswer:
             case Content_model_1.QuestionType.Paragraph:
                 return this.calculateTextScore(userAnswer, correctAnswer, maxScore);
@@ -299,14 +288,12 @@ class SolutionValidationService {
             return 0;
         const userSet = new Set(userAnswer);
         const correctSet = new Set(correctAnswer);
-        // Calculate intersection and union for partial scoring
         const intersection = new Set([...userSet].filter((x) => correctSet.has(x)));
         const union = new Set([...userSet, ...correctSet]);
         if (intersection.size === correctSet.size &&
             userSet.size === correctSet.size) {
-            return maxScore; // Perfect match
+            return maxScore;
         }
-        // Partial scoring based on Jaccard similarity
         const similarity = intersection.size / union.size;
         return Math.round(maxScore * similarity);
     }
@@ -320,7 +307,6 @@ class SolutionValidationService {
         const correctText = correctAnswer.trim().toLowerCase();
         if (userText === correctText)
             return maxScore;
-        // Simple similarity check (can be enhanced with more sophisticated algorithms)
         const similarity = this.calculateTextSimilarity(userText, correctText);
         return similarity > 0.8 ? maxScore : 0;
     }
@@ -347,9 +333,6 @@ class SolutionValidationService {
         const correctEnd = new Date(correctAnswer.end).getTime() || correctAnswer.end;
         return userStart === correctStart && userEnd === correctEnd ? maxScore : 0;
     }
-    /**
-     * Simple text similarity calculation (can be enhanced)
-     */
     static calculateTextSimilarity(text1, text2) {
         const words1 = text1.split(/\s+/);
         const words2 = text2.split(/\s+/);

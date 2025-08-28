@@ -5,6 +5,10 @@
  * organizes parent and child questions in the proper order.
  */
 
+import { Types } from "mongoose";
+import { ResponseSetType } from "../../model/Response.model";
+import { ContentType } from "../../model/Content.model";
+
 describe("groupContentByParent basic tests", () => {
   // We'll manually mock the function to avoid dependency issues
   const mockGroupContentByParent = (data: any[]): any[] => {

@@ -46,6 +46,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserValidate = void 0;
+exports.GetRespondentProfile = GetRespondentProfile;
 exports.RegisterUser = RegisterUser;
 exports.EditUser = EditUser;
 exports.DeleteUser = DeleteUser;
@@ -63,6 +64,23 @@ exports.UserValidate = zod_1.z.object({
         role: zod_1.z.nativeEnum(User_model_1.ROLE).optional(),
     }),
 });
+function GetRespondentProfile(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const data = req.body;
+        try {
+            const profile = yield User_model_1.default.findOne({ email: data.email })
+                .select("_id")
+                .lean();
+            if (profile) {
+                return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: profile }));
+            }
+            return res.status(404).json((0, helper_1.ReturnCode)(404, "No User Found"));
+        }
+        catch (error) {
+            return res.status(500).json((0, helper_1.ReturnCode)(500));
+        }
+    });
+}
 function RegisterUser(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         const data = req.body;

@@ -3,10 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CheckCondition = exports.hasArrayChange = exports.FormatToGeneralDate = exports.getDateByMinute = exports.getDateByNumDay = exports.GenerateToken = exports.RandomNumber = exports.hashedPassword = exports.ValidatePassword = void 0;
+exports.GetAnswerKeyForQuestion = exports.GetAnswerKeyPairValue = exports.groupContentByParent = exports.CheckCondition = exports.hasArrayChange = exports.FormatToGeneralDate = exports.getDateByMinute = exports.getDateByNumDay = exports.GenerateToken = exports.RandomNumber = exports.hashedPassword = exports.ValidatePassword = void 0;
 exports.ReturnCode = ReturnCode;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const Content_model_1 = require("../model/Content.model");
 function ReturnCode(code, custommess) {
     const returnValue = (code, message) => ({ code, message });
     let message = "";
@@ -138,3 +139,113 @@ const CheckCondition = (allcontent, qId, qIdx) => {
     };
 };
 exports.CheckCondition = CheckCondition;
+const groupContentByParent = (data) => {
+    var _a;
+    if (!data.length)
+        return [];
+    const childrenMap = new Map();
+    const processed = new Set();
+    const result = [];
+    //Extract Child
+    for (let i = 0; i < data.length; i++) {
+        const item = data[i];
+        if (!item._id)
+            continue;
+        if ((_a = item.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) {
+            const parentId = item.parentcontent.qId;
+            if (!childrenMap.has(parentId)) {
+                childrenMap.set(parentId, []);
+            }
+            childrenMap.get(parentId).push(item);
+        }
+    }
+    const addWithChildren = (item) => {
+        if (!item._id || processed.has(item._id))
+            return;
+        // Add the item itself
+        result.push(item);
+        processed.add(item._id);
+        const children = childrenMap.get(item._id);
+        if (children && children.length > 0) {
+            // Sort children by qIdx in descending order (higher qIdx first)
+            children.sort((a, b) => {
+                const aIdx = a.qIdx || 0;
+                const bIdx = b.qIdx || 0;
+                return bIdx - aIdx; // Descending order
+            });
+            for (const child of children) {
+                addWithChildren(child);
+            }
+        }
+    };
+    const topLevelItems = data.filter((item) => item._id && !item.parentcontent);
+    topLevelItems.sort((a, b) => {
+        const aIdx = a.qIdx || 0;
+        const bIdx = b.qIdx || 0;
+        return aIdx - bIdx; // Ascending order for top-level items
+    });
+    for (const item of topLevelItems) {
+        if (!processed.has(item._id)) {
+            addWithChildren(item);
+        }
+    }
+    //Others
+    for (let i = 0; i < data.length; i++) {
+        const item = data[i];
+        if (item._id && !processed.has(item._id)) {
+            addWithChildren(item);
+        }
+    }
+    return result;
+};
+exports.groupContentByParent = groupContentByParent;
+//Extract Answer Key Value
+const GetAnswerKeyPairValue = (content) => {
+    var _a;
+    const questionContent = content.question;
+    const questionType = questionContent.type;
+    const response = content.response;
+    if (questionType !== Content_model_1.QuestionType.CheckBox &&
+        questionType !== Content_model_1.QuestionType.MultipleChoice &&
+        questionType !== Content_model_1.QuestionType.Selection) {
+        return response;
+    }
+    const choices = questionContent[questionType];
+    if (!choices || !Array.isArray(choices)) {
+        return { key: response, val: response };
+    }
+    if (questionType === Content_model_1.QuestionType.CheckBox && Array.isArray(response)) {
+        const selectedChoices = choices
+            .filter((choice) => response.includes(choice.idx))
+            .map((choice) => choice.content);
+        return { key: response, val: selectedChoices };
+    }
+    const matchingChoice = choices.find((choice) => choice.idx === response);
+    const val = (_a = matchingChoice === null || matchingChoice === void 0 ? void 0 : matchingChoice.content) !== null && _a !== void 0 ? _a : response;
+    return { key: response, val };
+};
+exports.GetAnswerKeyPairValue = GetAnswerKeyPairValue;
+const GetAnswerKeyForQuestion = (content) => {
+    var _a, _b, _c;
+    if (content.type !== Content_model_1.QuestionType.CheckBox &&
+        content.type !== Content_model_1.QuestionType.MultipleChoice &&
+        content.type !== Content_model_1.QuestionType.Selection) {
+        return content.answer;
+    }
+    if (content.type === Content_model_1.QuestionType.CheckBox) {
+        const val = content.checkbox;
+        const answerkey = (_a = content.answer) === null || _a === void 0 ? void 0 : _a.answer;
+        if (!answerkey || !val)
+            return;
+        const result = val
+            .map((i) => {
+            if (answerkey.includes(i.idx)) {
+                return { key: i.idx, val: i.content };
+            }
+        })
+            .filter(Boolean);
+        return result;
+    }
+    return (_c = (_b = content[content.type]) === null || _b === void 0 ? void 0 : _b.filter((i) => { var _a; return i.idx === ((_a = content.answer) === null || _a === void 0 ? void 0 : _a.answer); })) === null || _c === void 0 ? void 0 : _c[0];
+};
+exports.GetAnswerKeyForQuestion = GetAnswerKeyForQuestion;

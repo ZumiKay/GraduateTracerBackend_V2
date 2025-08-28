@@ -18,7 +18,7 @@ export interface RangeType<t> {
   end: t;
 }
 
-export interface CheckboxQuestionType {
+export interface ChoiceQuestionType {
   _id?: Types.ObjectId;
   idx: number;
   content: string;
@@ -51,14 +51,14 @@ export interface AnswerKey {
 }
 
 export interface ContentType {
-  _id?: string;
+  _id?: Types.ObjectId;
   title: ContentTitle;
   type: QuestionType;
   qIdx: number;
   formId: Types.ObjectId;
-  multiple?: Array<CheckboxQuestionType>;
+  multiple?: Array<ChoiceQuestionType>;
   text?: string;
-  checkbox?: Array<CheckboxQuestionType>;
+  checkbox?: Array<ChoiceQuestionType>;
   range?: RangeType<string>;
   numrange?: RangeType<number>;
   rangedate?: RangeType<Date>;
@@ -68,14 +68,17 @@ export interface ContentType {
   answer?: AnswerKey;
   conditional?: Array<ConditionalType>;
   parentcontent?: ParentContentType;
+  selection?: Array<ChoiceQuestionType>;
   require?: boolean;
   page?: number;
   hasAnswer?: boolean; // Flag to indicate if question has an answer
   isValidated?: boolean; // Flag to indicate if question is validated
+  updatedAt?: Date;
+  createdAt?: Date;
 }
 
 //Sub Documents
-const CheckboxQuestionSchema = new Schema<CheckboxQuestionType>({
+const ChoiceQuestionSchema = new Schema<ChoiceQuestionType>({
   idx: {
     type: Number,
     required: true,
@@ -144,79 +147,85 @@ const TitleSchema = new Schema<ContentTitle>({
 
 //Parent Document
 
-const ContentSchema = new Schema<ContentType>({
-  formId: {
-    type: Schema.ObjectId,
-    required: true,
+const ContentSchema = new Schema<ContentType>(
+  {
+    formId: {
+      type: Schema.ObjectId,
+      required: true,
+    },
+    qIdx: {
+      type: "number",
+      required: true,
+    },
+    title: {
+      type: TitleSchema,
+      required: true,
+    },
+    type: {
+      type: "string",
+      enum: Object.values(QuestionType),
+      required: true,
+    },
+    text: {
+      type: "string",
+    },
+    checkbox: {
+      type: [ChoiceQuestionSchema],
+    },
+    multiple: {
+      type: [ChoiceQuestionSchema],
+    },
+    range: {
+      type: RangeSchema,
+    },
+    selection: {
+      type: [ChoiceQuestionSchema],
+    },
+    numrange: {
+      type: RangeSchema,
+    },
+    rangedate: {
+      type: RangeSchema,
+    },
+    rangenumber: {
+      type: RangeSchema,
+    },
+    date: {
+      type: Date,
+    },
+    answer: {
+      type: AnswerKeySchema,
+    },
+    conditional: {
+      type: [ConditionalSchema],
+    },
+    parentcontent: {
+      type: Object,
+      required: false,
+    },
+    score: {
+      type: Number,
+      default: 0,
+    },
+    require: {
+      type: Boolean,
+      default: false,
+    },
+    page: {
+      type: Number,
+      default: 1,
+    },
+    hasAnswer: {
+      type: Boolean,
+      default: false,
+    },
+    isValidated: {
+      type: Boolean,
+      default: false,
+    },
   },
-  qIdx: {
-    type: "number",
-    required: true,
-  },
-  title: {
-    type: TitleSchema,
-    required: true,
-  },
-  type: {
-    type: "string",
-    enum: Object.values(QuestionType),
-    required: true,
-  },
-  text: {
-    type: "string",
-  },
-  checkbox: {
-    type: [CheckboxQuestionSchema],
-  },
-  multiple: {
-    type: [CheckboxQuestionSchema],
-  },
-  range: {
-    type: RangeSchema,
-  },
-  numrange: {
-    type: RangeSchema,
-  },
-  rangedate: {
-    type: RangeSchema,
-  },
-  rangenumber: {
-    type: RangeSchema,
-  },
-  date: {
-    type: Date,
-  },
-  answer: {
-    type: AnswerKeySchema,
-  },
-  conditional: {
-    type: [ConditionalSchema],
-  },
-  parentcontent: {
-    type: Object,
-    required: false,
-  },
-  score: {
-    type: Number,
-    default: 0,
-  },
-  require: {
-    type: Boolean,
-    default: false,
-  },
-  page: {
-    type: Number,
-    default: 1,
-  },
-  hasAnswer: {
-    type: Boolean,
-    default: false,
-  },
-  isValidated: {
-    type: Boolean,
-    default: false,
-  },
-});
+  { timestamps: true }
+);
 
 //Pre-save middleware to update form total score
 ContentSchema.pre("save", async function (next) {
