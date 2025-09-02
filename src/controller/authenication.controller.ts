@@ -8,10 +8,12 @@ import {
   RandomNumber,
   ReturnCode,
 } from "../utilities/helper";
-import bcrypt from "bcrypt";
+import bcrypt, { compareSync } from "bcrypt";
 import Usersession from "../model/Usersession.model";
 import HandleEmail from "../utilities/email";
 import JWT from "jsonwebtoken";
+import { isObjectIdOrHexString, Types } from "mongoose";
+import { randomUUID } from "crypto";
 
 interface Logindata {
   email: string;
@@ -160,8 +162,17 @@ class AuthenticationController {
 
       // Verify the refresh token is still valid
       const userSession = await Usersession.findOne({
-        session_id: refreshToken,
-        expireAt: { $gte: new Date() },
+        $and: [
+          {
+            session_id: refreshToken,
+          },
+          {
+            expireAt: { $gte: new Date() },
+          },
+          {
+            respondent: null,
+          },
+        ],
       }).populate({ path: "user", select: "_id email role" });
 
       if (!userSession || !userSession.user) {
@@ -254,6 +265,80 @@ class AuthenticationController {
       return res.status(500).json(ReturnCode(500));
     }
   };
+  public RespodnentLogin = async (req: Request, res: Response) => {
+    const {
+      email,
+      password,
+      isGuest,
+    }: { email: string; password: string; isGuest?: boolean } = req.body;
+    try {
+      if (isGuest) {
+        const isSessionActive = await Usersession.findOne({
+          guest: email,
+        }).lean();
+
+        if (isSessionActive) {
+          if (this.isDateExpire(isSessionActive.expireAt)) {
+            await Usersession.deleteOne({
+              session_id: isSessionActive.session_id,
+            });
+          }
+        }
+        const session_id = GenerateToken({ email }, "1h");
+        await Usersession.create({
+          session_id,
+        });
+
+        return res.status(200).json({
+          ...ReturnCode(200),
+          data: {
+            session_id,
+          },
+        });
+      } else {
+        const isUser = await User.findOne({ email })
+          .select("_id password ")
+          .lean()
+          .exec();
+        if (!isUser) return res.status(401).json(ReturnCode(401));
+
+        const compareUser = compareSync(password, isUser.password);
+
+        if (!compareUser) throw "Invalid Credential";
+
+        return res.status(200).json(ReturnCode(200));
+      }
+    } catch (error) {
+      const err = error as Error;
+      console.log("Respondent Login", err);
+      return res
+        .status(500)
+        .json(ReturnCode(500, err?.message ?? "Error Occured"));
+    }
+  };
+
+  public CheckRespondentSession = async (req: Request, res: Response) => {
+    const { id } = req.query as { id: string };
+    try {
+      if (!id || !isObjectIdOrHexString(new Types.ObjectId(id)))
+        return res.status(400).json(ReturnCode(400));
+
+      const respondentSession = await Usersession.findOne({
+        session_id: id,
+      })
+        .select("session_id expireAt")
+        .lean();
+
+      if (!respondentSession) return res.status(401).json(ReturnCode(401));
+
+      return res
+        .status(200)
+        .json({ ...ReturnCode(200), data: respondentSession });
+    } catch (error) {
+      console.log("Check Respondent Session", error);
+      return res.status(500).json(ReturnCode(500));
+    }
+  };
 
   private setAccessTokenCookie(res: Response, token: string): void {
     res.cookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", token, {
@@ -289,6 +374,10 @@ class AuthenticationController {
       httpOnly: true,
       secure: process.env.NODE_ENV === "PROD",
     });
+  }
+  private isDateExpire(val: Date) {
+    const now = new Date();
+    return val.getTime() < now.getTime();
   }
 }
 

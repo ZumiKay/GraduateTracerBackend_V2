@@ -131,10 +131,21 @@ UserRoute.put(
   PageHandler as unknown as RequestHandler
 );
 
-// Public Form Access Route (no authentication required)
+//Respondent Form Authentication
 UserRoute.get(
   "/form/:formId",
   form_responseController.GetPublicFormData as unknown as RequestHandler
+);
+
+UserRoute.get(
+  "/respondent/session",
+  authenicationController.CheckRespondentSession as unknown as RequestHandler
+);
+UserRoute.post(
+  "/respondent/login",
+  TrafficControl.LoginRateLimit,
+  validate(UserValidate) as never,
+  authenicationController.RespodnentLogin as unknown as RequestHandler
 );
 
 //Form Owner Management Routes

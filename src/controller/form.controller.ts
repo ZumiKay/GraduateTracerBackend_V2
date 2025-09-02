@@ -46,11 +46,12 @@ export const ManageFormCollaborator = async (
     const user = req.user;
 
     if (!user) return res.status(401).json(ReturnCode(401));
-    if (!email || !role || !action || !formId)
+
+    if (!email || (action === "remove" ? false : !role) || !action || !formId)
       return res.status(400).json(ReturnCode(400, "Missing required fields"));
     if (!isValidObjectIdString(formId))
       return res.status(400).json(ReturnCode(400, "Invalid form ID"));
-    if (!["owner", "editor"].includes(role))
+    if (action === "add" && !["owner", "editor"].includes(role))
       return res.status(400).json(ReturnCode(400, "Invalid role"));
     if (!["add", "remove"].includes(action))
       return res.status(400).json(ReturnCode(400, "Invalid action"));
@@ -59,7 +60,13 @@ export const ManageFormCollaborator = async (
       .populate("user", "email _id")
       .exec();
     if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
-    if (form.user._id.toString() !== user.id.toString())
+    const { isCreator, isOwner } = validateAccess(form, user.id);
+
+    if (
+      action === "remove" || role !== CollaboratorType.editor
+        ? !isCreator
+        : !(isCreator || isOwner)
+    )
       return res
         .status(403)
         .json(ReturnCode(403, "Only form owner can manage collaborators"));
@@ -142,7 +149,13 @@ export async function GetFormCollaborators(req: CustomRequest, res: Response) {
       .populate("user owners editors", "email")
       .lean();
     if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
-    if (!verifyRole(CollaboratorType.owner, form, currentUser.id))
+
+    console.log(form.user);
+    console.log(currentUser);
+    if (
+      !form.user._id.equals(currentUser.id) &&
+      !verifyRole(CollaboratorType.owner, form, currentUser.id)
+    )
       return res.status(403).json(ReturnCode(403, "Access denied"));
 
     const formCreator = form.user as unknown as UserType;
@@ -159,7 +172,7 @@ export async function GetFormCollaborators(req: CustomRequest, res: Response) {
       (form.owners as unknown as UserType[])?.map((i) => ({
         _id: i._id,
         email: i.email,
-        name: formCreator.email?.split("@")[0] || "Unknown",
+        name: i.email?.split("@")[0] || "Unknown",
         role: CollaboratorType.owner,
       }));
     const allEditors =
@@ -167,8 +180,8 @@ export async function GetFormCollaborators(req: CustomRequest, res: Response) {
       (form.editors as unknown as UserType[])?.map((i) => ({
         _id: i._id,
         email: i.email,
-        name: formCreator.email?.split("@")[0] || "Unknown",
-        role: CollaboratorType.owner,
+        name: i.email?.split("@")[0] || "Unknown",
+        role: CollaboratorType.editor,
       }));
 
     return res.status(200).json({
@@ -384,6 +397,7 @@ export async function PageHandler(req: CustomRequest, res: Response) {
     return res.status(401).json(ReturnCode(401, "Unauthorized"));
   }
 
+  //Validate request body
   const validation = validateFormRequest(formId);
   if (!validation.isValid) {
     return res.status(400).json(ReturnCode(400, validation.error));
@@ -406,7 +420,9 @@ export async function PageHandler(req: CustomRequest, res: Response) {
     }
 
     if (!hasFormAccess(form, user.id)) {
-      return res.status(403).json(ReturnCode(403, "Access denied"));
+      return res
+        .status(403)
+        .json(ReturnCode(403, "You have no access for this"));
     }
 
     if (ty === "add") {
@@ -508,7 +524,14 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
       case "detail":
       case "solution":
       case "response":
-        return await handleDetailQuery(res, ty, q as string, p, user);
+        return await handleDetailQuery(
+          res,
+          ty,
+          q as string,
+          p,
+          user,
+          Number(page ?? "1")
+        );
 
       case "total":
         return await handleTotalQuery(res, q as string, user);
@@ -558,16 +581,8 @@ async function handleDetailQuery(
 
   const contentProjection =
     ty === "solution"
-      ? "_id qIdx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent answer score hasAnswer isValidated"
-      : "_id qIdx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent";
-
-  const resultContent = await Content.find({
-    _id: { $in: detailForm.contentIds },
-    page: p,
-  })
-    .select(contentProjection)
-    .lean()
-    .exec();
+      ? "_id qIdx title type text multiple checkbox selection rangedate rangenumber date require page conditional parentcontent answer score hasAnswer isValidated"
+      : "_id qIdx title type text multiple checkbox selection rangedate rangenumber date require page conditional parentcontent";
 
   let validationSummary = null;
   if (ty === "solution") {
@@ -576,6 +591,29 @@ async function handleDetailQuery(
     } catch (error) {
       console.error("Validation error:", error);
     }
+  }
+  const resultContent = await Content.find({
+    _id: { $in: detailForm.contentIds },
+    page: p,
+  })
+    .select(contentProjection)
+    .lean()
+    .exec();
+
+  // Get last qIdx from previous page if current page > 1
+  let lastQIdxFromPrevPage = null;
+  if (page && page > 1) {
+    const prevPageContent = await Content.find({
+      _id: { $in: detailForm.contentIds },
+      page: page - 1,
+    })
+      .select("qIdx")
+      .sort({ qIdx: -1 })
+      .limit(1)
+      .lean()
+      .exec();
+
+    lastQIdxFromPrevPage = prevPageContent[0]?.qIdx || null;
   }
 
   return res.status(200).json({
@@ -587,7 +625,9 @@ async function handleDetailQuery(
       validationSummary,
       ...accessInfo,
       ...(page &&
-        page > 1 && { lastqIdx: resultContent[resultContent.length - 1].qIdx }),
+        page > 1 && {
+          lastqIdx: lastQIdxFromPrevPage,
+        }),
     },
   });
 }
@@ -822,7 +862,6 @@ export async function ValidateFormBeforeAction(
   try {
     const form = await Form.findById(formId)
       .select("user owners editors")
-      .populate({ path: "user", select: "email" })
       .lean();
 
     if (!form) {

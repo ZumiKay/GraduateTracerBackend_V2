@@ -14,7 +14,7 @@ class QuestionController {
 
   public SaveQuestion = async (req: Request, res: Response) => {
     try {
-      const { data, formId, page } = req.body as {
+      let { data, formId, page } = req.body as {
         data: Array<ContentType>;
         formId: string;
         page?: number;
@@ -22,6 +22,27 @@ class QuestionController {
 
       if (!Array.isArray(data) || !formId || page === undefined) {
         return res.status(400).json(ReturnCode(400, "Invalid request payload"));
+      }
+
+      //Orgainize Date
+      if (data.some((i) => i.date || i.rangedate)) {
+        data = data.map((i) => {
+          const date = i.date
+            ? this.convertStringToDate(String(i.date))
+            : undefined;
+
+          let rangedate;
+          if (i.rangedate) {
+            const start = this.convertStringToDate(String(i.rangedate.start));
+            const end = this.convertStringToDate(String(i.rangedate.end));
+
+            if (start && end) {
+              rangedate = { start: start as Date, end: end as Date };
+            }
+          }
+
+          return { ...i, date, rangedate };
+        });
       }
 
       //Extract Content Not To Delete
@@ -375,12 +396,20 @@ class QuestionController {
     }
   }
 
+  private convertStringToDate(val: string): Date | undefined {
+    const date = new Date(val);
+
+    if (isNaN(date.getTime())) {
+      return;
+    }
+
+    return date;
+  }
   //Check for changed key of content
   private efficientChangeDetection(
     existing: ContentType[],
     incoming: ContentType[]
   ): boolean {
-    // Early exit: different lengths mean changes exist
     if (existing.length !== incoming.length) {
       if (process.env.NODE_ENV === "DEV") {
         console.log(
@@ -393,10 +422,8 @@ class QuestionController {
       return false; // Changes detected
     }
 
-    // Early exit: empty arrays are considered unchanged
     if (existing.length === 0) return true;
 
-    // Create a Map for O(1) lookups instead of O(n) array searches
     const existingMap = new Map<string, ContentType>();
     for (const item of existing) {
       if (item._id) {
@@ -404,12 +431,10 @@ class QuestionController {
       }
     }
 
-    // Check each incoming item for changes
     for (const incomingItem of incoming) {
       const { _id, ...incomingData } = incomingItem;
 
       if (!_id) {
-        // New item without ID means changes exist
         if (process.env.NODE_ENV === "DEV") {
           console.log("⚡ New item detected without ID");
         }
@@ -418,14 +443,12 @@ class QuestionController {
 
       const existingItem = existingMap.get(_id.toString());
       if (!existingItem) {
-        // Item not found in existing means changes exist
         if (process.env.NODE_ENV === "DEV") {
           console.log("⚡ Item not found in existing:", _id.toString());
         }
         return false;
       }
 
-      // Compare the items (excluding _id and system fields)
       const {
         _id: existingId,
         createdAt,
@@ -434,12 +457,7 @@ class QuestionController {
       } = existingItem;
 
       if (!this.deepEqual(existingData, incomingData)) {
-        if (process.env.NODE_ENV === "DEV") {
-          console.log("⚡ Change detected in item:", _id.toString());
-          console.log("Existing data:", existingData);
-          console.log("Incoming data:", incomingData);
-        }
-        return false; // Changes detected
+        return false;
       }
     }
 
@@ -450,9 +468,6 @@ class QuestionController {
     return true;
   }
 
-  /**
-   * Deep equality check for objects with performance optimizations
-   */
   private deepEqual(obj1: any, obj2: any): boolean {
     const cacheKey = this.generateCacheKey(obj1, obj2);
 
@@ -467,9 +482,6 @@ class QuestionController {
     return result;
   }
 
-  /**
-   * Generate a cache key for comparison results
-   */
   private generateCacheKey(obj1: any, obj2: any): string {
     try {
       const type1 = typeof obj1;
@@ -499,22 +511,18 @@ class QuestionController {
   private performDeepEqual(obj1: any, obj2: any): boolean {
     if (obj1 === obj2) return true;
 
-    // Check for null/undefined
     if (obj1 == null || obj2 == null) {
       return obj1 === obj2;
     }
 
-    // Type check
     if (typeof obj1 !== typeof obj2) {
       return false;
     }
 
-    // Handle primitives
     if (typeof obj1 !== "object") {
       return obj1 === obj2;
     }
 
-    // Handle dates
     if (obj1 instanceof Date && obj2 instanceof Date) {
       return obj1.getTime() === obj2.getTime();
     }
@@ -523,7 +531,6 @@ class QuestionController {
       return false;
     }
 
-    // Handle arrays
     if (Array.isArray(obj1) !== Array.isArray(obj2)) {
       return false;
     }
@@ -539,7 +546,6 @@ class QuestionController {
       return true;
     }
 
-    // Handle MongoDB ObjectIds (check if they have toString method)
     if (
       obj1.toString &&
       obj2.toString &&
@@ -557,7 +563,6 @@ class QuestionController {
       }
     }
 
-    // Handle objects
     const keys1 = Object.keys(obj1);
     const keys2 = Object.keys(obj2);
 

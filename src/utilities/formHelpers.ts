@@ -15,6 +15,7 @@ export function hasFormAccess(form: FormType, userId: Types.ObjectId): boolean {
 
     form.editors?.forEach((i) => HaveAccessID.add(i._id.toString()));
     form.owners?.forEach((i) => HaveAccessID.add(i._id.toString()));
+    form.user.equals(userId) && HaveAccessID.add(userId.toString());
 
     return HaveAccessID.has(userIdStr);
   } catch (error) {
@@ -57,13 +58,13 @@ export function verifyRole(
 
 // Centralized access validation helper
 export function validateAccess(form: any, userId: Types.ObjectId) {
-  const userIdStr = userId.toString();
-  const isPrimary = isPrimaryOwner(form, userIdStr);
+  const userIdStr = userId?.toString();
+  const isCreator = isPrimaryOwner(form, userIdStr);
   const isOwner = verifyRole(CollaboratorType.owner, form, userId);
   const isEditor = verifyRole(CollaboratorType.editor, form, userId);
-  const hasAccess = isPrimary || isOwner || isEditor;
+  const hasAccess = isCreator || isOwner || isEditor;
 
-  return { hasAccess, isPrimary, isOwner, isEditor };
+  return { hasAccess, isCreator, isOwner, isEditor };
 }
 
 // Optimized projections for different use cases
