@@ -37,10 +37,10 @@ export interface FormResponseType {
   guest?: GuestType;
   responseset: Array<ResponseSetType>;
   returnscore?: returnscore;
-  totalScore?: number; // Total score for this response
-  isCompleted?: boolean; // Flag to indicate if response is completed
-  submittedAt?: Date; // Timestamp when response was submitted
-  isAutoScored?: boolean; // Flag to indicate if response was auto-scored
+  totalScore?: number;
+  isCompleted?: boolean;
+  submittedAt?: Date;
+  isAutoScored?: boolean;
   completionStatus?: completionStatus;
   respondentEmail?: string;
   respondentName?: string;

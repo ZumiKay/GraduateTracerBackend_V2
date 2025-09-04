@@ -1,6 +1,7 @@
 import { RequestHandler, Router } from "express";
 import FormResponseController from "../controller/form_response.controller";
 import UserMiddleware from "../middleware/User.middleware";
+import FormResponseReturnController from "../controller/form_response_return.controller";
 
 const ResponseRouter = Router();
 
@@ -85,7 +86,7 @@ ResponseRouter.get(
 
 // Manual scoring for responses
 ResponseRouter.put(
-  "/score",
+  "/update-score",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   FormResponseController.UpdateResponseScore as unknown as RequestHandler
 );
@@ -111,4 +112,10 @@ ResponseRouter.delete(
   FormResponseController.BulkDeleteResponses as unknown as RequestHandler
 );
 
+//Return Response
+ResponseRouter.post(
+  "/return",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  FormResponseReturnController.ReturnResponse as unknown as RequestHandler
+);
 export default ResponseRouter;

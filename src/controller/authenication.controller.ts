@@ -12,8 +12,8 @@ import bcrypt, { compareSync } from "bcrypt";
 import Usersession from "../model/Usersession.model";
 import HandleEmail from "../utilities/email";
 import JWT from "jsonwebtoken";
-import { isObjectIdOrHexString, Types } from "mongoose";
-import { randomUUID } from "crypto";
+import { isObjectIdOrHexString, isValidObjectId, Types } from "mongoose";
+import Form from "../model/Form.model";
 
 interface Logindata {
   email: string;
@@ -48,6 +48,7 @@ class AuthenticationController {
         session_id: RefreshToken,
         expireAt: getDateByNumDay(1),
         user: user._id,
+        guest: null,
       });
 
       this.setAccessTokenCookie(res, AccessToken);
@@ -265,49 +266,36 @@ class AuthenticationController {
       return res.status(500).json(ReturnCode(500));
     }
   };
+
+  //Respondent Authentication
   public RespodnentLogin = async (req: Request, res: Response) => {
-    const {
-      email,
-      password,
-      isGuest,
-    }: { email: string; password: string; isGuest?: boolean } = req.body;
+    const { email, password }: { email: string; password: string } = req.body;
     try {
-      if (isGuest) {
-        const isSessionActive = await Usersession.findOne({
-          guest: email,
-        }).lean();
+      const isUser = await User.findOne({ email })
+        .select("_id password ")
+        .lean()
+        .exec();
+      if (!isUser) return res.status(401).json(ReturnCode(401));
 
-        if (isSessionActive) {
-          if (this.isDateExpire(isSessionActive.expireAt)) {
-            await Usersession.deleteOne({
-              session_id: isSessionActive.session_id,
-            });
-          }
-        }
-        const session_id = GenerateToken({ email }, "1h");
-        await Usersession.create({
-          session_id,
-        });
+      const compareUser = compareSync(password, isUser.password);
 
-        return res.status(200).json({
-          ...ReturnCode(200),
-          data: {
-            session_id,
-          },
-        });
-      } else {
-        const isUser = await User.findOne({ email })
-          .select("_id password ")
-          .lean()
-          .exec();
-        if (!isUser) return res.status(401).json(ReturnCode(401));
+      if (!compareUser) throw "Invalid Credential";
+      const accessToken = GenerateToken({ email }, "1h");
 
-        const compareUser = compareSync(password, isUser.password);
+      //Create User Session
+      await Usersession.create({
+        session_id: accessToken,
+        user: isUser._id,
+      });
 
-        if (!compareUser) throw "Invalid Credential";
+      console.log(process.env?.RESPONDENT_COOKIE);
+      //Set Cookie
+      res.cookie(
+        process.env?.RESPONDENT_COOKIE ?? "respondent_accessT",
+        accessToken
+      );
 
-        return res.status(200).json(ReturnCode(200));
-      }
+      return res.status(200).json(ReturnCode(200));
     } catch (error) {
       const err = error as Error;
       console.log("Respondent Login", err);
@@ -318,24 +306,121 @@ class AuthenticationController {
   };
 
   public CheckRespondentSession = async (req: Request, res: Response) => {
-    const { id } = req.query as { id: string };
+    const id = req.cookies?.[process.env.RESPONDENT_COOKIE ?? ""] as string;
     try {
       if (!id || !isObjectIdOrHexString(new Types.ObjectId(id)))
-        return res.status(400).json(ReturnCode(400));
+        return res
+          .status(400)
+          .json({ ...ReturnCode(400), data: { isError: true } });
 
       const respondentSession = await Usersession.findOne({
         session_id: id,
       })
-        .select("session_id expireAt")
+        .select("session_id expireAt user")
+        .populate("user")
         .lean();
 
-      if (!respondentSession) return res.status(401).json(ReturnCode(401));
+      if (!respondentSession)
+        return res
+          .status(401)
+          .json({ ...ReturnCode(401), data: { isError: true } });
+      const isExpired = respondentSession.expireAt < new Date();
 
-      return res
-        .status(200)
-        .json({ ...ReturnCode(200), data: respondentSession });
+      return res.status(200).json({
+        ...ReturnCode(200),
+        data: {
+          session_id: respondentSession.session_id,
+          userdata: respondentSession.user,
+          isExpired,
+        },
+      });
     } catch (error) {
       console.log("Check Respondent Session", error);
+      return res
+        .status(500)
+        .json({ ...ReturnCode(500), data: { isError: true } });
+    }
+  };
+
+  public RenewRespondentSession = async (req: Request, res: Response) => {
+    const { formId } = req.body as {
+      formId: string;
+    };
+    const session_id = req.cookies?.[
+      process.env.RESPONDENT_COOKIE ?? ""
+    ] as string;
+    if (!session_id)
+      return res.status(400).json(ReturnCode(400, "No session found"));
+    try {
+      if (!formId || !isValidObjectId(new Types.ObjectId(formId)))
+        return res.status(400).json(ReturnCode(400));
+      const session = await Usersession.findOne({ session_id })
+        .populate("user")
+        .lean()
+        .exec();
+      if (!session) {
+        return res.status(400).json(ReturnCode(400, "Can't Renew Session"));
+      }
+
+      //Check form status
+      const isAccept = await Form.findById(formId).select("setting").lean();
+
+      if (!isAccept || !isAccept.setting?.acceptResponses)
+        return res
+          .status(400)
+          .json(
+            ReturnCode(
+              400,
+              `${!isAccept ? "No Form is found" : "Form has closed"}`
+            )
+          );
+
+      //renew session
+      const new_session_id = GenerateToken(
+        { email: session.user?.email },
+        "1hr"
+      );
+
+      res.cookie(
+        process.env.RESPONDENT_COOKIE ?? "respondent_accessT",
+        new_session_id,
+        {
+          sameSite: "lax",
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "PROD",
+          expires: getDateByMinute(60),
+        }
+      );
+
+      await Promise.all([
+        Usersession.deleteOne({ session_id }),
+        Usersession.create({
+          session_id: new_session_id,
+          user: session.user,
+        }),
+      ]);
+
+      return res.status(200).json(ReturnCode(200));
+    } catch (error) {
+      console.log("Renew Respondent Session", error);
+      return res.status(500).json(ReturnCode(500));
+    }
+  };
+
+  public RespondentLogout = async (req: Request, res: Response) => {
+    try {
+      const session_id =
+        req.cookies?.[process.env.RESPONDENT_COOKIE ?? ""] ?? null;
+      if (!session_id) return res.status(204).json(ReturnCode(204));
+
+      const session = await Usersession.findOneAndDelete({ session_id });
+
+      if (!session) return res.status(204).json(ReturnCode(204));
+
+      res.clearCookie(process.env.RESPONDENT_COOKIE ?? "respondent_accessT");
+      return res.status(200).json(ReturnCode(200));
+    } catch (error) {
+      console.log("Respondent Logout", error);
       return res.status(500).json(ReturnCode(500));
     }
   };

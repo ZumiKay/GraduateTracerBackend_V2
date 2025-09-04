@@ -148,6 +148,16 @@ UserRoute.post(
   authenicationController.RespodnentLogin as unknown as RequestHandler
 );
 
+UserRoute.get(
+  "/respondent/renew-session",
+  TrafficControl.LoginRateLimit,
+  authenicationController.RenewRespondentSession as unknown as RequestHandler
+);
+UserRoute.delete(
+  "/respondent/logout",
+  authenicationController.RespondentLogout as unknown as RequestHandler
+);
+
 //Form Owner Management Routes
 UserRoute.post(
   "/addformowner",

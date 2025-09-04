@@ -40,21 +40,6 @@ class FormResponseController {
     const submitdata = req.body as FormResponseType;
 
     try {
-      // Debug logging
-      console.log("=== BACKEND SUBMISSION DEBUG ===");
-      console.log("Form ID:", submitdata.formId);
-      console.log("User ID:", submitdata.userId);
-      console.log("Responseset length:", submitdata.responseset?.length || 0);
-      console.log(
-        "Responseset data:",
-        submitdata.responseset?.map((r) => ({
-          questionId: r.questionId,
-          response: r.response,
-          type: typeof r.response,
-        }))
-      );
-      console.log("==================================");
-
       const form = await Form.findById(submitdata.formId);
       if (!form) {
         return res.status(404).json(ReturnCode(404, "Form not found"));
@@ -98,20 +83,12 @@ class FormResponseController {
         );
       }
 
-      const savedResponse = await FormResponse.create({
+      await FormResponse.create({
         ...submitdata,
         completionStatus: completionStatus.completed,
         responseset: scoredResponses,
         submittedAt: new Date(),
       });
-
-      console.log("=== SAVED RESPONSE DEBUG ===");
-      console.log("Saved response ID:", savedResponse._id);
-      console.log(
-        "Saved responseset length:",
-        savedResponse.responseset?.length || 0
-      );
-      console.log("=============================");
 
       res
         .status(200)
@@ -316,21 +293,18 @@ class FormResponseController {
     }
 
     try {
-      const form = await Form.findById(id)
-        .populate({ path: "user", select: "email" })
-        .lean();
+      const form = await Form.findById(id);
 
       if (!form) {
         return res.status(404).json(ReturnCode(404, "Form not found"));
       }
 
-      if (!hasFormAccess(form, user.id)) {
+      if (!hasFormAccess(form, new Types.ObjectId(user.id))) {
         return res.status(403).json(ReturnCode(403, "Access denied"));
       }
 
-      // Get responses WITHOUT responseset for table display
       const responses = await FormResponse.find({ formId: id })
-        .select("-responseset") // Exclude responseset for performance
+        .select("-responseset")
         .skip((page - 1) * limit)
         .limit(limit)
         .lean();
@@ -866,7 +840,7 @@ class FormResponseController {
 
   // Manual scoring for responses
   public UpdateResponseScore = async (req: CustomRequest, res: Response) => {
-    const { responseId, scores, sendEmail } = req.body;
+    const { responseId, scores } = req.body;
     const user = req.user;
 
     if (!responseId || !scores || !Array.isArray(scores)) {
@@ -917,30 +891,6 @@ class FormResponseController {
         totalScore,
         isAutoScored: false,
       });
-
-      // Send email if requested
-      if (sendEmail) {
-        const emailService = new EmailService();
-        let recipientEmail = "";
-
-        if (response.userId) {
-          const userDetails = await User.findById(response.userId);
-          recipientEmail = userDetails?.email || "";
-        } else if (response.guest?.email) {
-          recipientEmail = response.guest.email;
-        }
-
-        if (recipientEmail) {
-          await emailService.sendResponseResults({
-            to: recipientEmail,
-            formTitle: form.title,
-            totalScore,
-            maxScore: form.totalscore || 0,
-            responseId: responseId,
-            isAutoScored: false,
-          });
-        }
-      }
 
       res.status(200).json(ReturnCode(200, "Scores updated successfully"));
     } catch (error) {
