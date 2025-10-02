@@ -62,26 +62,49 @@ const Form_model_1 = __importDefault(require("../model/Form.model"));
 const mongoose_1 = __importStar(require("mongoose"));
 class QuestionController {
     constructor() {
+        this.comparisonCache = new Map();
+        this.CACHE_SIZE_LIMIT = 1000;
         this.SaveQuestion = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const { data, formId, page } = req.body;
+                let { data, formId, page } = req.body;
                 if (!Array.isArray(data) || !formId || page === undefined) {
                     return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid request payload"));
                 }
+                //Orgainize Date
+                if (data.some((i) => i.date || i.rangedate)) {
+                    data = data.map((i) => {
+                        const date = i.date
+                            ? this.convertStringToDate(String(i.date))
+                            : undefined;
+                        let rangedate;
+                        if (i.rangedate) {
+                            const start = this.convertStringToDate(String(i.rangedate.start));
+                            const end = this.convertStringToDate(String(i.rangedate.end));
+                            if (start && end) {
+                                rangedate = { start: start, end: end };
+                            }
+                        }
+                        return Object.assign(Object.assign({}, i), { date, rangedate });
+                    });
+                }
+                //Extract Content Not To Delete
                 const idsToKeep = data
                     .map((item) => item._id)
-                    .filter((id) => id && id.length > 0);
+                    .filter((id) => id && id.toString().length > 0);
                 const existingContent = yield Content_model_1.default.find({ formId, page }, null, {
                     lean: true,
                     maxTimeMS: 5000,
                 });
-                if (yield this.efficientChangeDetection(existingContent, data)) {
+                if (this.efficientChangeDetection(existingContent, data)) {
+                    if (process.env.NODE_ENV === "DEV") {
+                        console.log("⚡ No changes detected - skipping database operations");
+                    }
                     return res.status(200).json((0, helper_1.ReturnCode)(200, "No changes detected"));
                 }
                 const bulkOps = [];
                 const newIds = [];
                 const questionIdMap = new Map();
-                // Pre-generate IDs for questions that don't have them
+                // Generate IDs for questions that don't have
                 data.forEach((item, index) => {
                     if (!item._id) {
                         const newId = new mongoose_1.Types.ObjectId();
@@ -89,11 +112,25 @@ class QuestionController {
                         newIds.push(newId);
                     }
                 });
-                //Create Condition to assign new contentID
+                //Update qIdx and conditoned questions
                 for (let i = 0; i < data.length; i++) {
                     const _a = data[i], { _id } = _a, rest = __rest(_a, ["_id"]);
+                    //Validate Child Question Score
+                    if (rest.parentcontent && rest.score) {
+                        const parent = existingContent.find((par) => {
+                            var _a, _b;
+                            return (par._id.toString() || par.qIdx) ===
+                                (((_a = rest.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) || ((_b = rest.parentcontent) === null || _b === void 0 ? void 0 : _b.qIdx));
+                        });
+                        if ((parent === null || parent === void 0 ? void 0 : parent.score) && rest.score > parent.score) {
+                            return res
+                                .status(400)
+                                .json((0, helper_1.ReturnCode)(400, `Condition of ${parent.qIdx} has wrong score`));
+                        }
+                    }
                     const documentId = _id || questionIdMap.get(i);
-                    let processedConditional = rest.conditional;
+                    //Assign correct contentIdx responsible to qIdx
+                    let processedConditional;
                     if (rest.conditional) {
                         processedConditional = rest.conditional
                             .map((cond) => {
@@ -102,7 +139,7 @@ class QuestionController {
                                 const referencedId = ((_a = data[cond.contentIdx]) === null || _a === void 0 ? void 0 : _a._id) ||
                                     questionIdMap.get(cond.contentIdx);
                                 if (referencedId) {
-                                    return Object.assign(Object.assign({}, cond), { contentId: referencedId, contentIdx: cond.contentIdx });
+                                    return Object.assign(Object.assign({}, cond), { contentId: referencedId });
                                 }
                                 return cond;
                             }
@@ -110,30 +147,11 @@ class QuestionController {
                         })
                             .filter((cond) => cond.contentId || cond.contentIdx !== undefined);
                     }
-                    //Validate Child Question Score
-                    if (rest.parentcontent && rest.score) {
-                        const parent = existingContent.find((par) => {
-                            var _a, _b, _c, _d;
-                            return ((_a = par._id) !== null && _a !== void 0 ? _a : par.qIdx) ===
-                                ((_c = (_b = rest.parentcontent) === null || _b === void 0 ? void 0 : _b.qId) !== null && _c !== void 0 ? _c : (_d = rest.parentcontent) === null || _d === void 0 ? void 0 : _d.qIdx);
-                        });
-                        if ((parent === null || parent === void 0 ? void 0 : parent.score) && rest.score > parent.score) {
-                            return res
-                                .status(400)
-                                .json((0, helper_1.ReturnCode)(400, `Condition of ${parent.qIdx} has wrong score`));
-                        }
-                    }
                     bulkOps.push({
                         updateOne: {
                             filter: { _id: documentId },
                             update: {
-                                $set: Object.assign(Object.assign(Object.assign(Object.assign({}, rest), { conditional: processedConditional }), (page > 1 && {
-                                    qIdx: existingContent[existingContent.filter((i) => i.page && i.page > 1)
-                                        .length - 1].qIdx +
-                                        i +
-                                        1,
-                                })), { // Reassign qIdx (If not Page 1)
-                                    formId,
+                                $set: Object.assign(Object.assign({}, rest), { conditional: processedConditional, formId,
                                     page, updatedAt: new Date() }),
                             },
                             upsert: true,
@@ -142,12 +160,14 @@ class QuestionController {
                     });
                 }
                 const operations = [];
-                // Delete unnecessary content
+                // Delete content
                 if (idsToKeep.length >= 0) {
                     const toBeDeleted = yield Content_model_1.default.find({ formId, page, _id: { $nin: idsToKeep } }, { _id: 1, score: 1, conditional: 1 }, { lean: true });
                     if (toBeDeleted.length) {
                         const deleteIds = toBeDeleted.map(({ _id }) => _id);
-                        const deletedScore = toBeDeleted.reduce((sum, { score = 0 }) => sum + score, 0);
+                        const deletedScore = toBeDeleted
+                            .filter((i) => !i.parentcontent)
+                            .reduce((sum, { score = 0 }) => sum + score, 0);
                         // Get all conditional content IDs that need to be deleted
                         const conditionalIds = toBeDeleted
                             .flatMap((item) => { var _a; return ((_a = item.conditional) === null || _a === void 0 ? void 0 : _a.map((con) => con.contentId)) || []; })
@@ -158,23 +178,15 @@ class QuestionController {
                             .sort((a, b) => a - b);
                         operations.push(Content_model_1.default.deleteMany({ _id: { $in: allDeleteIds } }), Form_model_1.default.updateOne({ _id: formId }, Object.assign({ $pull: { contentIds: { $in: allDeleteIds } } }, (deletedScore && { $inc: { totalscore: -deletedScore } }))), Content_model_1.default.updateMany({ "conditional.contentId": { $in: allDeleteIds } }, { $pull: { conditional: { contentId: { $in: allDeleteIds } } } }));
                         const remainingQuestions = existingContent.filter((item) => idsToKeep.includes(item._id));
+                        //Mutation the remainQuestion for saving
                         for (let i = 0; i < remainingQuestions.length; i++) {
                             const item = remainingQuestions[i];
                             const currentIdx = item.qIdx || 0;
                             const deletedBeforeCurrent = deletedIdx.filter((delIdx) => delIdx < currentIdx).length;
+                            //Update question qidx after delete question
                             if (deletedBeforeCurrent > 0) {
                                 const newIdx = currentIdx - deletedBeforeCurrent;
                                 operations.push(Content_model_1.default.updateOne({ _id: item._id }, { $set: { qIdx: newIdx } }));
-                            }
-                            //Update Condition question
-                            if (item.conditional) {
-                                item.conditional = item.conditional.map((cond) => {
-                                    const newContentIdx = remainingQuestions.findIndex((child) => child._id.toString() === cond.contentId.toString());
-                                    return Object.assign(Object.assign({}, cond), { contentIdx: newContentIdx });
-                                });
-                            }
-                            if (item.parentcontent) {
-                                item.parentcontent = Object.assign(Object.assign({}, item.parentcontent), { qIdx: remainingQuestions.findIndex((i) => { var _a; return i._id === ((_a = item.parentcontent) === null || _a === void 0 ? void 0 : _a.qId); }) });
                             }
                         }
                     }
@@ -195,6 +207,9 @@ class QuestionController {
                 }
                 const updatedContent = yield Content_model_1.default.find({ formId, page }, null, {
                     lean: true,
+                    sort: {
+                        qIdx: 1,
+                    },
                 });
                 return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200, "Saved successfully")), { data: updatedContent }));
             }
@@ -225,7 +240,6 @@ class QuestionController {
                     return res.status(400).json((0, helper_1.ReturnCode)(400, "Content not found"));
                 }
                 const conditionalIds = ((_a = tobeDelete.conditional) === null || _a === void 0 ? void 0 : _a.map((con) => con.contentId)) || [];
-                // Perform all operations in parallel
                 const operations = [
                     Content_model_1.default.deleteOne({ _id: id }),
                     Form_model_1.default.updateOne({ _id: formId }, {
@@ -233,9 +247,7 @@ class QuestionController {
                         $inc: { totalscore: -(tobeDelete.score || 0) },
                     }),
                 ];
-                // Remove references to this content in other conditionals
                 operations.push(Content_model_1.default.updateMany({ "conditional.contentId": id }, { $pull: { conditional: { contentId: id } } }));
-                // Delete conditional questions if they exist
                 if (conditionalIds.length > 0) {
                     operations.push(Content_model_1.default.deleteMany({ _id: { $in: conditionalIds } }), Form_model_1.default.updateOne({ _id: formId }, { $pull: { contentIds: { $in: conditionalIds } } }));
                 }
@@ -316,22 +328,146 @@ class QuestionController {
             }
         });
     }
+    convertStringToDate(val) {
+        const date = new Date(val);
+        if (isNaN(date.getTime())) {
+            return;
+        }
+        return date;
+    }
+    //Check for changed key of content
     efficientChangeDetection(existing, incoming) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (existing.length !== incoming.length)
+        if (existing.length !== incoming.length) {
+            if (process.env.NODE_ENV === "DEV") {
+                console.log("⚡ Length difference detected:", existing.length, "vs", incoming.length);
+            }
+            return false; // Changes detected
+        }
+        if (existing.length === 0)
+            return true;
+        const existingMap = new Map();
+        for (const item of existing) {
+            if (item._id) {
+                existingMap.set(item._id.toString(), item);
+            }
+        }
+        for (const incomingItem of incoming) {
+            const { _id } = incomingItem, incomingData = __rest(incomingItem, ["_id"]);
+            if (!_id) {
+                if (process.env.NODE_ENV === "DEV") {
+                    console.log("⚡ New item detected without ID");
+                }
                 return false;
-            const existingMap = new Map(existing.map((item) => [item._id.toString(), item]));
-            return incoming.every((item) => {
-                if (!item._id)
+            }
+            const existingItem = existingMap.get(_id.toString());
+            if (!existingItem) {
+                if (process.env.NODE_ENV === "DEV") {
+                    console.log("⚡ Item not found in existing:", _id.toString());
+                }
+                return false;
+            }
+            const { _id: existingId, createdAt, updatedAt } = existingItem, existingData = __rest(existingItem, ["_id", "createdAt", "updatedAt"]);
+            if (!this.deepEqual(existingData, incomingData)) {
+                return false;
+            }
+        }
+        // No changes detected
+        if (process.env.NODE_ENV === "DEV") {
+            console.log("⚡ No changes detected in", existing.length, "items");
+        }
+        return true;
+    }
+    deepEqual(obj1, obj2) {
+        const cacheKey = this.generateCacheKey(obj1, obj2);
+        if (this.comparisonCache.has(cacheKey)) {
+            return this.comparisonCache.get(cacheKey);
+        }
+        const result = this.performDeepEqual(obj1, obj2);
+        this.cacheResult(cacheKey, result);
+        return result;
+    }
+    generateCacheKey(obj1, obj2) {
+        var _a, _b;
+        try {
+            const type1 = typeof obj1;
+            const type2 = typeof obj2;
+            const isArray1 = Array.isArray(obj1);
+            const isArray2 = Array.isArray(obj2);
+            return `${type1}_${type2}_${isArray1}_${isArray2}_${((_a = obj1 === null || obj1 === void 0 ? void 0 : obj1.constructor) === null || _a === void 0 ? void 0 : _a.name) || "none"}_${((_b = obj2 === null || obj2 === void 0 ? void 0 : obj2.constructor) === null || _b === void 0 ? void 0 : _b.name) || "none"}`;
+        }
+        catch (_c) {
+            return `fallback_${Math.random()}`;
+        }
+    }
+    cacheResult(key, result) {
+        if (this.comparisonCache.size >= this.CACHE_SIZE_LIMIT) {
+            const firstKey = this.comparisonCache.keys().next().value;
+            if (firstKey) {
+                this.comparisonCache.delete(firstKey);
+            }
+        }
+        this.comparisonCache.set(key, result);
+    }
+    performDeepEqual(obj1, obj2) {
+        if (obj1 === obj2)
+            return true;
+        if (obj1 == null || obj2 == null) {
+            return obj1 === obj2;
+        }
+        if (typeof obj1 !== typeof obj2) {
+            return false;
+        }
+        if (typeof obj1 !== "object") {
+            return obj1 === obj2;
+        }
+        if (obj1 instanceof Date && obj2 instanceof Date) {
+            return obj1.getTime() === obj2.getTime();
+        }
+        if (obj1 instanceof Date || obj2 instanceof Date) {
+            return false;
+        }
+        if (Array.isArray(obj1) !== Array.isArray(obj2)) {
+            return false;
+        }
+        if (Array.isArray(obj1)) {
+            if (obj1.length !== obj2.length)
+                return false;
+            for (let i = 0; i < obj1.length; i++) {
+                if (!this.performDeepEqual(obj1[i], obj2[i])) {
                     return false;
-                const existingItem = existingMap.get(item._id.toString());
-                if (!existingItem)
-                    return false;
-                const { _id, updatedAt } = existingItem, existingData = __rest(existingItem, ["_id", "updatedAt"]);
-                const { _id: incomingId } = item, incomingData = __rest(item, ["_id"]);
-                return JSON.stringify(existingData) === JSON.stringify(incomingData);
-            });
-        });
+                }
+            }
+            return true;
+        }
+        if (obj1.toString &&
+            obj2.toString &&
+            typeof obj1.toString === "function" &&
+            typeof obj2.toString === "function") {
+            try {
+                const str1 = obj1.toString();
+                const str2 = obj2.toString();
+                if (str1.length === 24 && str2.length === 24) {
+                    return str1 === str2;
+                }
+            }
+            catch (_a) {
+                // Not ObjectIds, continue with regular comparison
+            }
+        }
+        const keys1 = Object.keys(obj1);
+        const keys2 = Object.keys(obj2);
+        if (keys1.length !== keys2.length) {
+            return false;
+        }
+        for (const key of keys1) {
+            if (!keys2.includes(key)) {
+                return false;
+            }
+            if (!this.performDeepEqual(obj1[key], obj2[key])) {
+                return false;
+            }
+        }
+        return true;
     }
     isScoreHasChange(incoming, prevContent) {
         const calculateTotal = (items) => {

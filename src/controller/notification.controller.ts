@@ -3,6 +3,10 @@ import { CustomRequest } from "../types/customType";
 import { ReturnCode } from "../utilities/helper";
 import { Types } from "mongoose";
 import Notification from "../model/Notification.model";
+import {
+  handleDatabaseError,
+  generateOperationId,
+} from "../utilities/MongoErrorHandler";
 
 export interface NotificationData {
   userId: string;
@@ -26,6 +30,8 @@ export interface NotificationData {
 class NotificationController {
   // Create a new notification
   public static async CreateNotification(data: NotificationData) {
+    const operationId = generateOperationId("create_notification");
+
     try {
       const notification = await Notification.create({
         ...data,
@@ -40,7 +46,7 @@ class NotificationController {
 
       return notification;
     } catch (error) {
-      console.error("Create Notification Error:", error);
+      console.error(`[${operationId}] Create Notification Error:`, error);
       throw error;
     }
   }

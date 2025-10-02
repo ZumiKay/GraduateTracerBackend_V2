@@ -1,4 +1,5 @@
 import { model, Schema, Types } from "mongoose";
+import { ResponseAnswerType } from "./Response.model";
 
 export enum QuestionType {
   MultipleChoice = "multiple",
@@ -40,13 +41,7 @@ export interface ParentContentType {
 
 export interface AnswerKey {
   _id?: Types.ObjectId;
-  answer:
-    | string
-    | number
-    | Date
-    | RangeType<Date>
-    | RangeType<number>
-    | Array<number>;
+  answer: ResponseAnswerType;
   isCorrect?: boolean; // For validation purposes
 }
 
@@ -129,9 +124,17 @@ const AnswerKeySchema = new Schema<AnswerKey>({
 
 //Title Schema
 
-interface ContentTitle {
-  type: string;
-  content: Array<any>;
+export interface ContentTitle {
+  type?: string;
+  attrs?: Record<string, any>;
+  content?: ContentTitle[];
+  marks?: {
+    type: string;
+    attrs?: Record<string, any>;
+    [key: string]: any;
+  }[];
+  text?: string;
+  [key: string]: any;
 }
 
 const TitleSchema = new Schema<ContentTitle>({
@@ -287,3 +290,7 @@ ContentSchema.index({ idx: 1 });
 const Content = model("Content", ContentSchema);
 
 export default Content;
+
+//helper function
+
+const GetQuestionContentAsString = () => {};

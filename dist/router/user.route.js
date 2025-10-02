@@ -42,11 +42,15 @@ UserRoute.delete("/deleteform", User_middleware_1.default.VerifyTokenAndSession,
 UserRoute.get("/getallform", User_middleware_1.default.VerifyToken, form_controller_1.GetAllForm);
 UserRoute.get("/filteredform", User_middleware_1.default.VerifyToken, form_controller_1.GetFilterForm);
 UserRoute.put("/modifypage", User_middleware_1.default.VerifyToken, form_controller_1.PageHandler);
-// Public Form Access Route (no authentication required)
+//Respondent Form Authentication
 UserRoute.get("/form/:formId", form_response_controller_1.default.GetPublicFormData);
+UserRoute.get("/respondent/session", authenication_controller_1.default.CheckRespondentSession);
+UserRoute.post("/respondent/login", Traffic_middleware_1.default.LoginRateLimit, (0, Validatetor_1.validate)(user_controller_1.UserValidate), authenication_controller_1.default.RespodnentLogin);
+UserRoute.get("/respondent/renew-session", Traffic_middleware_1.default.LoginRateLimit, authenication_controller_1.default.RenewRespondentSession);
+UserRoute.delete("/respondent/logout", authenication_controller_1.default.RespondentLogout);
 //Form Owner Management Routes
-UserRoute.post("/addformowner", User_middleware_1.default.VerifyToken, form_controller_1.AddFormCollaborator);
-UserRoute.delete("/removeformowner", User_middleware_1.default.VerifyToken, form_controller_1.RemoveFormOwner);
+UserRoute.post("/addformowner", User_middleware_1.default.VerifyToken, form_controller_1.ManageFormCollaborator);
+UserRoute.delete("/removeformowner", User_middleware_1.default.VerifyToken, form_controller_1.ManageFormCollaborator);
 UserRoute.get("/getformowners/:formId", User_middleware_1.default.VerifyToken, form_controller_1.GetFormCollaborators);
 UserRoute.delete("/removeselfform", User_middleware_1.default.VerifyToken, form_controller_1.RemoveSelfFromForm);
 UserRoute.put("/transferuser", User_middleware_1.default.VerifyToken, form_controller_1.ChangePrimaryOwner);
@@ -65,13 +69,8 @@ UserRoute.delete("/deletecontent", User_middleware_1.default.VerifyToken, questi
 UserRoute.get("/question/getAllQuestion", question_controller_1.default.GetAllQuestion);
 UserRoute.post("/savequestion", User_middleware_1.default.VerifyToken, ConditionValidator_1.default.validateConditionMiddleware, question_controller_1.default.SaveQuestion);
 UserRoute.post("/editcontent", User_middleware_1.default.VerifyToken, ConditionValidator_1.default.validateConditionMiddleware, content_controller_1.EditFormContent);
-//Form Response Route
-UserRoute.post("/submitform", form_response_controller_1.default.SubmitResponse);
+//Validate form contenet
 UserRoute.get("/validateformsubmission", User_middleware_1.default.VerifyToken, form_response_controller_1.default.ValidateFormForSubmission);
-UserRoute.get("/getresponsebyform", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponseByFormId);
-UserRoute.get("/getresponse", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponseByUserId);
-UserRoute.get("/getuserresponses", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetUserResponses);
-UserRoute.get("/getguestresponse", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetGuestResponse);
 // Response Management Routes
 UserRoute.post("/response/send-links", User_middleware_1.default.VerifyToken, form_response_controller_1.default.SendFormLinks);
 UserRoute.post("/response/generate-link", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GenerateFormLink);

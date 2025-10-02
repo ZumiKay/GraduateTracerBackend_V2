@@ -51,6 +51,7 @@ exports.RegisterUser = RegisterUser;
 exports.EditUser = EditUser;
 exports.DeleteUser = DeleteUser;
 const helper_1 = require("../utilities/helper");
+const MongoErrorHandler_1 = require("../utilities/MongoErrorHandler");
 const zod_1 = require("zod");
 const User_model_1 = __importStar(require("../model/User.model"));
 const email_1 = __importDefault(require("../utilities/email"));
@@ -67,6 +68,7 @@ exports.UserValidate = zod_1.z.object({
 function GetRespondentProfile(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         const data = req.body;
+        const operationId = MongoErrorHandler_1.MongoErrorHandler.generateOperationId("get_profile");
         try {
             const profile = yield User_model_1.default.findOne({ email: data.email })
                 .select("_id")
@@ -77,13 +79,20 @@ function GetRespondentProfile(req, res) {
             return res.status(404).json((0, helper_1.ReturnCode)(404, "No User Found"));
         }
         catch (error) {
-            return res.status(500).json((0, helper_1.ReturnCode)(500));
+            const mongoErrorHandled = MongoErrorHandler_1.MongoErrorHandler.handleMongoError(error, res, {
+                operationId,
+                customMessage: "Failed to retrieve user profile",
+            });
+            if (!mongoErrorHandled.handled) {
+                return res.status(500).json((0, helper_1.ReturnCode)(500));
+            }
         }
     });
 }
 function RegisterUser(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         const data = req.body;
+        const operationId = MongoErrorHandler_1.MongoErrorHandler.generateOperationId("register_user");
         try {
             const isUser = yield User_model_1.default.findOne({ email: data.email });
             if (isUser)
@@ -93,8 +102,14 @@ function RegisterUser(req, res) {
             return res.status(201).json((0, helper_1.ReturnCode)(201, "User registered"));
         }
         catch (error) {
-            console.log("Register User", error);
-            return res.status(500).json((0, helper_1.ReturnCode)(500));
+            console.log(`[${operationId}] Register User Error:`, error);
+            const mongoErrorHandled = MongoErrorHandler_1.MongoErrorHandler.handleMongoError(error, res, {
+                operationId,
+                customMessage: "Failed to register user",
+            });
+            if (!mongoErrorHandled.handled) {
+                return res.status(500).json((0, helper_1.ReturnCode)(500));
+            }
         }
     });
 }

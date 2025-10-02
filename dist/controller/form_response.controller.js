@@ -47,350 +47,86 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FormResponseController = void 0;
 const helper_1 = require("../utilities/helper");
-const Response_model_1 = __importStar(require("../model/Response.model"));
+const MongoErrorHandler_1 = require("../utilities/MongoErrorHandler");
 const zod_1 = __importDefault(require("zod"));
-const Content_model_1 = __importStar(require("../model/Content.model"));
 const mongoose_1 = require("mongoose");
-const Form_model_1 = require("../model/Form.model");
 const SolutionValidationService_1 = __importDefault(require("../services/SolutionValidationService"));
 const EmailService_1 = __importDefault(require("../services/EmailService"));
 const FormLinkService_1 = __importDefault(require("../services/FormLinkService"));
-const Form_model_2 = __importDefault(require("../model/Form.model"));
 const User_model_1 = __importDefault(require("../model/User.model"));
-const form_controller_1 = require("./form.controller");
+const ResponseValidationService_1 = require("../services/ResponseValidationService");
+const ResponseQueryService_1 = require("../services/ResponseQueryService");
+const ResponseProcessingService_1 = require("../services/ResponseProcessingService");
+const ResponseAnalyticsService_1 = require("../services/ResponseAnalyticsService");
+const RespondentTrackingService_1 = require("../services/RespondentTrackingService");
 const respondentUtils_1 = require("../utilities/respondentUtils");
+const Form_model_1 = __importStar(require("../model/Form.model"));
+const Content_model_1 = __importDefault(require("../model/Content.model"));
+const Response_model_1 = __importDefault(require("../model/Response.model"));
+const formHelpers_1 = require("../utilities/formHelpers");
 class FormResponseController {
     constructor() {
-        this.SubmitResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e;
-            const submitdata = req.body;
-            try {
-                // Debug logging
-                console.log("=== BACKEND SUBMISSION DEBUG ===");
-                console.log("Form ID:", submitdata.formId);
-                console.log("User ID:", submitdata.userId);
-                console.log("Responseset length:", ((_a = submitdata.responseset) === null || _a === void 0 ? void 0 : _a.length) || 0);
-                console.log("Responseset data:", (_b = submitdata.responseset) === null || _b === void 0 ? void 0 : _b.map((r) => ({
-                    questionId: r.questionId,
-                    response: r.response,
-                    type: typeof r.response,
-                })));
-                console.log("==================================");
-                const form = yield Form_model_2.default.findById(submitdata.formId);
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                if (((_c = form.setting) === null || _c === void 0 ? void 0 : _c.acceptResponses) === false) {
-                    return res
-                        .status(403)
-                        .json((0, helper_1.ReturnCode)(403, "Form is no longer accepting responses"));
-                }
-                // Check for submitonce setting
-                if (((_d = form.setting) === null || _d === void 0 ? void 0 : _d.submitonce) === true && submitdata.userId) {
-                    const existingResponse = yield Response_model_1.default.findOne({
-                        formId: submitdata.formId,
-                        userId: submitdata.userId,
-                    });
-                    if (existingResponse) {
-                        return res
-                            .status(400)
-                            .json((0, helper_1.ReturnCode)(400, "You have already submitted a response for this form"));
-                    }
-                }
-                let scoredResponses = submitdata.responseset;
-                if (submitdata.returnscore === Form_model_1.returnscore.partial) {
-                    scoredResponses = yield Promise.all(submitdata.responseset.map((response) => __awaiter(this, void 0, void 0, function* () {
-                        return yield this.AddScore(new mongoose_1.Types.ObjectId(response.questionId), response);
-                    })));
-                }
-                const savedResponse = yield Response_model_1.default.create(Object.assign(Object.assign({}, submitdata), { completionStatus: Response_model_1.completionStatus.completed, responseset: scoredResponses, submittedAt: new Date() }));
-                console.log("=== SAVED RESPONSE DEBUG ===");
-                console.log("Saved response ID:", savedResponse._id);
-                console.log("Saved responseset length:", ((_e = savedResponse.responseset) === null || _e === void 0 ? void 0 : _e.length) || 0);
-                console.log("=============================");
-                res
-                    .status(200)
-                    .json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200, "Form Submitted")), { data: scoredResponses }));
-            }
-            catch (error) {
-                console.error("Submit Response Error:", { error, body: req.body });
-                res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to submit the form"));
-            }
-        });
-        this.SubmitPublicResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
-            const { formId, responseset, respondentEmail, respondentName, userId } = req.body;
-            try {
-                const form = yield Form_model_2.default.findById(formId);
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses) === false) {
-                    return res
-                        .status(403)
-                        .json((0, helper_1.ReturnCode)(403, "Form is no longer accepting responses"));
-                }
-                // Check for submitonce setting - prevent multiple submissions by the same email
-                if (((_b = form.setting) === null || _b === void 0 ? void 0 : _b.submitonce) === true && respondentEmail) {
-                    const existingResponse = yield Response_model_1.default.findOne({
-                        $and: [{ formId }, { respondentEmail }, ...(userId && { userId })],
-                    });
-                    if (existingResponse) {
-                        return res
-                            .status(400)
-                            .json((0, helper_1.ReturnCode)(400, "This email has already submitted a response for this form"));
-                    }
-                }
-                const questions = yield Content_model_1.default.find({
-                    formId,
-                });
-                // Validate required questions
-                const requiredQuestions = questions.filter((q) => q.require);
-                const missingResponses = requiredQuestions.filter((q) => {
-                    const response = responseset.find((r) => { var _a; return r.questionId === ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()); });
-                    return (!response ||
-                        response.response === undefined ||
-                        response.response === "");
-                });
-                if (missingResponses.length > 0) {
-                    return res
-                        .status(400)
-                        .json((0, helper_1.ReturnCode)(400, "Please complete all required fields"));
-                }
-                // Auto Score Response
-                let scoredResponses = responseset;
-                let totalScore = 0;
-                if (((_c = form.setting) === null || _c === void 0 ? void 0 : _c.returnscore) &&
-                    form.setting.returnscore !== Form_model_1.returnscore.manual) {
-                    scoredResponses = yield Promise.all(responseset.map((response) => __awaiter(this, void 0, void 0, function* () {
-                        const scored = yield this.AddScore(response.questionId, response);
-                        if (scored.score) {
-                            totalScore += scored.score;
-                        }
-                        return scored;
-                    })));
-                }
-                const newResponse = yield Response_model_1.default.create({
-                    formId,
-                    responseset: scoredResponses,
-                    totalScore,
-                    returnscore: ((_d = form.setting) === null || _d === void 0 ? void 0 : _d.returnscore) || Form_model_1.returnscore.manual,
-                    completionStatus: "completed",
-                    respondentEmail: respondentEmail,
-                    respondentName: respondentName,
-                    submittedAt: new Date(),
-                    userId,
-                });
-                // Check if form has short answer or paragraph questions
-                const hasSubjectiveQuestions = ((_e = form.contents) === null || _e === void 0 ? void 0 : _e.some((content) => {
-                    var _a;
-                    return (_a = content.questions) === null || _a === void 0 ? void 0 : _a.some((question) => question.questiontype === Content_model_1.QuestionType.ShortAnswer ||
-                        question.questiontype === Content_model_1.QuestionType.Paragraph);
-                })) || false;
-                // Send email if no subjective questions OR if returnscore is set to partial
-                const shouldSendEmail = respondentEmail &&
-                    (((_f = form.setting) === null || _f === void 0 ? void 0 : _f.returnscore) === Form_model_1.returnscore.partial ||
-                        (!hasSubjectiveQuestions &&
-                            ((_g = form.setting) === null || _g === void 0 ? void 0 : _g.returnscore) !== Form_model_1.returnscore.manual));
-                let emailSent = false;
-                if (shouldSendEmail) {
-                    try {
-                        // Send quiz results via email
-                        const emailService = new EmailService_1.default();
-                        const maxScore = ((_h = form.contents) === null || _h === void 0 ? void 0 : _h.reduce((total, content) => {
-                            if (content.questions) {
-                                return (total +
-                                    content.questions.reduce((qTotal, question) => {
-                                        return qTotal + (question.score || 0);
-                                    }, 0));
-                            }
-                            return total;
-                        }, 0)) || 0;
-                        yield emailService.sendResponseResults({
-                            to: respondentEmail,
-                            formTitle: form.title,
-                            totalScore,
-                            maxScore,
-                            responseId: newResponse._id.toString(),
-                            isAutoScored: !hasSubjectiveQuestions,
-                        });
-                        emailSent = true;
-                        console.log("Quiz results sent successfully to:", respondentEmail);
-                    }
-                    catch (emailError) {
-                        console.error("Failed to send results email:", emailError);
-                        // Don't fail the submission if email fails
-                    }
-                }
-                // Return response with total score and email status
-                const responseData = {
-                    code: 200,
-                    message: "Form submitted successfully",
-                    data: {
-                        totalScore: ((_j = form.setting) === null || _j === void 0 ? void 0 : _j.returnscore) !== Form_model_1.returnscore.manual
-                            ? totalScore
-                            : undefined,
-                        maxScore: ((_k = form.setting) === null || _k === void 0 ? void 0 : _k.returnscore) !== Form_model_1.returnscore.manual
-                            ? ((_l = form.contents) === null || _l === void 0 ? void 0 : _l.reduce((total, content) => {
-                                if (content.questions) {
-                                    return (total +
-                                        content.questions.reduce((qTotal, question) => {
-                                            return qTotal + (question.score || 0);
-                                        }, 0));
-                                }
-                                return total;
-                            }, 0)) || 0
-                            : undefined,
-                        emailSent,
-                        hasSubjectiveQuestions,
-                        responseId: newResponse._id.toString(),
-                    },
-                };
-                res.status(200).json(responseData);
-            }
-            catch (error) {
-                console.error("Submit Public Response Error:", { error, body: req.body });
-                res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to submit the form"));
-            }
-        });
         this.GetResponseByFormId = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const id = req.query.id;
-            const page = Number(req.query.p) || FormResponseController.DEFAULT_PAGE;
-            const limit = Number(req.query.lt) || FormResponseController.DEFAULT_LIMIT;
-            const user = req.user;
-            if (!user) {
-                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
-            }
-            if (!id) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-            }
             try {
-                const form = yield Form_model_2.default.findById(id)
-                    .populate({ path: "user", select: "email" })
-                    .lean();
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-                }
-                // Get responses WITHOUT responseset for table display
-                const responses = yield Response_model_1.default.find({ formId: id })
-                    .select("-responseset") // Exclude responseset for performance
-                    .skip((page - 1) * limit)
-                    .limit(limit)
-                    .lean();
-                const totalCount = yield Response_model_1.default.countDocuments({ formId: id });
-                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: {
-                        responses,
-                        pagination: {
-                            page,
-                            limit,
-                            totalCount,
-                            totalPages: Math.ceil(totalCount / limit),
-                        },
-                    } }));
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                });
+                if (!validation.isValid)
+                    return;
+                const form = yield ResponseValidationService_1.ResponseValidationService.validateFormAccess(validation.formId, validation.user.id, res);
+                if (!form)
+                    return;
+                const result = yield ResponseQueryService_1.ResponseQueryService.getResponsesByFormId(validation.formId, validation.page, validation.limit);
+                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: result }));
             }
             catch (error) {
-                console.error("Get Response By FormId Error:", {
-                    error,
-                    query: req.query,
-                });
+                console.error("Get Response By FormId Error:", error);
                 res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to retrieve responses"));
             }
         });
-        this.GetResponseByUserId = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const userId = req.query.userId;
-            const formId = req.query.formId;
-            const user = req.user;
-            if (!user) {
-                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
-            }
-            if (!userId) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "User ID is required"));
-            }
-            if (!formId) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-            }
+        this.GetResponseByUser = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const form = yield Form_model_2.default.findById(formId)
-                    .populate({ path: "user", select: "email" })
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                });
+                if (!validation.isValid)
+                    return;
+                const { respondentEmail, formId } = req.query;
+                if (!respondentEmail || !formId) {
+                    return res.status(400).json((0, helper_1.ReturnCode)(400));
+                }
+                const form = yield ResponseValidationService_1.ResponseValidationService.validateFormAccess(formId, validation.user.id, res);
+                if (!form)
+                    return;
+                let populatedResponse = yield Response_model_1.default.findOne({
+                    $and: [
+                        {
+                            formId,
+                        },
+                        {
+                            respondentEmail,
+                        },
+                    ],
+                })
+                    .select("_id responseset totalScore isCompleted completionStatus respondentEmail respondentName respondentType submittedAt")
                     .lean();
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-                }
-                const response = yield Response_model_1.default.findOne({
-                    _id: userId, // userId parameter actually contains responseId
-                    formId: formId,
+                //Populate response set question
+                const responseContent = yield Content_model_1.default.find({
+                    _id: { $in: populatedResponse === null || populatedResponse === void 0 ? void 0 : populatedResponse.responseset.map((i) => i.question) },
                 }).lean();
-                if (!response) {
+                populatedResponse = Object.assign(Object.assign({}, populatedResponse), { responseset: populatedResponse === null || populatedResponse === void 0 ? void 0 : populatedResponse.responseset.map((res) => {
+                        return Object.assign(Object.assign({}, res), { question: responseContent.find((q) => q._id === res.question) });
+                    }) });
+                if (!populatedResponse) {
                     return res.status(404).json((0, helper_1.ReturnCode)(404, "Response not found"));
                 }
-                const populatedResponseSet = yield Promise.all(response.responseset.map((responseItem) => __awaiter(this, void 0, void 0, function* () {
-                    const questionData = yield Content_model_1.default.findById(responseItem.questionId).lean();
-                    return Object.assign(Object.assign({}, responseItem), { question: questionData || responseItem.questionId, questionId: undefined });
-                })));
-                const questions = populatedResponseSet
-                    .map((item) => item.question)
-                    .filter((question) => question !== null && question !== undefined && question._id);
-                const groupedQuestions = (0, helper_1.groupContentByParent)(questions.map((ques) => { var _a; return (Object.assign(Object.assign({}, ques), { _id: (_a = ques._id) === null || _a === void 0 ? void 0 : _a.toString() })); }));
-                const responseMap = new Map();
-                populatedResponseSet.forEach((item) => {
-                    if (item.question && item.question._id) {
-                        responseMap.set(item.question._id.toString(), item);
-                    }
-                });
-                const organizedResponseSet = groupedQuestions
-                    .map((question) => {
-                    if (!question._id)
-                        return null;
-                    const responseData = responseMap.get(question._id.toString());
-                    return (responseData || {
-                        response: null,
-                        score: 0,
-                        isManuallyScored: false,
-                        question: question,
-                    });
-                })
-                    .filter(Boolean);
-                const populatedResponse = Object.assign(Object.assign({}, response), { responseset: organizedResponseSet.map((resset) => ({
-                        question: {
-                            _id: resset.question._id,
-                            title: resset.question.title,
-                            qIdx: resset.question.qIdx,
-                            type: resset.question.type,
-                            conditional: resset.question.conditional,
-                            answer: (0, helper_1.GetAnswerKeyForQuestion)(resset.question),
-                            parentcontent: resset.question.parentcontent,
-                            require: resset.question.require,
-                            [`${resset.question.type}`]: resset.question[resset.question.type],
-                        },
-                        response: (0, helper_1.GetAnswerKeyPairValue)(resset),
-                    })) });
                 res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: populatedResponse }));
             }
             catch (error) {
-                console.error("Get Response By UserId Error:", {
-                    error,
-                    query: req.query,
-                });
+                console.error("Get Response By UserId Error:", error);
                 res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to retrieve response"));
-            }
-        });
-        this.GetGuestResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const { formId } = req.query;
-            try {
-                const response = yield Response_model_1.default.find({
-                    $and: [{ formId }, { userId: null }],
-                });
-                return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: response }));
-            }
-            catch (error) {
-                console.log("Get Guest Response", error);
-                return res.status(500).json((0, helper_1.ReturnCode)(500));
             }
         });
         this.ValidateFormForSubmission = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -408,66 +144,32 @@ class FormResponseController {
                 res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to validate form"));
             }
         });
-        //Add Score for the response
-        this.AddScore = (qid, response) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
-            try {
-                const content = yield Content_model_1.default.findById(qid)
-                    .select("answer score type conditional parentcontent")
-                    .lean()
-                    .exec();
-                if (!(content === null || content === void 0 ? void 0 : content.answer) || !content.score)
-                    return Object.assign(Object.assign({}, response), { score: 0 });
-                let questionScore = 0;
-                //Condition question score
-                if (content.conditional) {
-                    const child = yield Content_model_1.default.find({
-                        _id: { $in: content.conditional.map((i) => i.contentId) },
-                    })
-                        .select("_id score")
-                        .lean();
-                    if (child) {
-                        const childScores = (_a = child
-                            .map((i) => i.score)
-                            .filter(Boolean)
-                            .reduce(((total, score) => {
-                            return (total += score);
-                        }), 0)) !== null && _a !== void 0 ? _a : 0;
-                        questionScore = Math.abs(childScores - content.score);
-                    }
-                }
-                else {
-                    questionScore = content.score;
-                }
-                const calculatedScore = SolutionValidationService_1.default.calculateResponseScore(response.response, content.answer.answer, content.type, questionScore);
-                return Object.assign(Object.assign({}, response), { score: calculatedScore });
-            }
-            catch (error) {
-                console.error("AddScore Error:", error);
-                return Object.assign(Object.assign({}, response), { score: 0 });
-            }
-        });
         // Send form links via email
         this.SendFormLinks = (req, res) => __awaiter(this, void 0, void 0, function* () {
             var _a, _b;
-            const { formId, emails, message } = req.body;
-            const user = req.user;
-            if (!formId || !emails || !Array.isArray(emails) || emails.length === 0) {
-                return res
-                    .status(400)
-                    .json((0, helper_1.ReturnCode)(400, "Form ID and email list are required"));
-            }
             try {
-                const form = yield Form_model_2.default.findById(formId);
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                    requireFormId: true,
+                });
+                if (!validation.isValid)
+                    return;
+                const { formId, emails, message } = req.body;
+                if (!formId || !emails || !Array.isArray(emails) || emails.length === 0) {
+                    return res
+                        .status(400)
+                        .json((0, helper_1.ReturnCode)(400, "Form ID and email list are required"));
+                }
+                const form = yield Form_model_1.default.findById(formId);
                 if (!form || !((_a = form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses)) {
                     return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
                 }
-                // Check if user owns the form
-                if (form.user.toString() !== ((_b = user === null || user === void 0 ? void 0 : user.id) === null || _b === void 0 ? void 0 : _b.toString())) {
+                if (form.user.toString() !== ((_b = validation.user.id) === null || _b === void 0 ? void 0 : _b.toString())) {
                     return res.status(403).json((0, helper_1.ReturnCode)(403, "Unauthorized"));
                 }
                 const emailService = new EmailService_1.default();
-                const userDetails = yield User_model_1.default.findById(user.id);
+                const userDetails = yield User_model_1.default.findById(validation.user.id);
                 const success = yield emailService.sendFormLinks({
                     formId,
                     formTitle: form.title,
@@ -475,12 +177,11 @@ class FormResponseController {
                     recipientEmails: emails,
                     message,
                 });
-                if (success) {
-                    res.status(200).json((0, helper_1.ReturnCode)(200, "Form links sent successfully"));
-                }
-                else {
-                    res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to send form links"));
-                }
+                res
+                    .status(200)
+                    .json((0, helper_1.ReturnCode)(200, success
+                    ? "Form links sent successfully"
+                    : "Failed to send form links"));
             }
             catch (error) {
                 console.error("Send Form Links Error:", error);
@@ -489,188 +190,207 @@ class FormResponseController {
         });
         // Generate form link
         this.GenerateFormLink = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
-            const { formId, secure } = req.body;
-            const user = req.user;
-            if (!formId) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-            }
+            if (!req.user)
+                return res.status(401).json((0, helper_1.ReturnCode)(401));
             try {
-                const form = yield Form_model_2.default.findById(formId);
+                const { formId } = req.body;
+                if (!formId) {
+                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
+                }
+                const form = yield Form_model_1.default.findById(formId);
                 if (!form) {
                     return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
                 }
-                if (form.user.toString() !== ((_a = user === null || user === void 0 ? void 0 : user.id) === null || _a === void 0 ? void 0 : _a.toString())) {
+                if (!(0, formHelpers_1.verifyRole)(Form_model_1.CollaboratorType.creator, form, req.user.id) ||
+                    !(0, formHelpers_1.verifyRole)(Form_model_1.CollaboratorType.owner, form, req.user.id)) {
                     return res.status(403).json((0, helper_1.ReturnCode)(403, "Unauthorized"));
                 }
                 const linkService = new FormLinkService_1.default();
-                const link = yield linkService.getValidatedFormLink(formId, secure);
-                if (link) {
-                    res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: link }));
-                }
-                else {
-                    res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to generate form link"));
-                }
+                const link = yield linkService.getValidatedFormLink(formId);
+                return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: link }));
             }
             catch (error) {
+                const err = error;
                 console.error("Generate Form Link Error:", error);
-                res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to generate form link"));
+                return res.status(500).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(500, "Failed to generate form link")), { error: err === null || err === void 0 ? void 0 : err.message }));
             }
         });
         this.GetFormForRespondent = (req, res) => __awaiter(this, void 0, void 0, function* () {
             return this.GetPublicFormData(req, res);
         });
-        // Submit form response (for respondents)
+        // Submit respondent response
         this.SubmitFormResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
-            const { formId, responseset, guestEmail, guestName } = req.body;
-            const user = req.user;
-            if (!formId || !responseset || responseset.length === 0) {
-                return res
-                    .status(400)
-                    .json((0, helper_1.ReturnCode)(400, "Form ID and responses are required"));
-            }
+            var _a;
+            const submissionId = `submission_${Date.now()}_${Math.random()
+                .toString(36)
+                .substring(2, 11)}`;
             try {
-                const form = yield Form_model_2.default.findById(formId);
+                const validationResult = this.validateSubmissionInput(req.body);
+                if (!validationResult.isValid) {
+                    console.warn(`[${submissionId}] Input validation failed:`, validationResult.errors);
+                    return res.status(400).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(400, validationResult.message)), { validationErrors: validationResult.errors, submissionId }));
+                }
+                const { formInfo, responseSet, respondentEmail, respondentName } = req.body;
+                let form;
+                try {
+                    form = yield Form_model_1.default.findById(formInfo._id)
+                        .select("setting type title")
+                        .lean();
+                }
+                catch (dbError) {
+                    const errorHandled = MongoErrorHandler_1.MongoErrorHandler.handleMongoError(dbError, res, {
+                        operationId: submissionId,
+                        customMessage: "Failed to retrieve form information",
+                        includeErrorDetails: true,
+                    });
+                    if (errorHandled.handled) {
+                        return;
+                    }
+                    console.error(`[${submissionId}] Unexpected error retrieving form:`, dbError);
+                    return res.status(500).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(500, "Database error occurred while retrieving form")), { submissionId, formId: formInfo._id }));
+                }
                 if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                    console.warn(`[${submissionId}] Form not found:`, formInfo._id);
+                    return res.status(404).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(404, "Form not found")), { submissionId, formId: formInfo._id }));
                 }
-                if (form.requiredemail && !user && !guestEmail) {
-                    return res
-                        .status(400)
-                        .json((0, helper_1.ReturnCode)(400, "Email is required for this form"));
-                }
-                let scoredResponses = responseset;
-                let totalScore = 0;
-                let isAutoScored = false;
-                if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.returnscore) === Form_model_1.returnscore.partial) {
-                    scoredResponses = yield Promise.all(responseset.map((response) => __awaiter(this, void 0, void 0, function* () {
-                        return yield this.AddScore(new mongoose_1.Types.ObjectId(response.questionId), response);
-                    })));
-                    isAutoScored = true;
-                }
-                // Calculate total score
-                totalScore = scoredResponses.reduce((sum, response) => {
-                    return sum + (response.score || 0);
-                }, 0);
-                // Create response
-                const responseData = {
-                    formId,
-                    responseset: scoredResponses,
-                    totalScore,
-                    isCompleted: true,
-                    submittedAt: new Date(),
-                    completionStatus: Response_model_1.completionStatus.completed,
-                    isAutoScored,
-                    returnscore: (_b = form.setting) === null || _b === void 0 ? void 0 : _b.returnscore,
-                };
-                if (user) {
-                    responseData.userId = new mongoose_1.Types.ObjectId(user.id);
-                }
-                else if (guestEmail) {
-                    responseData.guest = { email: guestEmail, name: guestName };
-                }
-                const savedResponse = yield Response_model_1.default.create(responseData);
-                // Send results email if auto-scored
-                if (isAutoScored && (user || guestEmail)) {
-                    const emailService = new EmailService_1.default();
-                    const email = guestEmail; // Use guestEmail for guest users
-                    if (email) {
-                        yield emailService.sendResponseResults({
-                            to: email,
-                            formTitle: form.title,
-                            totalScore,
-                            maxScore: form.totalscore || 0,
-                            responseId: savedResponse._id.toString(),
-                            isAutoScored: true,
-                        });
+                if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.submitonce) && form.type === Form_model_1.TypeForm.Normal) {
+                    try {
+                        const trackingResult = yield RespondentTrackingService_1.RespondentTrackingService.checkRespondentExists(formInfo._id.toString(), req, Response_model_1.default);
+                        if (trackingResult.hasResponded) {
+                            console.info(`[${submissionId}] Duplicate submission detected:`, {
+                                formId: formInfo._id,
+                                trackingMethod: trackingResult.trackingMethod,
+                                responseId: trackingResult.responseId,
+                            });
+                            return res.status(409).json({
+                                code: 409,
+                                message: "Duplicate submission detected",
+                                details: `You have already submitted a response to this form`,
+                                trackingMethod: trackingResult.trackingMethod,
+                                previousResponseId: trackingResult.responseId,
+                                submissionId,
+                                formTitle: form.title,
+                            });
+                        }
+                    }
+                    catch (trackingError) {
+                        console.error(`[${submissionId}] Error during duplicate check:`, trackingError);
                     }
                 }
-                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200, "Form submitted successfully")), { data: {
-                        responseId: savedResponse._id,
-                        totalScore,
-                        maxScore: form.totalscore || 0,
-                        isAutoScored,
+                let submissionDataWithTracking;
+                try {
+                    const baseSubmissionData = {
+                        formId: formInfo._id.toString(),
+                        responseset: responseSet,
+                        respondentEmail,
+                        respondentName,
+                    };
+                    submissionDataWithTracking =
+                        RespondentTrackingService_1.RespondentTrackingService.createSubmissionWithTracking(baseSubmissionData, req);
+                }
+                catch (trackingError) {
+                    console.error(`[${submissionId}] Error creating tracking data:`, trackingError);
+                    return res.status(500).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(500, "Failed to prepare submission data")), { submissionId, error: trackingError instanceof Error
+                            ? trackingError.message
+                            : "Unknown tracking error" }));
+                }
+                let result;
+                try {
+                    if (formInfo.type === Form_model_1.TypeForm.Quiz) {
+                        result = yield ResponseProcessingService_1.ResponseProcessingService.processFormSubmission(submissionDataWithTracking);
+                    }
+                    else {
+                        result = yield ResponseProcessingService_1.ResponseProcessingService.processNormalFormSubmission(submissionDataWithTracking);
+                    }
+                }
+                catch (processingError) {
+                    console.error(`[${submissionId}] Error during form processing:`, processingError);
+                    if (processingError instanceof Error) {
+                        const errorResponse = this.handleProcessingError(processingError, submissionId);
+                        if (errorResponse) {
+                            return res.status(errorResponse.status).json(errorResponse.body);
+                        }
+                    }
+                    return res.status(500).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(500, "Failed to process form submission")), { submissionId, error: processingError instanceof Error
+                            ? processingError.message
+                            : "Unknown processing error" }));
+                }
+                return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200, "Form submitted successfully")), { data: result, submissionId, meta: {
+                        formId: formInfo._id,
+                        formType: formInfo.type,
+                        submittedAt: new Date().toISOString(),
                     } }));
             }
             catch (error) {
-                console.error("Submit Form Response Error:", error);
-                res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to submit form"));
+                console.error(`[${submissionId}] Unexpected error in SubmitFormResponse:`, {
+                    error: error instanceof Error
+                        ? {
+                            name: error.name,
+                            message: error.message,
+                            stack: error.stack,
+                        }
+                        : error,
+                    requestBody: req.body,
+                    userAgent: req.headers["user-agent"],
+                    ip: req.ip,
+                });
+                if (error instanceof Error) {
+                    // Handle MongoDB/Database errors first
+                    const mongoErrorHandled = MongoErrorHandler_1.MongoErrorHandler.handleMongoError(error, res, {
+                        operationId: submissionId,
+                        customMessage: "Database operation failed during form submission",
+                        includeErrorDetails: true,
+                    });
+                    if (mongoErrorHandled.handled) {
+                        return;
+                    }
+                    // Handle validation errors
+                    if (error.name === "ValidationError" || error.name === "CastError") {
+                        return res.status(400).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(400, "Invalid data provided")), { submissionId, error: error.message }));
+                    }
+                    // Handle timeout errors
+                    if (error.message.includes("timeout") ||
+                        error.name === "TimeoutError") {
+                        return res.status(408).json({
+                            code: 408,
+                            message: "Request timeout - please try again",
+                            submissionId,
+                        });
+                    }
+                }
+                return res.status(500).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(500, "An unexpected error occurred during form submission")), { submissionId, timestamp: new Date().toISOString(), supportMessage: "Please contact support with the submission ID if this problem persists" }));
             }
         });
         // Get responses with filtering and pagination
         this.GetResponsesWithFilters = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const { formId, email, startDate, endDate, minScore, maxScore, sortBy, sortOrder, } = req.query;
-            const page = Number(req.query.page) || 1;
-            const limit = Number(req.query.limit) || 10;
-            const user = req.user;
-            // Check if user is authenticated
-            if (!user) {
-                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
-            }
-            if (!formId) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-            }
             try {
-                // Verify form access (including collaborators)
-                const form = yield Form_model_2.default.findById(formId)
-                    .populate({ path: "user", select: "email" })
-                    .lean();
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-                }
-                // Build query
-                const query = { formId };
-                // Filter by email
-                if (email) {
-                    query.$or = [
-                        { "guest.email": { $regex: email, $options: "i" } },
-                        { userId: { $exists: true } }, // Will need to populate user data
-                    ];
-                }
-                // Filter by date range
-                if (startDate || endDate) {
-                    query.submittedAt = {};
-                    if (startDate)
-                        query.submittedAt.$gte = new Date(startDate);
-                    if (endDate)
-                        query.submittedAt.$lte = new Date(endDate);
-                }
-                // Filter by score range
-                if (minScore !== undefined || maxScore !== undefined) {
-                    query.totalScore = {};
-                    if (minScore !== undefined)
-                        query.totalScore.$gte = Number(minScore);
-                    if (maxScore !== undefined)
-                        query.totalScore.$lte = Number(maxScore);
-                }
-                // Build sort options
-                const sortOptions = {};
-                if (sortBy) {
-                    sortOptions[sortBy] = sortOrder === "desc" ? -1 : 1;
-                }
-                else {
-                    sortOptions.submittedAt = -1; // Default sort by newest
-                }
-                // Execute query
-                const responses = yield Response_model_1.default.find(query)
-                    .populate("userId", "name email")
-                    .sort(sortOptions)
-                    .skip((page - 1) * limit)
-                    .limit(limit);
-                const totalCount = yield Response_model_1.default.countDocuments(query);
-                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: {
-                        responses,
-                        pagination: {
-                            page,
-                            limit,
-                            totalCount,
-                            totalPages: Math.ceil(totalCount / limit),
-                        },
-                    } }));
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                    requireFormId: true,
+                });
+                if (!validation.isValid)
+                    return;
+                const form = yield ResponseValidationService_1.ResponseValidationService.validateFormAccess(validation.formId, validation.user.id, res);
+                if (!form)
+                    return;
+                // Extract filter parameters matching frontend implementation
+                const filters = {
+                    formId: validation.formId,
+                    searchTerm: req.query.q,
+                    completionStatus: req.query.status,
+                    startDate: req.query.startD,
+                    endDate: req.query.endD,
+                    minScore: req.query.startS,
+                    maxScore: req.query.endS,
+                    email: req.query.email,
+                    sortBy: req.query.sortBy,
+                    sortOrder: req.query.sortOrder,
+                    page: validation.page,
+                    limit: validation.limit,
+                };
+                const result = yield ResponseQueryService_1.ResponseQueryService.getResponsesWithFilters(filters);
+                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: result }));
             }
             catch (error) {
                 console.error("Get Responses With Filters Error:", error);
@@ -679,63 +399,24 @@ class FormResponseController {
         });
         // Manual scoring for responses
         this.UpdateResponseScore = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
-            const { responseId, scores, sendEmail } = req.body;
-            const user = req.user;
-            if (!responseId || !scores || !Array.isArray(scores)) {
-                return res
-                    .status(400)
-                    .json((0, helper_1.ReturnCode)(400, "Response ID and scores are required"));
-            }
             try {
-                // Get response
-                const response = yield Response_model_1.default.findById(responseId).populate("formId");
-                if (!response) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Response not found"));
-                }
-                // Check form ownership
-                const form = response.formId;
-                if (form.user.toString() !== ((_a = user === null || user === void 0 ? void 0 : user.id) === null || _a === void 0 ? void 0 : _a.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Unauthorized"));
-                }
-                // Update scores
-                const updatedResponseSet = response.responseset.map((responseItem) => {
-                    const scoreUpdate = scores.find((s) => s.questionId === responseItem.questionId.toString());
-                    if (scoreUpdate) {
-                        return Object.assign(Object.assign({}, responseItem), { score: scoreUpdate.score, isManuallyScored: true });
-                    }
-                    return responseItem;
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                    requireFormId: false,
                 });
-                // Calculate new total score
-                const totalScore = updatedResponseSet.reduce((sum, item) => sum + (item.score || 0), 0);
-                // Update response
-                yield Response_model_1.default.findByIdAndUpdate(responseId, {
-                    responseset: updatedResponseSet,
-                    totalScore,
-                    isAutoScored: false,
-                });
-                // Send email if requested
-                if (sendEmail) {
-                    const emailService = new EmailService_1.default();
-                    let recipientEmail = "";
-                    if (response.userId) {
-                        const userDetails = yield User_model_1.default.findById(response.userId);
-                        recipientEmail = (userDetails === null || userDetails === void 0 ? void 0 : userDetails.email) || "";
-                    }
-                    else if ((_b = response.guest) === null || _b === void 0 ? void 0 : _b.email) {
-                        recipientEmail = response.guest.email;
-                    }
-                    if (recipientEmail) {
-                        yield emailService.sendResponseResults({
-                            to: recipientEmail,
-                            formTitle: form.title,
-                            totalScore,
-                            maxScore: form.totalscore || 0,
-                            responseId: responseId,
-                            isAutoScored: false,
-                        });
-                    }
+                if (!validation.isValid)
+                    return;
+                const { responseId, scores } = req.body;
+                if (!responseId || !scores || !Array.isArray(scores)) {
+                    return res
+                        .status(400)
+                        .json((0, helper_1.ReturnCode)(400, "Response ID and scores are required"));
                 }
+                const { response, form } = yield ResponseValidationService_1.ResponseValidationService.validateResponseAccess(responseId, validation.user.id, res);
+                if (!response || !form)
+                    return;
+                yield ResponseProcessingService_1.ResponseProcessingService.updateResponseScores(responseId, scores);
                 res.status(200).json((0, helper_1.ReturnCode)(200, "Scores updated successfully"));
             }
             catch (error) {
@@ -745,85 +426,19 @@ class FormResponseController {
         });
         // Get response analytics for charts
         this.GetResponseAnalytics = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const { formId } = req.query;
-            const user = req.user;
-            // Check if user is authenticated
-            if (!user) {
-                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
-            }
-            if (!formId) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-            }
             try {
-                // Verify form access (including collaborators)
-                const form = yield Form_model_2.default.findById(formId)
-                    .populate("contentIds")
-                    .populate({ path: "user", select: "email" })
-                    .lean();
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-                }
-                // Get all responses
-                const responses = yield Response_model_1.default.find({ formId });
-                // Analyze each question
-                const analytics = {};
-                if (form.contentIds && Array.isArray(form.contentIds)) {
-                    for (const content of form.contentIds) {
-                        const contentObj = content;
-                        const questionId = contentObj._id.toString();
-                        // Get all responses for this question
-                        const questionResponses = responses
-                            .map((response) => response.responseset.find((r) => r.questionId.toString() === questionId))
-                            .filter(Boolean);
-                        // Analyze based on question type
-                        if (["multiple", "checkbox", "selection"].includes(contentObj.type)) {
-                            // For multiple choice, checkbox, and selection questions
-                            const answerCounts = {};
-                            questionResponses.forEach((response) => {
-                                if (response) {
-                                    if (Array.isArray(response.response)) {
-                                        response.response.forEach((answer) => {
-                                            const key = answer.toString();
-                                            answerCounts[key] = (answerCounts[key] || 0) + 1;
-                                        });
-                                    }
-                                    else {
-                                        const key = response.response.toString();
-                                        answerCounts[key] = (answerCounts[key] || 0) + 1;
-                                    }
-                                }
-                            });
-                            analytics[questionId] = {
-                                type: contentObj.type,
-                                title: contentObj.title,
-                                totalResponses: questionResponses.length,
-                                answerCounts,
-                                chartData: Object.entries(answerCounts).map(([answer, count]) => ({
-                                    answer,
-                                    count,
-                                    percentage: ((count / questionResponses.length) *
-                                        100).toFixed(1),
-                                })),
-                            };
-                        }
-                        else if (["rangedate", "rangenumber"].includes(contentObj.type)) {
-                            // For range questions
-                            const ranges = questionResponses
-                                .map((response) => response === null || response === void 0 ? void 0 : response.response)
-                                .filter(Boolean);
-                            analytics[questionId] = {
-                                type: contentObj.type,
-                                title: contentObj.title,
-                                totalResponses: questionResponses.length,
-                                ranges,
-                                // Could add more range-specific analytics here
-                            };
-                        }
-                    }
-                }
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                });
+                if (!validation.isValid)
+                    return;
+                const form = yield ResponseValidationService_1.ResponseValidationService.validateFormAccess(validation.formId, validation.user.id, res);
+                if (!form)
+                    return;
+                const responses = yield ResponseQueryService_1.ResponseQueryService.getResponsesByFormId(validation.formId, 1, 1000 // Get all responses for analytics
+                );
+                const analytics = yield ResponseAnalyticsService_1.ResponseAnalyticsService.getResponseAnalytics(validation.formId, responses.responses, form);
                 res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: analytics }));
             }
             catch (error) {
@@ -831,154 +446,65 @@ class FormResponseController {
                 res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to retrieve analytics"));
             }
         });
-        this.GetPublicFormData = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
-            const { formId } = req.params;
-            const { token, p } = req.query;
-            const page = Number(p !== null && p !== void 0 ? p : "1");
-            if (!formId) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-            }
+        this.GetPublicFormData = (req, res, isPrivate) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const form = yield Form_model_2.default.findById(formId)
-                    .select("title type setting totalpage totalscore")
-                    .lean();
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses) === false) {
-                    return res
-                        .status(403)
-                        .json((0, helper_1.ReturnCode)(403, "Form is no longer accepting responses"));
-                }
-                if (token && typeof token === "string") {
-                    const linkService = new FormLinkService_1.default();
-                    const isValidToken = yield linkService.validateAccessToken(formId, token);
-                    if (!isValidToken) {
-                        return res.status(401).json((0, helper_1.ReturnCode)(401, "Invalid access token"));
+                const { formId } = req.params;
+                const { p, ty } = req.query;
+                const page = Number(p !== null && p !== void 0 ? p : "1");
+                if (!formId || !ty)
+                    return res.status(400).json((0, helper_1.ReturnCode)(400));
+                //handle Form data type base on fetch type
+                switch (ty) {
+                    case "initial": {
+                        const initialData = yield Form_model_1.default.findById(formId)
+                            .select("_id setting.acceptResponses")
+                            .exec();
+                        if (!initialData) {
+                            return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                        }
+                        return res
+                            .status(200)
+                            .json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: initialData }));
                     }
+                    case "data": {
+                        const formData = yield ResponseQueryService_1.ResponseQueryService.getPublicFormData(formId, page, req, res);
+                        return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: formData }));
+                    }
+                    default:
+                        res.status(204).json((0, helper_1.ReturnCode)(204));
                 }
-                const contents = yield Content_model_1.default.find({ $and: [{ formId }, { page }] })
-                    .select("_id qIdx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent score")
-                    .lean()
-                    .sort({ idx: 1 });
-                const formattedContents = contents.map((content) => {
-                    var _a;
-                    return (Object.assign(Object.assign({}, content), { parentcontent: ((_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) === content._id.toString()
-                            ? undefined
-                            : content.parentcontent, answer: undefined }));
-                });
-                form.contentIds = undefined;
-                const formData = Object.assign(Object.assign({}, form), { contents: formattedContents });
-                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: formData }));
             }
             catch (error) {
-                console.error("Get Public Form Data Error:", {
-                    error,
-                    params: req.params,
-                });
+                console.error("Get Public Form Data Error:", error);
+                if (error instanceof Error) {
+                    if (error.message === "Form not found") {
+                        return res.status(404).json((0, helper_1.ReturnCode)(404, error.message));
+                    }
+                    if (error.message === "Form is no longer accepting responses") {
+                        return res.status(403).json((0, helper_1.ReturnCode)(403, error.message));
+                    }
+                    if (error.message === "You already submitted this form") {
+                        return res.status(400).json((0, helper_1.ReturnCode)(400, error.message));
+                    }
+                }
                 res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to retrieve form data"));
             }
         });
         // Get analytics data for a form
         this.GetFormAnalytics = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const { formId } = req.params;
-            const { period = "7d" } = req.query;
-            const user = req.user;
-            // Check if user is authenticated
-            if (!user) {
-                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
-            }
             try {
-                const form = yield Form_model_2.default.findById(formId)
-                    .populate({ path: "user", select: "email" })
-                    .lean();
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                // Check if user has access to this form
-                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-                }
-                // Calculate date range based on period
-                const now = new Date();
-                let startDate;
-                switch (period) {
-                    case "7d":
-                        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                        break;
-                    case "30d":
-                        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                        break;
-                    case "90d":
-                        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-                        break;
-                    default:
-                        startDate = new Date(0); // All time
-                }
-                // Get responses within the date range
-                const responses = yield Response_model_1.default.find({
-                    formId: new mongoose_1.Types.ObjectId(formId),
-                    createdAt: { $gte: startDate },
-                }).sort({ createdAt: -1 });
-                // Get form questions
-                const questions = yield Content_model_1.default.find({
-                    formId: new mongoose_1.Types.ObjectId(formId),
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
                 });
-                // Calculate basic metrics
-                const totalResponses = responses.length;
-                const completedResponses = responses.filter((r) => r.completionStatus === "completed").length;
-                const averageScore = responses.reduce((sum, r) => sum + (r.totalScore || 0), 0) /
-                    totalResponses || 0;
-                const responseRate = totalResponses > 0 ? (completedResponses / totalResponses) * 100 : 0;
-                // Calculate average completion time (mock data for now)
-                const averageCompletionTime = 8; // minutes
-                // Generate question analytics
-                const questionAnalytics = yield Promise.all(questions.map((question) => __awaiter(this, void 0, void 0, function* () {
-                    var _a;
-                    const questionResponses = responses.filter((r) => r.responseset.some((rs) => { var _a; return rs.questionId.toString() === ((_a = question._id) === null || _a === void 0 ? void 0 : _a.toString()); }));
-                    const questionResponsesData = questionResponses
-                        .map((r) => r.responseset.find((rs) => { var _a; return rs.questionId.toString() === ((_a = question._id) === null || _a === void 0 ? void 0 : _a.toString()); }))
-                        .filter(Boolean);
-                    const correctResponses = questionResponsesData.filter((r) => (r === null || r === void 0 ? void 0 : r.score) && r.score > 0).length;
-                    const accuracy = questionResponsesData.length > 0
-                        ? (correctResponses / questionResponsesData.length) * 100
-                        : 0;
-                    const avgScore = questionResponsesData.reduce((sum, r) => sum + ((r === null || r === void 0 ? void 0 : r.score) || 0), 0) /
-                        questionResponsesData.length || 0;
-                    // Generate response distribution
-                    const responseDistribution = this.generateResponseDistribution(questionResponsesData, question);
-                    return {
-                        questionId: ((_a = question._id) === null || _a === void 0 ? void 0 : _a.toString()) || "",
-                        questionTitle: typeof question.title === "string" ? question.title : "Question",
-                        questionType: question.type,
-                        totalResponses: questionResponsesData.length,
-                        correctResponses,
-                        accuracy,
-                        averageScore: avgScore,
-                        responseDistribution,
-                        commonAnswers: responseDistribution
-                            .map((r) => r.option)
-                            .slice(0, 5),
-                    };
-                })));
-                // Generate score distribution
-                const scoreDistribution = this.generateScoreDistribution(responses, form.totalscore || 100);
-                // Generate time series data
-                const timeSeriesData = this.generateTimeSeriesData(responses, startDate, now);
-                // Generate performance metrics
-                const performanceMetrics = this.generatePerformanceMetrics(responses, questions);
-                const analyticsData = {
-                    totalResponses,
-                    completedResponses,
-                    averageScore,
-                    averageCompletionTime,
-                    responseRate,
-                    questionAnalytics,
-                    scoreDistribution,
-                    timeSeriesData,
-                    performanceMetrics,
-                };
+                if (!validation.isValid)
+                    return;
+                const { formId } = req.params;
+                const { period = "7d" } = req.query;
+                const form = yield ResponseValidationService_1.ResponseValidationService.validateFormAccess(formId, validation.user.id, res);
+                if (!form)
+                    return;
+                const analyticsData = yield ResponseAnalyticsService_1.ResponseAnalyticsService.getFormAnalytics(formId, period);
                 res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: analyticsData }));
             }
             catch (error) {
@@ -988,80 +514,31 @@ class FormResponseController {
         });
         // Export analytics as PDF or CSV
         this.ExportAnalytics = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const { formId } = req.params;
-            const { format = "pdf" } = req.query;
-            const user = req.user;
-            // Check if user is authenticated
-            if (!user) {
-                return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
-            }
             try {
-                const form = yield Form_model_2.default.findById(formId)
-                    .populate({ path: "user", select: "email" })
-                    .lean();
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                // Check if user has access to this form
-                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-                }
-                // Get analytics data (reuse the analytics logic)
-                const responses = yield Response_model_1.default.find({
-                    formId: new mongoose_1.Types.ObjectId(formId),
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                    requireFormId: false,
                 });
-                const questions = yield Content_model_1.default.find({
-                    formId: new mongoose_1.Types.ObjectId(formId),
-                });
-                const analyticsData = {
-                    totalResponses: responses.length,
-                    completedResponses: responses.filter((r) => r.completionStatus === "completed").length,
-                    averageScore: responses.reduce((sum, r) => sum + (r.totalScore || 0), 0) /
-                        responses.length || 0,
-                    responseRate: responses.length > 0
-                        ? (responses.filter((r) => r.completionStatus === "completed")
-                            .length /
-                            responses.length) *
-                            100
-                        : 0,
-                    questionAnalytics: yield Promise.all(questions.map((question) => __awaiter(this, void 0, void 0, function* () {
-                        const questionResponses = responses.filter((r) => r.responseset.some((rs) => { var _a; return rs.questionId.toString() === ((_a = question._id) === null || _a === void 0 ? void 0 : _a.toString()); }));
-                        const questionResponsesData = questionResponses
-                            .map((r) => r.responseset.find((rs) => { var _a; return rs.questionId.toString() === ((_a = question._id) === null || _a === void 0 ? void 0 : _a.toString()); }))
-                            .filter(Boolean);
-                        const correctResponses = questionResponsesData.filter((r) => (r === null || r === void 0 ? void 0 : r.score) && r.score > 0).length;
-                        const accuracy = questionResponsesData.length > 0
-                            ? (correctResponses / questionResponsesData.length) * 100
-                            : 0;
-                        const avgScore = questionResponsesData.reduce((sum, r) => sum + ((r === null || r === void 0 ? void 0 : r.score) || 0), 0) / questionResponsesData.length || 0;
-                        return {
-                            questionTitle: typeof question.title === "string"
-                                ? question.title
-                                : "Question",
-                            questionType: question.type,
-                            totalResponses: questionResponsesData.length,
-                            accuracy,
-                            averageScore: avgScore,
-                        };
-                    }))),
-                    scoreDistribution: this.generateScoreDistribution(responses, form.totalscore || 100),
-                    performanceMetrics: this.generatePerformanceMetrics(responses, questions),
-                };
-                if (format === "pdf") {
-                    const PDFExportService = require("../services/PDFExportService").default;
-                    const pdfBuffer = yield PDFExportService.generateAnalyticsPDF(analyticsData, form.title);
-                    res.setHeader("Content-Type", "application/pdf");
-                    res.setHeader("Content-Disposition", `attachment; filename="${form.title}-analytics.pdf"`);
-                    res.send(pdfBuffer);
-                }
-                else if (format === "csv") {
-                    const csvData = this.generateCSVData(analyticsData, responses);
+                if (!validation.isValid)
+                    return;
+                const { formId } = req.params;
+                const { format = "pdf" } = req.query;
+                const form = yield ResponseValidationService_1.ResponseValidationService.validateFormAccess(formId, validation.user.id, res);
+                if (!form)
+                    return;
+                const analyticsData = yield ResponseAnalyticsService_1.ResponseAnalyticsService.getFormAnalytics(formId);
+                if (format === "csv") {
+                    const responses = yield ResponseQueryService_1.ResponseQueryService.getResponsesByFormId(formId, 1, 1000);
+                    const csvData = ResponseAnalyticsService_1.ResponseAnalyticsService.generateCSVData(analyticsData, responses.responses);
                     res.setHeader("Content-Type", "text/csv");
                     res.setHeader("Content-Disposition", `attachment; filename="${form.title}-analytics.csv"`);
                     res.send(csvData);
                 }
                 else {
-                    res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid export format"));
+                    res
+                        .status(400)
+                        .json((0, helper_1.ReturnCode)(400, "Only CSV export is currently supported"));
                 }
             }
             catch (error) {
@@ -1069,60 +546,63 @@ class FormResponseController {
                 res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to export analytics"));
             }
         });
+        // Export individual response as PDF
+        this.ExportResponsePDF = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                    requireFormId: false,
+                });
+                if (!validation.isValid)
+                    return;
+                const { formId, responseId } = req.params;
+                const form = yield ResponseValidationService_1.ResponseValidationService.validateFormAccess(formId, validation.user.id, res);
+                if (!form)
+                    return;
+                // Get the specific response with full data
+                const response = yield Response_model_1.default.findOne({
+                    _id: new mongoose_1.Types.ObjectId(responseId),
+                    formId: new mongoose_1.Types.ObjectId(formId),
+                }).populate({
+                    path: "responseset.questionId",
+                    model: "Content",
+                });
+                if (!response) {
+                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Response not found"));
+                }
+                // Generate PDF using Puppeteer
+                const pdfBuffer = yield this.generateResponsePDF(form, response);
+                // Get respondent name for filename
+                const respondentName = (0, respondentUtils_1.getResponseDisplayName)(response) || "Response";
+                const filename = `${respondentName}_${form.title}_Response.pdf`;
+                res.setHeader("Content-Type", "application/pdf");
+                res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+                res.send(pdfBuffer);
+            }
+            catch (error) {
+                console.error("Export Response PDF Error:", error);
+                res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to export response as PDF"));
+            }
+        });
         // Get all responses by current user
         this.GetUserResponses = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const user = req.user;
-            const page = Number(req.query.page) || 1;
-            const limit = Number(req.query.limit) || 10;
-            if (!user) {
-                return res.status(401).json((0, helper_1.ReturnCode)(401, "User not authenticated"));
-            }
             try {
-                const skip = (page - 1) * limit;
-                // Get all responses by the user with form details
-                const responses = yield Response_model_1.default.find({
-                    userId: new mongoose_1.Types.ObjectId(user.id),
-                })
-                    .populate({
-                    path: "formId",
-                    select: "title type setting user createdAt",
-                })
-                    .sort({ submittedAt: -1 })
-                    .skip(skip)
-                    .limit(limit)
-                    .lean();
-                const totalCount = yield Response_model_1.default.countDocuments({
-                    userId: new mongoose_1.Types.ObjectId(user.id),
+                const { formId, page, uid, isValid } = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                    requireUserInfo: true,
+                    requireFormId: true,
                 });
-                const formattedResponses = responses.map((response) => {
-                    var _a;
-                    const form = response.formId;
-                    return {
-                        _id: response._id,
-                        formId: (form === null || form === void 0 ? void 0 : form._id) || response.formId,
-                        formTitle: (form === null || form === void 0 ? void 0 : form.title) || "Unknown Form",
-                        formType: (form === null || form === void 0 ? void 0 : form.type) || "Unknown",
-                        totalScore: response.totalScore,
-                        maxScore: (form === null || form === void 0 ? void 0 : form.totalscore) || 0,
-                        isCompleted: response.isCompleted,
-                        submittedAt: response.submittedAt,
-                        createdAt: response.createdAt,
-                        responseCount: ((_a = response.responseset) === null || _a === void 0 ? void 0 : _a.length) || 0,
-                        isAutoScored: response.isAutoScored,
-                        formCreatedAt: form === null || form === void 0 ? void 0 : form.createdAt,
-                    };
+                if (!isValid || !uid || !formId)
+                    return;
+                const result = yield ResponseQueryService_1.ResponseQueryService.getUserResponses({
+                    page: page !== null && page !== void 0 ? page : 1,
+                    formId,
+                    user: uid,
+                    limit: 1, //Only one response
                 });
-                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: {
-                        responses: formattedResponses,
-                        pagination: {
-                            page,
-                            limit,
-                            totalCount,
-                            totalPages: Math.ceil(totalCount / limit),
-                            hasNextPage: page < Math.ceil(totalCount / limit),
-                            hasPrevPage: page > 1,
-                        },
-                    } }));
+                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: result }));
             }
             catch (error) {
                 console.error("Get User Responses Error:", error);
@@ -1133,31 +613,22 @@ class FormResponseController {
         });
         // Delete a response by ID
         this.DeleteResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const { responseId } = req.params;
-            const user = req.user;
-            if (!user) {
-                return res.status(401).json((0, helper_1.ReturnCode)(401, "User not authenticated"));
-            }
-            if (!responseId) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Response ID is required"));
-            }
             try {
-                const response = yield Response_model_1.default.findById(responseId).populate("formId");
-                if (!response) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Response not found"));
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                    requireFormId: true,
+                });
+                if (!validation.isValid)
+                    return;
+                const { responseId } = req.params;
+                if (!responseId) {
+                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Response ID is required"));
                 }
-                // Get form to check ownership/access
-                const form = yield Form_model_2.default.findById(response.formId)
-                    .populate({ path: "user", select: "email" })
-                    .lean();
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                // Check if user has access to this form (form owner or collaborator)
-                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-                }
-                yield Response_model_1.default.findByIdAndDelete(responseId);
+                const { response, form } = yield ResponseValidationService_1.ResponseValidationService.validateResponseAccess(responseId, validation.user.id, res);
+                if (!response || !form)
+                    return;
+                yield ResponseQueryService_1.ResponseQueryService.deleteResponse(responseId);
                 res.status(200).json((0, helper_1.ReturnCode)(200, "Response deleted successfully"));
             }
             catch (error) {
@@ -1166,216 +637,543 @@ class FormResponseController {
             }
         });
         this.BulkDeleteResponses = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const { responseIds, formId } = req.body;
-            const user = req.user;
-            if (!user) {
-                return res.status(401).json((0, helper_1.ReturnCode)(401, "User not authenticated"));
-            }
-            if (!responseIds ||
-                !Array.isArray(responseIds) ||
-                responseIds.length === 0) {
-                return res
-                    .status(400)
-                    .json((0, helper_1.ReturnCode)(400, "Response IDs array is required"));
-            }
-            if (!formId) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-            }
             try {
-                const form = yield Form_model_2.default.findById(formId)
-                    .populate({ path: "user", select: "email" })
-                    .lean();
-                if (!form) {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-                }
-                if (!(0, form_controller_1.hasFormAccess)(form, user.id.toString())) {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-                }
-                const responses = yield Response_model_1.default.find({
-                    _id: { $in: responseIds },
-                    formId: formId,
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                    requireFormId: false,
                 });
-                if (responses.length !== responseIds.length) {
+                if (!validation.isValid)
+                    return;
+                const { responseIds, formId } = req.body;
+                if (!responseIds ||
+                    !Array.isArray(responseIds) ||
+                    responseIds.length === 0) {
                     return res
                         .status(400)
-                        .json((0, helper_1.ReturnCode)(400, "Some responses don't exist or don't belong to this form"));
+                        .json((0, helper_1.ReturnCode)(400, "Response IDs array is required"));
                 }
-                const deleteResult = yield Response_model_1.default.deleteMany({
-                    _id: { $in: responseIds },
-                    formId: formId,
-                });
-                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200, "Responses deleted successfully")), { data: {
-                        deletedCount: deleteResult.deletedCount,
-                    } }));
+                if (!formId) {
+                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
+                }
+                const form = yield ResponseValidationService_1.ResponseValidationService.validateFormAccess(formId, validation.user.id, res);
+                if (!form)
+                    return;
+                const result = yield ResponseQueryService_1.ResponseQueryService.bulkDeleteResponses(responseIds, formId);
+                res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200, "Responses deleted successfully")), { data: result }));
             }
             catch (error) {
                 console.error("Bulk Delete Responses Error:", error);
+                if (error instanceof Error && error.message.includes("don't exist")) {
+                    return res.status(400).json((0, helper_1.ReturnCode)(400, error.message));
+                }
                 res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to delete responses"));
             }
         });
-    }
-    deepEqual(a, b) {
-        if (a === b)
-            return true;
-        if (typeof a !== "object" || typeof b !== "object" || !a || !b)
-            return false;
-        const keysA = Object.keys(a);
-        const keysB = Object.keys(b);
-        if (keysA.length !== keysB.length)
-            return false;
-        return keysA.every((key) => Object.prototype.hasOwnProperty.call(b, key) &&
-            this.deepEqual(a[key], b[key]));
-    }
-    // Helper method to generate CSV data
-    generateCSVData(analyticsData, responses) {
-        const headers = [
-            "Response ID",
-            "Respondent Name",
-            "Respondent Email",
-            "Total Score",
-            "Completion Status",
-            "Submitted At",
-        ];
-        const csvRows = [headers.join(",")];
-        responses.forEach((response) => {
-            var _a;
-            const row = [
-                response._id,
-                (0, respondentUtils_1.getResponseDisplayName)(response),
-                response.respondentEmail || ((_a = response.guest) === null || _a === void 0 ? void 0 : _a.email) || "N/A",
-                response.totalScore || 0,
-                response.completionStatus || "partial",
-                response.submittedAt
-                    ? new Date(response.submittedAt).toISOString()
-                    : "N/A",
-            ];
-            csvRows.push(row.join(","));
-        });
-        return csvRows.join("\n");
-    }
-    // Helper method to generate response distribution
-    generateResponseDistribution(responses, question) {
-        const distribution = {};
-        responses.forEach((response) => {
-            if (response === null || response === void 0 ? void 0 : response.response) {
-                const answer = Array.isArray(response.response)
-                    ? response.response.join(", ")
-                    : response.response.toString();
-                distribution[answer] = (distribution[answer] || 0) + 1;
+        // Send response as card email
+        this.SendResponseCardEmail = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a, _b;
+            try {
+                const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                    req,
+                    res,
+                    requireFormId: false,
+                });
+                if (!validation.isValid)
+                    return;
+                const { responseId, recipientEmail } = req.body;
+                if (!responseId || !recipientEmail) {
+                    return res
+                        .status(400)
+                        .json((0, helper_1.ReturnCode)(400, "Response ID and recipient email are required"));
+                }
+                const response = yield Response_model_1.default.findById(responseId)
+                    .populate("formId")
+                    .populate({
+                    path: "responseset.question",
+                })
+                    .lean();
+                if (!response) {
+                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Response not found"));
+                }
+                const form = response.formId;
+                if (!form) {
+                    return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
+                }
+                // Check if user has access to this form
+                const hasAccess = yield ResponseValidationService_1.ResponseValidationService.validateFormAccess(form._id.toString(), validation.user.id, res);
+                if (!hasAccess)
+                    return;
+                // Build questions array with scores and warnings
+                const questions = [];
+                let totalScore = 0;
+                let maxScore = 0;
+                let hasNonAutoScorableQuestions = false;
+                const nonAutoScorableWarnings = new Set();
+                // Process each response in the response set
+                for (const responseItem of response.responseset) {
+                    const question = responseItem.question;
+                    if (!question)
+                        continue;
+                    const questionType = question.type;
+                    const hasAnswerKey = question.answer &&
+                        SolutionValidationService_1.default.isAnswerisempty(question.answer.answer);
+                    const questionScore = question.score || 0;
+                    maxScore += questionScore;
+                    if (!hasAnswerKey) {
+                        nonAutoScorableWarnings.add(question.qIdx);
+                    }
+                    questions.push({
+                        title: (0, helper_1.contentTitleToString)(question.title),
+                        type: questionType,
+                        answer: hasAnswerKey
+                            ? (_a = question.answer) === null || _a === void 0 ? void 0 : _a.answer
+                            : null,
+                        userResponse: responseItem.response,
+                        score: (_b = response.totalScore) !== null && _b !== void 0 ? _b : 0,
+                        maxScore: questionScore,
+                        isCorrect: responseItem.score === question.score,
+                    });
+                }
+                // Prepare email data
+                const emailData = {
+                    to: recipientEmail,
+                    formTitle: form.title || "Untitled Form",
+                    totalScore: totalScore,
+                    maxScore: maxScore,
+                    responseId: responseId,
+                    isAutoScored: form.type === Form_model_1.TypeForm.Quiz,
+                    questions: questions,
+                    respondentName: response.respondentName || "Anonymous",
+                    submittedAt: response.createdAt,
+                };
+                // Send the email
+                const emailService = new EmailService_1.default();
+                const success = yield emailService.sendResponseResults(emailData);
+                if (success) {
+                    const message = hasNonAutoScorableQuestions
+                        ? `Email sent successfully. Warning: ${nonAutoScorableWarnings.size} question(s) could not be auto-scored and require manual review.`
+                        : "Email sent successfully";
+                    res.status(200).json(Object.assign({}, (0, helper_1.ReturnCode)(200, message)));
+                }
+                else {
+                    res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to send email"));
+                }
+            }
+            catch (error) {
+                console.error("Send Response Card Email Error:", error);
+                res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to send response email"));
             }
         });
-        return Object.entries(distribution)
-            .map(([option, count]) => ({
-            option,
-            count,
-            percentage: (count / responses.length) * 100,
-        }))
-            .sort((a, b) => b.count - a.count);
     }
-    // Helper method to generate score distribution
-    generateScoreDistribution(responses, maxScore) {
-        const ranges = [
-            { min: 0, max: 0.2 * maxScore, label: "0-20%" },
-            { min: 0.2 * maxScore, max: 0.4 * maxScore, label: "21-40%" },
-            { min: 0.4 * maxScore, max: 0.6 * maxScore, label: "41-60%" },
-            { min: 0.6 * maxScore, max: 0.8 * maxScore, label: "61-80%" },
-            { min: 0.8 * maxScore, max: maxScore, label: "81-100%" },
-        ];
-        return ranges.map((range) => {
-            const count = responses.filter((r) => (r.totalScore || 0) >= range.min && (r.totalScore || 0) <= range.max).length;
+    validateSubmissionInput(body) {
+        const errors = [];
+        if (!body) {
             return {
-                scoreRange: range.label,
-                count,
-                percentage: responses.length > 0 ? (count / responses.length) * 100 : 0,
+                isValid: false,
+                message: "Request body is required",
+                errors: ["Request body is missing"],
             };
-        });
-    }
-    // Helper method to generate time series data
-    generateTimeSeriesData(responses, startDate, endDate) {
-        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
-        const data = [];
-        for (let i = 0; i < days; i++) {
-            const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
-            const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-            const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
-            const dayResponses = responses.filter((r) => r.createdAt >= dayStart && r.createdAt < dayEnd);
-            const avgScore = dayResponses.length > 0
-                ? dayResponses.reduce((sum, r) => sum + (r.totalScore || 0), 0) /
-                    dayResponses.length
-                : 0;
-            data.push({
-                date: date.toISOString().split("T")[0],
-                responses: dayResponses.length,
-                averageScore: avgScore,
+        }
+        const { formInfo, responseSet, respondentEmail, respondentName } = body;
+        if (!formInfo) {
+            errors.push("Form information is required");
+        }
+        else {
+            if (!formInfo._id) {
+                errors.push("Form ID is required");
+            }
+            if (!formInfo.type) {
+                errors.push("Form type is required");
+            }
+            else if (!Object.values(Form_model_1.TypeForm).includes(formInfo.type)) {
+                errors.push(`Invalid form type: ${formInfo.type}. Must be one of: ${Object.values(Form_model_1.TypeForm).join(", ")}`);
+            }
+        }
+        if (!responseSet) {
+            errors.push("Response set is required");
+        }
+        else if (!Array.isArray(responseSet)) {
+            errors.push("Response set must be an array");
+        }
+        else if (responseSet.length === 0) {
+            errors.push("At least one response is required");
+        }
+        else {
+            responseSet.forEach((response, index) => {
+                if (!response.questionId) {
+                    errors.push(`Response ${index + 1}: Question ID is required`);
+                }
+                if (response.answer === undefined || response.answer === null) {
+                    errors.push(`Response ${index + 1}: Answer is required`);
+                }
             });
         }
-        return data;
-    }
-    // Helper method to generate performance metrics
-    generatePerformanceMetrics(responses, questions) {
-        // Top performers
-        const topPerformers = responses
-            .filter((r) => {
-            var _a, _b, _c;
-            return (r.respondentName ||
-                ((_a = r.guest) === null || _a === void 0 ? void 0 : _a.name) ||
-                r.respondentEmail ||
-                ((_b = r.guest) === null || _b === void 0 ? void 0 : _b.email)) &&
-                (r.respondentEmail || ((_c = r.guest) === null || _c === void 0 ? void 0 : _c.email));
-        })
-            .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0))
-            .slice(0, 5)
-            .map((r) => {
-            var _a;
-            return ({
-                name: (0, respondentUtils_1.getResponseDisplayName)(r),
-                email: r.respondentEmail || ((_a = r.guest) === null || _a === void 0 ? void 0 : _a.email),
-                score: r.totalScore || 0,
-                completionTime: 8, // Mock completion time
-            });
-        });
-        // Difficult questions (lowest accuracy)
-        const difficultQuestions = questions
-            .map((q) => {
-            var _a;
-            const questionResponses = responses.filter((r) => r.responseset.some((rs) => { var _a; return rs.questionId.toString() === ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()); }));
-            const correctCount = questionResponses.filter((r) => {
-                const questionResponse = r.responseset.find((rs) => { var _a; return rs.questionId.toString() === ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()); });
-                return (questionResponse &&
-                    questionResponse.score &&
-                    questionResponse.score > 0);
-            }).length;
-            const accuracy = questionResponses.length > 0
-                ? (correctCount / questionResponses.length) * 100
-                : 0;
-            const avgScore = questionResponses.reduce((sum, r) => {
-                const questionResponse = r.responseset.find((rs) => { var _a; return rs.questionId.toString() === ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()); });
-                return sum + ((questionResponse === null || questionResponse === void 0 ? void 0 : questionResponse.score) || 0);
-            }, 0) / questionResponses.length || 0;
-            return {
-                questionId: ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()) || "",
-                title: typeof q.title === "string" ? q.title : "Question",
-                accuracy,
-                averageScore: avgScore,
-            };
-        })
-            .sort((a, b) => a.accuracy - b.accuracy)
-            .slice(0, 5);
+        if (respondentEmail && typeof respondentEmail === "string") {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(respondentEmail)) {
+                errors.push("Invalid email format");
+            }
+        }
+        if (respondentName &&
+            (typeof respondentName !== "string" || respondentName.trim().length === 0)) {
+            errors.push("Respondent name must be a non-empty string if provided");
+        }
         return {
-            topPerformers,
-            difficultQuestions,
+            isValid: errors.length === 0,
+            message: errors.length > 0 ? "Validation failed" : "Validation passed",
+            errors,
         };
+    }
+    handleProcessingError(error, submissionId) {
+        const errorMessage = error.message.toLowerCase();
+        // Required field errors
+        if (error.message === "Require" || errorMessage.includes("required")) {
+            return {
+                status: 400,
+                body: Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(400, "Missing required questions")), { submissionId, error: "Please ensure all required questions are answered" }),
+            };
+        }
+        // Format errors
+        if (error.message === "Format" ||
+            errorMessage.includes("format") ||
+            errorMessage.includes("invalid answer")) {
+            return {
+                status: 400,
+                body: Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(400, "Invalid answer format")), { submissionId, error: "One or more answers are in an invalid format" }),
+            };
+        }
+        // Question not found errors
+        if (errorMessage.includes("question not found")) {
+            return {
+                status: 404,
+                body: Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(404, "Question not found")), { submissionId, error: "One or more questions in your response could not be found" }),
+            };
+        }
+        // Form not found errors
+        if (error.message === "Form not found" ||
+            errorMessage.includes("form not found")) {
+            return {
+                status: 404,
+                body: Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(404, "Form not found")), { submissionId, error: error.message }),
+            };
+        }
+        // Email requirement errors
+        if (error.message === "Email is required for this form" ||
+            errorMessage.includes("email is required")) {
+            return {
+                status: 400,
+                body: Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(400, "Email is required")), { submissionId, error: "This form requires an email address to submit" }),
+            };
+        }
+        // Duplicate submission errors
+        if (error.message === "Form already exisited" ||
+            errorMessage.includes("already submitted") ||
+            errorMessage.includes("duplicate")) {
+            return {
+                status: 409,
+                body: {
+                    code: 409,
+                    message: "Duplicate submission",
+                    submissionId,
+                    error: "You have already submitted a response to this form",
+                },
+            };
+        }
+        // Form access errors
+        if (errorMessage.includes("access denied") ||
+            errorMessage.includes("unauthorized")) {
+            return {
+                status: 403,
+                body: Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(403, "Access denied")), { submissionId, error: "You don't have permission to submit to this form" }),
+            };
+        }
+        // Form closed/inactive errors
+        if (errorMessage.includes("form is closed") ||
+            errorMessage.includes("form is inactive")) {
+            return {
+                status: 403,
+                body: Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(403, "Form is not available")), { submissionId, error: "This form is no longer accepting responses" }),
+            };
+        }
+        return null; // Let the calling function handle unknown errors
+    }
+    //Get Respodnent Info
+    GetResponsesInfo(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!req.user)
+                return res.status(403).json((0, helper_1.ReturnCode)(403));
+            const validation = yield ResponseValidationService_1.ResponseValidationService.validateRequest({
+                req,
+                res,
+                requireFormId: true,
+            });
+            if (!validation.isValid)
+                return res.status(400).json((0, helper_1.ReturnCode)(400));
+            try {
+                // Use aggregation pipeline to get unique respondent emails
+                const form = yield Form_model_1.default.findById(validation.formId).select("_id owners editors user");
+                const hasAccess = (0, formHelpers_1.hasFormAccess)(form, req.user.id);
+                if (!hasAccess)
+                    return res.status(403).json((0, helper_1.ReturnCode)(403));
+                const respondents = yield Response_model_1.default.aggregate([
+                    {
+                        $match: {
+                            formId: validation.formId,
+                            respondentEmail: { $exists: true, $nin: [null, ""] },
+                        },
+                    },
+                    {
+                        $group: {
+                            _id: "$respondentEmail",
+                            respondentEmail: { $first: "$respondentEmail" },
+                            respondentName: { $first: "$respondentName" },
+                            respondentType: { $first: "$respondentType" },
+                            responseCount: { $sum: 1 },
+                            lastSubmitted: { $max: "$submittedAt" },
+                        },
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            respondentEmail: 1,
+                            respondentName: 1,
+                            respondentType: 1,
+                            responseCount: 1,
+                            lastSubmitted: 1,
+                        },
+                    },
+                    {
+                        $sort: { lastSubmitted: -1 },
+                    },
+                ]);
+                return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: respondents }));
+            }
+            catch (error) {
+                console.log("Fetching respondentList", error);
+                res.status(500).json((0, helper_1.ReturnCode)(500));
+            }
+        });
+    }
+    GetInititalFormData(formId, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!formId)
+                return res.status(400).json((0, helper_1.ReturnCode)(400));
+            try {
+                const formdata = yield Form_model_1.default.findById(formId)
+                    .select("_id setting.acceptResponses")
+                    .exec();
+                if (!formdata) {
+                    return res.status(404).json((0, helper_1.ReturnCode)(404));
+                }
+                return res.status(200).json({ data: formdata });
+            }
+            catch (error) {
+                console.log("Get Initial Formdata", error);
+                return res.status(500).json((0, helper_1.ReturnCode)(500));
+            }
+        });
+    }
+    generateResponsePDF(form, response) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const puppeteer = require("puppeteer");
+            let browser;
+            try {
+                browser = yield puppeteer.launch({
+                    headless: true,
+                    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+                });
+                const page = yield browser.newPage();
+                // Generate HTML content for the response
+                const htmlContent = this.generateResponseHTML(form, response);
+                yield page.setContent(htmlContent, { waitUntil: "networkidle0" });
+                const pdfBuffer = yield page.pdf({
+                    format: "A4",
+                    printBackground: true,
+                    margin: {
+                        top: "20px",
+                        right: "20px",
+                        bottom: "20px",
+                        left: "20px",
+                    },
+                });
+                return pdfBuffer;
+            }
+            finally {
+                if (browser) {
+                    yield browser.close();
+                }
+            }
+        });
+    }
+    generateResponseHTML(form, response) {
+        var _a;
+        const respondentName = (0, respondentUtils_1.getResponseDisplayName)(response);
+        const submittedAt = response.submittedAt
+            ? new Date(response.submittedAt).toLocaleDateString()
+            : "N/A";
+        let questionsHTML = "";
+        // Process each response in the responseset
+        if (response.responseset && Array.isArray(response.responseset)) {
+            response.responseset.forEach((responseItem, index) => {
+                var _a;
+                const question = responseItem.questionId;
+                if (!question)
+                    return;
+                const questionTitle = ((_a = question.title) === null || _a === void 0 ? void 0 : _a.text) || `Question ${index + 1}`;
+                const questionType = question.type;
+                let answerHTML = "";
+                // Format answer based on question type
+                switch (questionType) {
+                    case "text":
+                    case "email":
+                    case "number":
+                        answerHTML = responseItem.answer || "No answer provided";
+                        break;
+                    case "multiple":
+                    case "selection":
+                        if (Array.isArray(responseItem.answer)) {
+                            answerHTML = responseItem.answer.join(", ");
+                        }
+                        else {
+                            answerHTML = responseItem.answer || "No selection made";
+                        }
+                        break;
+                    case "checkbox":
+                        if (Array.isArray(responseItem.answer)) {
+                            answerHTML = responseItem.answer.join(", ");
+                        }
+                        else {
+                            answerHTML = "No options selected";
+                        }
+                        break;
+                    case "rangedate":
+                        if (responseItem.answer &&
+                            Array.isArray(responseItem.answer) &&
+                            responseItem.answer.length === 2) {
+                            const startDate = new Date(responseItem.answer[0]).toLocaleDateString();
+                            const endDate = new Date(responseItem.answer[1]).toLocaleDateString();
+                            answerHTML = `${startDate} - ${endDate}`;
+                        }
+                        else {
+                            answerHTML = "No date range provided";
+                        }
+                        break;
+                    case "rangenumber":
+                        if (responseItem.answer &&
+                            Array.isArray(responseItem.answer) &&
+                            responseItem.answer.length === 2) {
+                            answerHTML = `${responseItem.answer[0]} - ${responseItem.answer[1]}`;
+                        }
+                        else {
+                            answerHTML = "No number range provided";
+                        }
+                        break;
+                    default:
+                        answerHTML =
+                            JSON.stringify(responseItem.answer) || "No answer provided";
+                }
+                const score = responseItem.score !== undefined ? responseItem.score : "Not scored";
+                questionsHTML += `
+          <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <h3 style="color: #333; margin-bottom: 10px; font-size: 16px;">${questionTitle}</h3>
+            <p style="margin-bottom: 8px;"><strong>Type:</strong> ${questionType}</p>
+            <p style="margin-bottom: 8px;"><strong>Answer:</strong> ${answerHTML}</p>
+            <p style="margin-bottom: 0;"><strong>Score:</strong> ${score}</p>
+          </div>
+        `;
+            });
+        }
+        return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Response Export - ${form.title}</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+          }
+          .form-title {
+            color: #007bff;
+            font-size: 24px;
+            margin-bottom: 10px;
+          }
+          .response-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+          }
+          .response-info p {
+            margin: 5px 0;
+          }
+          .questions-section {
+            margin-top: 20px;
+          }
+          .section-title {
+            color: #007bff;
+            font-size: 20px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #007bff;
+            padding-bottom: 5px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1 class="form-title">${form.title}</h1>
+          <p>Response Export</p>
+        </div>
+        
+        <div class="response-info">
+          <h2>Response Information</h2>
+          <p><strong>Respondent:</strong> ${respondentName}</p>
+          <p><strong>Email:</strong> ${response.respondentEmail || ((_a = response.guest) === null || _a === void 0 ? void 0 : _a.email) || "N/A"}</p>
+          <p><strong>Total Score:</strong> ${response.totalScore || 0}/${form.totalscore || "N/A"}</p>
+          <p><strong>Completion Status:</strong> ${response.completionStatus || "partial"}</p>
+          <p><strong>Submitted:</strong> ${submittedAt}</p>
+          <p><strong>Response ID:</strong> ${response._id}</p>
+        </div>
+
+        <div class="questions-section">
+          <h2 class="section-title">Responses</h2>
+          ${questionsHTML || "<p>No responses found.</p>"}
+        </div>
+        
+        <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #666;">
+          <p>Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
+        </div>
+      </body>
+      </html>
+    `;
     }
 }
 exports.FormResponseController = FormResponseController;
-FormResponseController.DEFAULT_PAGE = 1;
-FormResponseController.DEFAULT_LIMIT = 5;
 // Public form submission validation
 FormResponseController.publicSubmitValidate = zod_1.default.object({
     body: zod_1.default.object({
         formId: zod_1.default.string().min(1, "Form is required"),
         respondentEmail: zod_1.default.string().email().optional(),
         respondentName: zod_1.default.string().optional(),
+    }),
+});
+// Send response card email validation
+FormResponseController.sendResponseCardEmailValidate = zod_1.default.object({
+    body: zod_1.default.object({
+        responseId: zod_1.default.string().min(1, "Response ID is required"),
+        recipientEmail: zod_1.default.string().email("Valid email is required"),
     }),
 });
 exports.default = new FormResponseController();

@@ -1,17 +1,28 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.completionStatus = void 0;
+exports.ScoringMethod = exports.completionStatus = exports.RespondentType = void 0;
 const mongoose_1 = require("mongoose");
-const Form_model_1 = require("./Form.model");
+var RespondentType;
+(function (RespondentType) {
+    RespondentType["user"] = "USER";
+    RespondentType["guest"] = "GUEST";
+})(RespondentType || (exports.RespondentType = RespondentType = {}));
 var completionStatus;
 (function (completionStatus) {
     completionStatus["completed"] = "completed";
     completionStatus["partial"] = "partial";
     completionStatus["abandoned"] = "abandoned";
+    completionStatus["idle"] = "idle";
 })(completionStatus || (exports.completionStatus = completionStatus = {}));
+var ScoringMethod;
+(function (ScoringMethod) {
+    ScoringMethod["AUTO"] = "auto";
+    ScoringMethod["MANUAL"] = "manual";
+    ScoringMethod["NONE"] = "none";
+})(ScoringMethod || (exports.ScoringMethod = ScoringMethod = {}));
 //Sub Doc
 const ResponseSetSchema = new mongoose_1.Schema({
-    questionId: {
+    question: {
         type: mongoose_1.Schema.Types.ObjectId,
         ref: "Content",
         required: true,
@@ -25,19 +36,10 @@ const ResponseSetSchema = new mongoose_1.Schema({
         type: Number,
         required: false,
     },
-    isManuallyScored: {
-        type: Boolean,
-        default: false,
-    },
-});
-const GuestSchema = new mongoose_1.Schema({
-    email: {
-        required: false,
+    scoringMethod: {
         type: String,
-    },
-    name: {
-        type: String,
-        required: false,
+        enum: ScoringMethod,
+        default: ScoringMethod.NONE,
     },
 });
 // Main schema for form responses
@@ -54,10 +56,6 @@ const ResponseSchema = new mongoose_1.Schema({
         required: false,
         index: true,
     },
-    guest: {
-        type: GuestSchema,
-        required: false,
-    },
     responseset: {
         type: [ResponseSetSchema],
         validate: {
@@ -66,24 +64,11 @@ const ResponseSchema = new mongoose_1.Schema({
         },
         required: true,
     },
-    returnscore: {
-        type: String,
-        enum: Form_model_1.returnscore,
-        required: false,
-    },
     totalScore: {
         type: Number,
         default: 0,
     },
     isCompleted: {
-        type: Boolean,
-        default: false,
-    },
-    submittedAt: {
-        type: Date,
-        required: false,
-    },
-    isAutoScored: {
         type: Boolean,
         default: false,
     },
@@ -100,11 +85,36 @@ const ResponseSchema = new mongoose_1.Schema({
         type: String,
         required: false,
     },
+    respondentType: {
+        type: String,
+        enum: RespondentType,
+        required: false,
+        default: null,
+    },
+    // Browser fingerprinting fields for anonymous tracking
+    respondentFingerprint: {
+        type: String,
+        required: false,
+        index: true,
+    },
+    respondentIP: {
+        type: String,
+        required: false,
+        index: true,
+    },
+    submittedAt: {
+        type: Date,
+        required: false,
+    },
 }, { timestamps: true });
 ResponseSchema.index({ userId: 1, formId: 1 });
 ResponseSchema.index({ createdAt: 1 });
 ResponseSchema.index({ submittedAt: 1 });
 ResponseSchema.index({ totalScore: 1 });
+// Fingerprinting indexes for duplicate detection
+ResponseSchema.index({ formId: 1, respondentFingerprint: 1 });
+ResponseSchema.index({ formId: 1, respondentIP: 1 });
+ResponseSchema.index({ formId: 1, respondentEmail: 1 });
 // Pre-save middleware to calculate total score
 ResponseSchema.pre("save", function (next) {
     if (this.responseset && this.responseset.length > 0) {

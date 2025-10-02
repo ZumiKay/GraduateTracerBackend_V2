@@ -5,6 +5,19 @@ import JWT from "jsonwebtoken";
 import Usersession from "../model/Usersession.model";
 import User from "../model/User.model";
 
+export enum GetPublicFormDataTyEnum {
+  initial = "initial",
+  verify = "verify",
+  data = "data",
+}
+
+export interface GetPublicFormDataType {
+  p?: string;
+  ty?: GetPublicFormDataTyEnum;
+  vfy?: string;
+  isSwitched?: string;
+}
+
 class AuthenticateMiddleWare {
   public VerifyToken = (
     req: CustomRequest,

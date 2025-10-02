@@ -1,6 +1,11 @@
-import Content, { ContentType, QuestionType } from "../model/Content.model";
+import Content, {
+  ContentType,
+  QuestionType,
+  RangeType,
+} from "../model/Content.model";
 import Form, { TypeForm, returnscore } from "../model/Form.model";
 import { Types } from "mongoose";
+import { ResponseAnswerType, ResponseSetType } from "../model/Response.model";
 
 export interface ValidationResult {
   isValid: boolean;
@@ -99,7 +104,7 @@ export class SolutionValidationService {
     };
   }
 
-  private static validateAnswerFormat(
+  static validateAnswerFormat(
     questionType: QuestionType,
     answer: any,
     content: ContentType
@@ -194,6 +199,47 @@ export class SolutionValidationService {
     }
 
     return { isValid: errors.length === 0, errors };
+  }
+
+  static isAnswerisempty(answer: ResponseAnswerType): boolean {
+    if (answer === null || answer === undefined) {
+      return true;
+    }
+
+    if (typeof answer === "string") {
+      return answer.trim() === "";
+    }
+
+    if (typeof answer === "number") {
+      return false;
+    }
+
+    if (typeof answer === "boolean") {
+      return false;
+    }
+
+    if (Array.isArray(answer)) {
+      return answer.length === 0;
+    }
+
+    if (typeof answer === "object" && answer !== null) {
+      const rangeAnswer = answer as RangeType<any>;
+      if ("start" in rangeAnswer && "end" in rangeAnswer) {
+        const startEmpty =
+          rangeAnswer.start === null ||
+          rangeAnswer.start === undefined ||
+          (typeof rangeAnswer.start === "string" &&
+            rangeAnswer.start.trim() === "");
+        const endEmpty =
+          rangeAnswer.end === null ||
+          rangeAnswer.end === undefined ||
+          (typeof rangeAnswer.end === "string" &&
+            rangeAnswer.end.trim() === "");
+        return startEmpty && endEmpty;
+      }
+    }
+
+    return false;
   }
 
   private static isValidDateString(date: any): boolean {
@@ -294,10 +340,29 @@ export class SolutionValidationService {
 
     return errors;
   }
+  static calcualteResponseTotalScore(
+    responseSet: Array<ResponseSetType>
+  ): number {
+    let totalscore = 0;
+
+    for (let r = 0; r < responseSet.length; r++) {
+      const res = responseSet[r];
+
+      //Ignore the response have no saved question and question with parentContent
+      if (res.question) {
+        const ques = res.question as ContentType;
+        if (!ques.parentcontent) {
+          totalscore += res.score ?? 0;
+        }
+      }
+    }
+
+    return totalscore;
+  }
 
   static calculateResponseScore(
-    userAnswer: any,
-    correctAnswer: any,
+    userAnswer: ResponseAnswerType,
+    correctAnswer: ResponseAnswerType,
     questionType: QuestionType,
     maxScore: number
   ): number {
@@ -308,26 +373,36 @@ export class SolutionValidationService {
         return 0;
 
       case QuestionType.MultipleChoice:
-      case QuestionType.CheckBox: {
-        return this.calculateArrayScore(userAnswer, correctAnswer, maxScore);
+      case QuestionType.CheckBox:
+      case QuestionType.Selection: {
+        return this.calculateChoiceQuestionScore(
+          userAnswer as Array<number>,
+          correctAnswer as Array<number>,
+          maxScore
+        );
       }
 
       case QuestionType.ShortAnswer:
       case QuestionType.Paragraph:
-        return this.calculateTextScore(userAnswer, correctAnswer, maxScore);
+        return this.calculateTextScore(
+          userAnswer as string,
+          correctAnswer as string,
+          maxScore
+        );
 
       case QuestionType.Number:
         return userAnswer === correctAnswer ? maxScore : 0;
 
       case QuestionType.Date:
-        return this.calculateDateScore(userAnswer, correctAnswer, maxScore);
+        return this.calculateDateScore(
+          userAnswer as string,
+          correctAnswer as string,
+          maxScore
+        );
 
       case QuestionType.RangeDate:
       case QuestionType.RangeNumber:
         return this.calculateRangeScore(userAnswer, correctAnswer, maxScore);
-
-      case QuestionType.Selection:
-        return this.calculateArrayScore(userAnswer, correctAnswer, maxScore);
 
       default:
         return 0;
@@ -337,7 +412,7 @@ export class SolutionValidationService {
   /**
    * Calculate score for array-based answers (multiple choice, checkbox, selection)
    */
-  private static calculateArrayScore(
+  private static calculateChoiceQuestionScore(
     userAnswer: number[],
     correctAnswer: number[],
     maxScore: number
@@ -421,6 +496,7 @@ export class SolutionValidationService {
     return userStart === correctStart && userEnd === correctEnd ? maxScore : 0;
   }
 
+  //Partial text match return partial score for paragrah and short answer
   private static calculateTextSimilarity(text1: string, text2: string): number {
     const words1 = text1.split(/\s+/);
     const words2 = text2.split(/\s+/);

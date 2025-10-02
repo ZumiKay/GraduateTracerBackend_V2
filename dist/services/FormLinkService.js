@@ -47,9 +47,6 @@ class FormLinkService {
     validateAccessToken(formId, token) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                // This would typically be stored in a separate collection or cache
-                // For now, we'll implement a simple token validation
-                // You might want to store these tokens in Redis or a separate collection
                 return !!(token && token.length === 64); // Simple validation
             }
             catch (error) {
@@ -78,14 +75,9 @@ class FormLinkService {
                 const form = yield Form_model_1.default.findById(formId);
                 const isFormActive = (_a = form === null || form === void 0 ? void 0 : form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses;
                 if (!form || !isFormActive) {
-                    return null;
+                    throw new Error("Form is close");
                 }
-                if (secure) {
-                    return this.generateSecureFormLink(formId);
-                }
-                else {
-                    return this.generateFormLink(formId);
-                }
+                return this.generateFormLink(formId);
             }
             catch (error) {
                 console.error("Error generating validated form link:", error);

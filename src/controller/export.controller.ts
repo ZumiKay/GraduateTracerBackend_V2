@@ -5,9 +5,15 @@ import Content from "../model/Content.model";
 import { CustomRequest } from "../types/customType";
 import { getResponseDisplayName } from "../utilities/respondentUtils";
 import { ReturnCode } from "../utilities/helper";
+import {
+  handleDatabaseError,
+  generateOperationId,
+} from "../utilities/MongoErrorHandler";
 
 // Get available columns for export
 export async function getAvailableColumns(req: CustomRequest, res: Response) {
+  const operationId = generateOperationId("get_available_columns");
+
   try {
     const { formId } = req.params;
 
@@ -42,7 +48,11 @@ export async function getAvailableColumns(req: CustomRequest, res: Response) {
       data: { columns },
     });
   } catch (error) {
-    console.error("Error fetching available columns:", error);
+    if (handleDatabaseError(error, res, "get available columns")) {
+      return;
+    }
+
+    console.error(`[${operationId}] Error fetching available columns:`, error);
     res.status(500).json(ReturnCode(500, "Failed to fetch available columns"));
   }
 }

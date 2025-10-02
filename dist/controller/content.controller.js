@@ -53,6 +53,7 @@ exports.ValidateFormContent = ValidateFormContent;
 const zod_1 = require("zod");
 const Content_model_1 = __importStar(require("../model/Content.model"));
 const helper_1 = require("../utilities/helper");
+const MongoErrorHandler_1 = require("../utilities/MongoErrorHandler");
 const Form_model_1 = __importDefault(require("../model/Form.model"));
 const SolutionValidationService_1 = __importDefault(require("../services/SolutionValidationService"));
 exports.ContentValidate = zod_1.z.object({
@@ -70,6 +71,7 @@ exports.ContentValidate = zod_1.z.object({
 function AddFormContent(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         const data = req.body;
+        const operationId = MongoErrorHandler_1.MongoErrorHandler.generateOperationId("add_content");
         try {
             const AddContent = yield Content_model_1.default.create(data.contents);
             const AddedContentIds = AddContent.id;
@@ -81,8 +83,14 @@ function AddFormContent(req, res) {
             return res.status(201).json((0, helper_1.ReturnCode)(201, "Form Updated"));
         }
         catch (error) {
-            console.log("Add Form Content", error);
-            return res.status(500).json((0, helper_1.ReturnCode)(500));
+            console.error(`[${operationId}] Add Form Content error:`, error);
+            const mongoErrorHandled = MongoErrorHandler_1.MongoErrorHandler.handleMongoError(error, res, {
+                operationId,
+                customMessage: "Failed to add content to form",
+            });
+            if (!mongoErrorHandled.handled) {
+                return res.status(500).json((0, helper_1.ReturnCode)(500));
+            }
         }
     });
 }

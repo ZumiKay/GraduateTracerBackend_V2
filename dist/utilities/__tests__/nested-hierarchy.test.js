@@ -7,7 +7,7 @@ describe("groupContentByParent with nested hierarchies", () => {
     // Helper to create test content items
     const createContent = (id, options = {}) => {
         const content = {
-            _id: id,
+            _id: new mongoose_1.Types.ObjectId(id),
             title: {
                 type: "doc",
                 content: [{ type: "text", text: `Question ${id}` }],
@@ -49,7 +49,7 @@ describe("groupContentByParent with nested hierarchies", () => {
         // Log the result for debugging
         console.log("Result order:", result.map((item) => item._id));
         // Check the nesting structure
-        const resultIds = result.map((item) => item._id);
+        const resultIds = result.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; });
         // Define the expected ID order
         const expectedOrder = [
             "q1",
@@ -80,7 +80,7 @@ describe("groupContentByParent with nested hierarchies", () => {
         const data = [parent, child1, child2];
         const result = (0, helper_1.groupContentByParent)(data);
         // Expected: parent followed by its children
-        expect(result.map((item) => item._id)).toEqual([
+        expect(result.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; })).toEqual([
             "parent",
             "child2",
             "child1",
@@ -126,15 +126,19 @@ describe("groupContentByParent with nested hierarchies", () => {
         ];
         // Act
         const result = (0, helper_1.groupContentByParent)(complexTestData);
-        const resultOrder = result.map((item) => item._id);
+        const resultOrder = result.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; });
         // Log results for debugging
         console.log("Actual complex order:", resultOrder);
         // Verify top-level item ordering (ascending by qIdx)
         const topLevelItems = result.filter((item) => !item.parentcontent);
-        expect(topLevelItems.map((item) => item._id)).toEqual(["q2", "q3", "q1"]);
+        expect(topLevelItems.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; })).toEqual([
+            "q2",
+            "q3",
+            "q1",
+        ]);
         // Verify children of q1 are ordered by descending qIdx
         const q1Children = result.filter((item) => { var _a; return ((_a = item.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) === "q1"; });
-        const q1ChildrenIds = q1Children.map((item) => item._id);
+        const q1ChildrenIds = q1Children.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; });
         expect(q1ChildrenIds).toEqual(expect.arrayContaining(["s1-1", "s1-3", "s1-2"]));
         // Verify children of s1-1 are ordered by descending qIdx
         const s1_1Children = result.filter((item) => { var _a; return ((_a = item.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) === "s1-1"; });

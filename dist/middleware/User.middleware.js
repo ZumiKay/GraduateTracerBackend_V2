@@ -16,6 +16,8 @@ const helper_1 = require("../utilities/helper");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const Usersession_model_1 = __importDefault(require("../model/Usersession.model"));
 const User_model_1 = __importDefault(require("../model/User.model"));
+const Formsession_1 = __importDefault(require("../model/Formsession"));
+const Form_model_1 = __importDefault(require("../model/Form.model"));
 class AuthenticateMiddleWare {
     constructor() {
         this.VerifyToken = (req, res, next) => {
@@ -138,6 +140,37 @@ class AuthenticateMiddleWare {
                 return res.status(500).json((0, helper_1.ReturnCode)(500, "Permission check failed"));
             }
         };
+    }
+    VerifyFormSession(req, res, next) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b, _c;
+            const { formId } = req.params;
+            if (!formId)
+                return res.status(404).json((0, helper_1.ReturnCode)(404));
+            try {
+                const form = yield Form_model_1.default.findById(formId).select("setting").lean();
+                if (!form)
+                    return res.status(404).json((0, helper_1.ReturnCode)(404));
+                if ((_a = form === null || form === void 0 ? void 0 : form.setting) === null || _a === void 0 ? void 0 : _a.email) {
+                    const session_id = (_b = req.cookies) === null || _b === void 0 ? void 0 : _b[(_c = process.env.RESPONDENT_COOKIE) !== null && _c !== void 0 ? _c : ""];
+                    if (!session_id)
+                        return res.status(403).json((0, helper_1.ReturnCode)(403));
+                    const isSessionExpire = yield Formsession_1.default.findOne({
+                        session_id,
+                    }).lean();
+                    if (!isSessionExpire)
+                        return res.status(403).json((0, helper_1.ReturnCode)(403));
+                    const isExpire = isSessionExpire.expiredAt <= new Date();
+                    if (isExpire)
+                        return res.status(401).json((0, helper_1.ReturnCode)(401));
+                }
+                return next();
+            }
+            catch (error) {
+                console.log("Verify formsession", error);
+                return res.status(500).json((0, helper_1.ReturnCode)(500));
+            }
+        });
     }
     VerifyJWT(token) {
         var _a;

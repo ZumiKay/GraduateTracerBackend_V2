@@ -3,9 +3,9 @@ import { CustomRequest } from "../types/customType";
 import { FormResponseController } from "./form_response.controller";
 import FormResponse from "../model/Response.model";
 import Form from "../model/Form.model";
-import { hasFormAccess } from "./form.controller";
 import EmailService from "../services/EmailService";
 import { ReturnCode } from "../utilities/helper";
+import { hasFormAccess } from "../utilities/formHelpers";
 
 interface ReturnResponseRequestBody {
   responseId: string;
@@ -34,7 +34,7 @@ class FormResponseReturnController extends FormResponseController {
     }
 
     try {
-      const formResponse = await FormResponse.findById(responseId);
+      const formResponse = await FormResponse.findById(responseId).lean();
       if (!formResponse) {
         return res.status(404).json({ message: "Response not found" });
       }
@@ -56,8 +56,7 @@ class FormResponseReturnController extends FormResponseController {
         });
       }
 
-      const recipientEmail =
-        formResponse.respondentEmail || formResponse.guest?.email;
+      const recipientEmail = formResponse.respondentEmail;
 
       if (!recipientEmail) {
         return res.status(400).json({
@@ -114,12 +113,7 @@ class FormResponseReturnController extends FormResponseController {
                 
                 <div class="score-card">
                   <div class="score-number">${formResponse.totalScore}</div>
-                  <p>Your Current Score</p>
-                  ${
-                    formResponse.isAutoScored
-                      ? "<p><small>This score was calculated automatically.</small></p>"
-                      : "<p><small>This score was manually reviewed and assigned.</small></p>"
-                  }
+                  <p>Your Current Score</p>  
                 </div>
                 
                 ${

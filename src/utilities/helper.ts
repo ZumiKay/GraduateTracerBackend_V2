@@ -2,6 +2,7 @@ import Bcrypt from "bcrypt";
 import JWT from "jsonwebtoken";
 import {
   ChoiceQuestionType,
+  ContentTitle,
   ContentType,
   ParentContentType,
   QuestionType,
@@ -74,14 +75,33 @@ export const RandomNumber = (length: number) => {
 
 export const GenerateToken = (
   payload: Record<string, any>,
-  expiresIn: number | string
+  expiresIn: number | string,
+  customSecret?: string
 ) => {
-  const token = JWT.sign(payload, process.env.JWT_SECRET || "secret", {
-    expiresIn,
-    algorithm: "HS256",
-  });
+  const token = JWT.sign(
+    payload,
+    customSecret ?? (process.env.JWT_SECRET || "secret"),
+    {
+      expiresIn,
+      algorithm: "HS256",
+    }
+  );
 
   return token;
+};
+
+export const ExtractTokenPaylod = ({
+  token,
+  customSecret,
+}: {
+  token: string;
+  customSecret?: string;
+}) => {
+  const payload = JWT.verify(
+    token,
+    customSecret ?? (process.env.JWT_SECRET || "secret")
+  );
+  return payload;
 };
 
 export const getDateByNumDay = (add: number): Date => {
@@ -242,7 +262,7 @@ export const groupContentByParent = (data: Array<ContentType>) => {
 //Extract Answer Key Value
 export const GetAnswerKeyPairValue = (content: ResponseSetType) => {
   const questionContent = content.question;
-  const questionType = questionContent.type;
+  const questionType = (questionContent as ContentType).type;
   const response = content.response;
 
   if (
@@ -253,7 +273,9 @@ export const GetAnswerKeyPairValue = (content: ResponseSetType) => {
     return response;
   }
 
-  const choices = questionContent[questionType] as Array<ChoiceQuestionType>;
+  const choices = questionContent[
+    questionType as never
+  ] as Array<ChoiceQuestionType>;
   if (!choices || !Array.isArray(choices)) {
     return { key: response, val: response };
   }
@@ -310,3 +332,103 @@ export const isObject = (value: any) => {
     !(value instanceof RegExp)
   );
 };
+
+export const contentTitleToString = (
+  contentTitle: ContentTitle | null | undefined
+): string => {
+  if (!contentTitle) {
+    return "";
+  }
+
+  const result = processContentTitleInternal(contentTitle);
+
+  // Clean up extra spaces but preserve line breaks
+  return result
+    .replace(/[ \t]+/g, " ") // Replace multiple spaces/tabs with single space (but not line breaks)
+    .replace(/\n[ \t]+/g, "\n") // Remove spaces/tabs after line breaks
+    .replace(/[ \t]+\n/g, "\n") // Remove spaces/tabs before line breaks
+    .replace(/\n\n+/g, "\n") // Replace multiple line breaks with single line break
+    .trim(); // Remove leading/trailing whitespace
+};
+const processContentTitleInternal = (contentTitle: ContentTitle): string => {
+  if (contentTitle.type === "text" && contentTitle.text) {
+    return contentTitle.text;
+  }
+
+  if (contentTitle.content && Array.isArray(contentTitle.content)) {
+    const processedContent = contentTitle.content
+      .map((item: ContentTitle) => processContentTitleInternal(item))
+      .filter((text: string) => text !== ""); // Only filter completely empty strings, not whitespace-only
+
+    // Handle specific node types with their formatting
+    switch (contentTitle.type) {
+      case "doc":
+        // For documents, add space between block elements but preserve line breaks
+        return processedContent.join(" ");
+
+      case "paragraph":
+        // For paragraphs, preserve line breaks but don't add extra spacing
+        return processedContent.join("");
+
+      case "heading":
+        // For headings, preserve content and add space after
+        return processedContent.join("");
+
+      case "bulletList":
+      case "orderedList":
+        return processedContent.join("\n");
+
+      case "listItem":
+        return "• " + processedContent.join("");
+
+      case "blockquote":
+        return "> " + processedContent.join("") + " ";
+
+      case "codeBlock":
+        return "```\n" + processedContent.join("") + "\n``` ";
+
+      case "table":
+        return processedContent.join("\n") + "\n";
+
+      case "tableRow":
+        return processedContent.join(" | ") + " ";
+
+      case "tableCell":
+      case "tableHeader":
+        return processedContent.join("");
+
+      default:
+        return processedContent.join(" ");
+    }
+  }
+
+  // Handle specific node types without content
+  switch (contentTitle.type) {
+    case "hardBreak":
+      return "\n";
+
+    case "horizontalRule":
+      return "\n---\n";
+
+    case "image":
+      const alt = contentTitle.attrs?.alt || "";
+      const src = contentTitle.attrs?.src || "";
+      return alt ? `[Image: ${alt}]` : `[Image: ${src}]`;
+
+    case "mention":
+      const mentionLabel =
+        contentTitle.attrs?.label || contentTitle.attrs?.id || "";
+      return `@${mentionLabel}`;
+
+    case "emoji":
+      return contentTitle.attrs?.emoji || "";
+
+    default:
+      if (contentTitle.text) {
+        return contentTitle.text;
+      }
+      return "";
+  }
+};
+
+export const stringToBoolean = (str: string) => str.toLowerCase() === "true";

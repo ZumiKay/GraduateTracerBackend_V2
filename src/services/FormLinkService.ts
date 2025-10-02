@@ -59,9 +59,6 @@ class FormLinkService {
   // Validate access token for secure forms
   async validateAccessToken(formId: string, token: string): Promise<boolean> {
     try {
-      // This would typically be stored in a separate collection or cache
-      // For now, we'll implement a simple token validation
-      // You might want to store these tokens in Redis or a separate collection
       return !!(token && token.length === 64); // Simple validation
     } catch (error) {
       console.error("Error validating access token:", error);
@@ -88,22 +85,14 @@ class FormLinkService {
     return links;
   }
 
-  async getValidatedFormLink(
-    formId: string,
-    secure: boolean = false
-  ): Promise<GeneratedLink | null> {
+  async getValidatedFormLink(formId: string): Promise<GeneratedLink | null> {
     try {
       const form = await Form.findById(formId);
       const isFormActive = form?.setting?.acceptResponses;
       if (!form || !isFormActive) {
-        return null;
+        throw new Error("Form is close");
       }
-
-      if (secure) {
-        return this.generateSecureFormLink(formId);
-      } else {
-        return this.generateFormLink(formId);
-      }
+      return this.generateFormLink(formId);
     } catch (error) {
       console.error("Error generating validated form link:", error);
       return null;

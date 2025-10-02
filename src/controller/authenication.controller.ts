@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import User from "../model/User.model";
+import User, { UserType } from "../model/User.model";
 import {
   GenerateToken,
   getDateByMinute,
@@ -12,8 +12,10 @@ import bcrypt, { compareSync } from "bcrypt";
 import Usersession from "../model/Usersession.model";
 import HandleEmail from "../utilities/email";
 import JWT from "jsonwebtoken";
-import { isObjectIdOrHexString, isValidObjectId, Types } from "mongoose";
-import Form from "../model/Form.model";
+import {
+  handleDatabaseError,
+  generateOperationId,
+} from "../utilities/MongoErrorHandler";
 
 interface Logindata {
   email: string;
@@ -31,6 +33,7 @@ interface ForgotPasswordType {
 class AuthenticationController {
   public Login = async (req: Request, res: Response) => {
     const { email, password } = req.body as Logindata;
+    const operationId = generateOperationId("login");
 
     try {
       const user = await User.findOne({ email }).select("email password role");
@@ -55,12 +58,18 @@ class AuthenticationController {
       this.setRefreshTokenCookie(res, RefreshToken);
       return res.status(200).json({ ...ReturnCode(200), token: AccessToken });
     } catch (error) {
-      console.error("Login Error:", error);
+      if (handleDatabaseError(error, res, "user login")) {
+        return;
+      }
+
+      console.error(`[${operationId}] Login Error:`, error);
       return res.status(500).json(ReturnCode(500));
     }
   };
 
   public Logout = async (req: Request, res: Response) => {
+    const operationId = generateOperationId("logout");
+
     try {
       const refresh_token =
         req.cookies?.[process.env.REFRESH_TOKEN_COOKIE ?? ""];
@@ -72,13 +81,19 @@ class AuthenticationController {
       this.clearRefreshTokenCookie(res);
       return res.status(200).json(ReturnCode(200));
     } catch (error) {
-      console.log("Logout Error", error);
+      if (handleDatabaseError(error, res, "user logout")) {
+        return;
+      }
+
+      console.log(`[${operationId}] Logout Error`, error);
       return res.status(500).json(ReturnCode(500));
     }
   };
 
   public ForgotPassword = async (req: Request, res: Response) => {
     const { ty, email, code, password, html } = req.body as ForgotPasswordType;
+    const operationId = generateOperationId("forgot_password");
+
     try {
       switch (ty) {
         case "vfy":
@@ -146,11 +161,17 @@ class AuthenticationController {
 
       return res.status(200).json(ReturnCode(200));
     } catch (error) {
-      console.log("forgot password", error);
+      if (handleDatabaseError(error, res, "forgot password operation")) {
+        return;
+      }
+
+      console.log(`[${operationId}] forgot password`, error);
       return res.status(500).json(ReturnCode(500));
     }
   };
   public CheckSession = async (req: Request, res: Response) => {
+    const operationId = generateOperationId("check_session");
+
     try {
       const refreshToken = req?.cookies[process.env.REFRESH_TOKEN_COOKIE ?? ""];
       const accessToken = req?.cookies[process.env.ACCESS_TOKEN_COOKIE ?? ""];
@@ -236,12 +257,18 @@ class AuthenticationController {
         },
       });
     } catch (error) {
-      console.error("Check Session Error:", error);
+      if (handleDatabaseError(error, res, "session check")) {
+        return;
+      }
+
+      console.error(`[${operationId}] Check Session Error:`, error);
       return res.status(500).json(ReturnCode(500, "Internal server error"));
     }
   };
 
   public RefreshToken = async (req: Request, res: Response) => {
+    const operationId = generateOperationId("refresh_token");
+
     try {
       const refresh_token =
         req.cookies?.[process.env.REFRESH_TOKEN_COOKIE ?? ""];
@@ -262,165 +289,11 @@ class AuthenticationController {
 
       return res.status(200).json({ ...ReturnCode(200), token: newToken });
     } catch (error) {
-      console.log("Refresh Token", error);
-      return res.status(500).json(ReturnCode(500));
-    }
-  };
-
-  //Respondent Authentication
-  public RespodnentLogin = async (req: Request, res: Response) => {
-    const { email, password }: { email: string; password: string } = req.body;
-    try {
-      const isUser = await User.findOne({ email })
-        .select("_id password ")
-        .lean()
-        .exec();
-      if (!isUser) return res.status(401).json(ReturnCode(401));
-
-      const compareUser = compareSync(password, isUser.password);
-
-      if (!compareUser) throw "Invalid Credential";
-      const accessToken = GenerateToken({ email }, "1h");
-
-      //Create User Session
-      await Usersession.create({
-        session_id: accessToken,
-        user: isUser._id,
-      });
-
-      console.log(process.env?.RESPONDENT_COOKIE);
-      //Set Cookie
-      res.cookie(
-        process.env?.RESPONDENT_COOKIE ?? "respondent_accessT",
-        accessToken
-      );
-
-      return res.status(200).json(ReturnCode(200));
-    } catch (error) {
-      const err = error as Error;
-      console.log("Respondent Login", err);
-      return res
-        .status(500)
-        .json(ReturnCode(500, err?.message ?? "Error Occured"));
-    }
-  };
-
-  public CheckRespondentSession = async (req: Request, res: Response) => {
-    const id = req.cookies?.[process.env.RESPONDENT_COOKIE ?? ""] as string;
-    try {
-      if (!id || !isObjectIdOrHexString(new Types.ObjectId(id)))
-        return res
-          .status(400)
-          .json({ ...ReturnCode(400), data: { isError: true } });
-
-      const respondentSession = await Usersession.findOne({
-        session_id: id,
-      })
-        .select("session_id expireAt user")
-        .populate("user")
-        .lean();
-
-      if (!respondentSession)
-        return res
-          .status(401)
-          .json({ ...ReturnCode(401), data: { isError: true } });
-      const isExpired = respondentSession.expireAt < new Date();
-
-      return res.status(200).json({
-        ...ReturnCode(200),
-        data: {
-          session_id: respondentSession.session_id,
-          userdata: respondentSession.user,
-          isExpired,
-        },
-      });
-    } catch (error) {
-      console.log("Check Respondent Session", error);
-      return res
-        .status(500)
-        .json({ ...ReturnCode(500), data: { isError: true } });
-    }
-  };
-
-  public RenewRespondentSession = async (req: Request, res: Response) => {
-    const { formId } = req.body as {
-      formId: string;
-    };
-    const session_id = req.cookies?.[
-      process.env.RESPONDENT_COOKIE ?? ""
-    ] as string;
-    if (!session_id)
-      return res.status(400).json(ReturnCode(400, "No session found"));
-    try {
-      if (!formId || !isValidObjectId(new Types.ObjectId(formId)))
-        return res.status(400).json(ReturnCode(400));
-      const session = await Usersession.findOne({ session_id })
-        .populate("user")
-        .lean()
-        .exec();
-      if (!session) {
-        return res.status(400).json(ReturnCode(400, "Can't Renew Session"));
+      if (handleDatabaseError(error, res, "token refresh")) {
+        return;
       }
 
-      //Check form status
-      const isAccept = await Form.findById(formId).select("setting").lean();
-
-      if (!isAccept || !isAccept.setting?.acceptResponses)
-        return res
-          .status(400)
-          .json(
-            ReturnCode(
-              400,
-              `${!isAccept ? "No Form is found" : "Form has closed"}`
-            )
-          );
-
-      //renew session
-      const new_session_id = GenerateToken(
-        { email: session.user?.email },
-        "1hr"
-      );
-
-      res.cookie(
-        process.env.RESPONDENT_COOKIE ?? "respondent_accessT",
-        new_session_id,
-        {
-          sameSite: "lax",
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "PROD",
-          expires: getDateByMinute(60),
-        }
-      );
-
-      await Promise.all([
-        Usersession.deleteOne({ session_id }),
-        Usersession.create({
-          session_id: new_session_id,
-          user: session.user,
-        }),
-      ]);
-
-      return res.status(200).json(ReturnCode(200));
-    } catch (error) {
-      console.log("Renew Respondent Session", error);
-      return res.status(500).json(ReturnCode(500));
-    }
-  };
-
-  public RespondentLogout = async (req: Request, res: Response) => {
-    try {
-      const session_id =
-        req.cookies?.[process.env.RESPONDENT_COOKIE ?? ""] ?? null;
-      if (!session_id) return res.status(204).json(ReturnCode(204));
-
-      const session = await Usersession.findOneAndDelete({ session_id });
-
-      if (!session) return res.status(204).json(ReturnCode(204));
-
-      res.clearCookie(process.env.RESPONDENT_COOKIE ?? "respondent_accessT");
-      return res.status(200).json(ReturnCode(200));
-    } catch (error) {
-      console.log("Respondent Logout", error);
+      console.log(`[${operationId}] Refresh Token`, error);
       return res.status(500).json(ReturnCode(500));
     }
   };
@@ -459,10 +332,6 @@ class AuthenticationController {
       httpOnly: true,
       secure: process.env.NODE_ENV === "PROD",
     });
-  }
-  private isDateExpire(val: Date) {
-    const now = new Date();
-    return val.getTime() < now.getTime();
   }
 }
 

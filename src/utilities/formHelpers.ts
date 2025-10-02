@@ -15,6 +15,8 @@ export function hasFormAccess(form: FormType, userId: Types.ObjectId): boolean {
 
     form.editors?.forEach((i) => HaveAccessID.add(i._id.toString()));
     form.owners?.forEach((i) => HaveAccessID.add(i._id.toString()));
+
+    //Verify creator
     form.user.equals(userId) && HaveAccessID.add(userId.toString());
 
     return HaveAccessID.has(userIdStr);
@@ -50,6 +52,10 @@ export function verifyRole(
   userId: Types.ObjectId
 ): boolean {
   const user_id = userId.toString();
+
+  if (role === CollaboratorType.creator) {
+    return user_id === form.user.toString();
+  }
 
   return role === CollaboratorType.editor
     ? form.editors?.some((i) => i.toString() === user_id) ?? false

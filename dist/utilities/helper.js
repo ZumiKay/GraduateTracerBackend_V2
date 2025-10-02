@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GetAnswerKeyForQuestion = exports.GetAnswerKeyPairValue = exports.groupContentByParent = exports.CheckCondition = exports.hasArrayChange = exports.FormatToGeneralDate = exports.getDateByMinute = exports.getDateByNumDay = exports.GenerateToken = exports.RandomNumber = exports.hashedPassword = exports.ValidatePassword = void 0;
+exports.stringToBoolean = exports.contentTitleToString = exports.isObject = exports.GetAnswerKeyForQuestion = exports.GetAnswerKeyPairValue = exports.groupContentByParent = exports.CheckCondition = exports.hasArrayChange = exports.FormatToGeneralDate = exports.getDateByMinute = exports.getDateByNumDay = exports.ExtractTokenPaylod = exports.GenerateToken = exports.RandomNumber = exports.hashedPassword = exports.ValidatePassword = void 0;
 exports.ReturnCode = ReturnCode;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -71,6 +71,11 @@ const GenerateToken = (payload, expiresIn) => {
     return token;
 };
 exports.GenerateToken = GenerateToken;
+const ExtractTokenPaylod = ({ token }) => {
+    const payload = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET || "secret");
+    return payload;
+};
+exports.ExtractTokenPaylod = ExtractTokenPaylod;
 const getDateByNumDay = (add) => {
     const today = new Date();
     today.setDate(today.getDate() + add); // Add 1 day
@@ -123,7 +128,7 @@ const hasArrayChange = (arr1, arr2) => {
 };
 exports.hasArrayChange = hasArrayChange;
 const CheckCondition = (allcontent, qId, qIdx) => {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     console.log(qId, qIdx);
     const isConditional = allcontent.find((question) => {
         var _a;
@@ -133,14 +138,14 @@ const CheckCondition = (allcontent, qId, qIdx) => {
         return null;
     }
     return {
-        qId: (_a = isConditional._id) !== null && _a !== void 0 ? _a : qId,
+        qId: (_b = (_a = isConditional._id) === null || _a === void 0 ? void 0 : _a.toString()) !== null && _b !== void 0 ? _b : qId,
         qIdx: undefined,
-        optIdx: (_d = (_c = (_b = isConditional.conditional) === null || _b === void 0 ? void 0 : _b.find((cond) => cond.contentId === qId)) === null || _c === void 0 ? void 0 : _c.key) !== null && _d !== void 0 ? _d : 0,
+        optIdx: (_e = (_d = (_c = isConditional.conditional) === null || _c === void 0 ? void 0 : _c.find((cond) => cond.contentId === qId)) === null || _d === void 0 ? void 0 : _d.key) !== null && _e !== void 0 ? _e : 0,
     };
 };
 exports.CheckCondition = CheckCondition;
 const groupContentByParent = (data) => {
-    var _a;
+    var _a, _b;
     if (!data.length)
         return [];
     const childrenMap = new Map();
@@ -160,12 +165,12 @@ const groupContentByParent = (data) => {
         }
     }
     const addWithChildren = (item) => {
-        if (!item._id || processed.has(item._id))
+        if (!item._id || processed.has(item._id.toString()))
             return;
         // Add the item itself
         result.push(item);
-        processed.add(item._id);
-        const children = childrenMap.get(item._id);
+        processed.add(item._id.toString());
+        const children = childrenMap.get(item._id.toString());
         if (children && children.length > 0) {
             // Sort children by qIdx in descending order (higher qIdx first)
             children.sort((a, b) => {
@@ -185,14 +190,14 @@ const groupContentByParent = (data) => {
         return aIdx - bIdx; // Ascending order for top-level items
     });
     for (const item of topLevelItems) {
-        if (!processed.has(item._id)) {
+        if (!processed.has((_b = item._id) === null || _b === void 0 ? void 0 : _b.toString())) {
             addWithChildren(item);
         }
     }
     //Others
     for (let i = 0; i < data.length; i++) {
         const item = data[i];
-        if (item._id && !processed.has(item._id)) {
+        if (item._id && !processed.has(item._id.toString())) {
             addWithChildren(item);
         }
     }
@@ -249,3 +254,89 @@ const GetAnswerKeyForQuestion = (content) => {
     return (_c = (_b = content[content.type]) === null || _b === void 0 ? void 0 : _b.filter((i) => { var _a; return i.idx === ((_a = content.answer) === null || _a === void 0 ? void 0 : _a.answer); })) === null || _c === void 0 ? void 0 : _c[0];
 };
 exports.GetAnswerKeyForQuestion = GetAnswerKeyForQuestion;
+const isObject = (value) => {
+    return (value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        !(value instanceof Date) &&
+        !(value instanceof RegExp));
+};
+exports.isObject = isObject;
+const contentTitleToString = (contentTitle) => {
+    if (!contentTitle) {
+        return "";
+    }
+    const result = processContentTitleInternal(contentTitle);
+    // Clean up extra spaces but preserve line breaks
+    return result
+        .replace(/[ \t]+/g, " ") // Replace multiple spaces/tabs with single space (but not line breaks)
+        .replace(/\n[ \t]+/g, "\n") // Remove spaces/tabs after line breaks
+        .replace(/[ \t]+\n/g, "\n") // Remove spaces/tabs before line breaks
+        .replace(/\n\n+/g, "\n") // Replace multiple line breaks with single line break
+        .trim(); // Remove leading/trailing whitespace
+};
+exports.contentTitleToString = contentTitleToString;
+const processContentTitleInternal = (contentTitle) => {
+    var _a, _b, _c, _d, _e;
+    if (contentTitle.type === "text" && contentTitle.text) {
+        return contentTitle.text;
+    }
+    if (contentTitle.content && Array.isArray(contentTitle.content)) {
+        const processedContent = contentTitle.content
+            .map((item) => processContentTitleInternal(item))
+            .filter((text) => text !== ""); // Only filter completely empty strings, not whitespace-only
+        // Handle specific node types with their formatting
+        switch (contentTitle.type) {
+            case "doc":
+                // For documents, add space between block elements but preserve line breaks
+                return processedContent.join(" ");
+            case "paragraph":
+                // For paragraphs, preserve line breaks but don't add extra spacing
+                return processedContent.join("");
+            case "heading":
+                // For headings, preserve content and add space after
+                return processedContent.join("");
+            case "bulletList":
+            case "orderedList":
+                return processedContent.join("\n");
+            case "listItem":
+                return "• " + processedContent.join("");
+            case "blockquote":
+                return "> " + processedContent.join("") + " ";
+            case "codeBlock":
+                return "```\n" + processedContent.join("") + "\n``` ";
+            case "table":
+                return processedContent.join("\n") + "\n";
+            case "tableRow":
+                return processedContent.join(" | ") + " ";
+            case "tableCell":
+            case "tableHeader":
+                return processedContent.join("");
+            default:
+                return processedContent.join(" ");
+        }
+    }
+    // Handle specific node types without content
+    switch (contentTitle.type) {
+        case "hardBreak":
+            return "\n";
+        case "horizontalRule":
+            return "\n---\n";
+        case "image":
+            const alt = ((_a = contentTitle.attrs) === null || _a === void 0 ? void 0 : _a.alt) || "";
+            const src = ((_b = contentTitle.attrs) === null || _b === void 0 ? void 0 : _b.src) || "";
+            return alt ? `[Image: ${alt}]` : `[Image: ${src}]`;
+        case "mention":
+            const mentionLabel = ((_c = contentTitle.attrs) === null || _c === void 0 ? void 0 : _c.label) || ((_d = contentTitle.attrs) === null || _d === void 0 ? void 0 : _d.id) || "";
+            return `@${mentionLabel}`;
+        case "emoji":
+            return ((_e = contentTitle.attrs) === null || _e === void 0 ? void 0 : _e.emoji) || "";
+        default:
+            if (contentTitle.text) {
+                return contentTitle.text;
+            }
+            return "";
+    }
+};
+const stringToBoolean = (str) => str.toLowerCase() === "true";
+exports.stringToBoolean = stringToBoolean;

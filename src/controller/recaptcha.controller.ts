@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
 import { ReturnCode } from "../utilities/helper";
+import { generateOperationId } from "../utilities/MongoErrorHandler";
 
 export default async function VerifyRecaptcha(req: Request, res: Response) {
   const { token } = req.body;
+  const operationId = generateOperationId("verify_recaptcha");
 
   const secretKey = process.env.RECAPCHA_SECRETKEY;
   const verificationUrl = `https://www.google.com/recaptcha/api/siteverify`;
@@ -26,7 +28,7 @@ export default async function VerifyRecaptcha(req: Request, res: Response) {
         .json({ ...ReturnCode(400), errors: data["error-codes"] });
     }
   } catch (error) {
-    console.error("Error verifying reCAPTCHA:", error);
+    console.error(`[${operationId}] Error verifying reCAPTCHA:`, error);
     return res.status(500).json(ReturnCode(500));
   }
 }

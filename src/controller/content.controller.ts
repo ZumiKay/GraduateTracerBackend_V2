@@ -2,6 +2,7 @@ import { z } from "zod";
 import Content, { ContentType, QuestionType } from "../model/Content.model";
 import { Request, Response } from "express";
 import { ReturnCode } from "../utilities/helper";
+import { MongoErrorHandler } from "../utilities/MongoErrorHandler";
 import Form from "../model/Form.model";
 import SolutionValidationService from "../services/SolutionValidationService";
 
@@ -25,6 +26,8 @@ interface AddFormContentType {
 
 export async function AddFormContent(req: Request, res: Response) {
   const data = req.body as AddFormContentType;
+  const operationId = MongoErrorHandler.generateOperationId("add_content");
+
   try {
     const AddContent = await Content.create(data.contents);
 
@@ -41,8 +44,16 @@ export async function AddFormContent(req: Request, res: Response) {
 
     return res.status(201).json(ReturnCode(201, "Form Updated"));
   } catch (error) {
-    console.log("Add Form Content", error);
-    return res.status(500).json(ReturnCode(500));
+    console.error(`[${operationId}] Add Form Content error:`, error);
+
+    const mongoErrorHandled = MongoErrorHandler.handleMongoError(error, res, {
+      operationId,
+      customMessage: "Failed to add content to form",
+    });
+
+    if (!mongoErrorHandled.handled) {
+      return res.status(500).json(ReturnCode(500));
+    }
   }
 }
 

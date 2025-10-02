@@ -16,6 +16,7 @@ exports.NotificationController = void 0;
 const helper_1 = require("../utilities/helper");
 const mongoose_1 = require("mongoose");
 const Notification_model_1 = __importDefault(require("../model/Notification.model"));
+const MongoErrorHandler_1 = require("../utilities/MongoErrorHandler");
 class NotificationController {
     constructor() {
         // Get notifications for a user
@@ -171,6 +172,7 @@ class NotificationController {
     // Create a new notification
     static CreateNotification(data) {
         return __awaiter(this, void 0, void 0, function* () {
+            const operationId = (0, MongoErrorHandler_1.generateOperationId)("create_notification");
             try {
                 const notification = yield Notification_model_1.default.create(Object.assign(Object.assign({}, data), { userId: new mongoose_1.Types.ObjectId(data.userId), formId: data.formId ? new mongoose_1.Types.ObjectId(data.formId) : undefined, responseId: data.responseId
                         ? new mongoose_1.Types.ObjectId(data.responseId)
@@ -178,7 +180,7 @@ class NotificationController {
                 return notification;
             }
             catch (error) {
-                console.error("Create Notification Error:", error);
+                console.error(`[${operationId}] Create Notification Error:`, error);
                 throw error;
             }
         });

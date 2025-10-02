@@ -11,9 +11,11 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.default = VerifyRecaptcha;
 const helper_1 = require("../utilities/helper");
+const MongoErrorHandler_1 = require("../utilities/MongoErrorHandler");
 function VerifyRecaptcha(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         const { token } = req.body;
+        const operationId = (0, MongoErrorHandler_1.generateOperationId)("verify_recaptcha");
         const secretKey = process.env.RECAPCHA_SECRETKEY;
         const verificationUrl = `https://www.google.com/recaptcha/api/siteverify`;
         try {
@@ -36,7 +38,7 @@ function VerifyRecaptcha(req, res) {
             }
         }
         catch (error) {
-            console.error("Error verifying reCAPTCHA:", error);
+            console.error(`[${operationId}] Error verifying reCAPTCHA:`, error);
             return res.status(500).json((0, helper_1.ReturnCode)(500));
         }
     });

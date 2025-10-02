@@ -31,7 +31,6 @@ describe("GetAnswerKeyPairValue Optimization Tests", () => {
     describe("Multiple Choice Questions", () => {
         it("should return correct value for single selection", () => {
             const responseSet = {
-                questionId: "q1",
                 response: 1,
                 question: mockMultipleChoiceQuestion,
             };
@@ -41,7 +40,6 @@ describe("GetAnswerKeyPairValue Optimization Tests", () => {
         });
         it("should handle invalid choice index", () => {
             const responseSet = {
-                questionId: "q1",
                 response: 99,
                 question: mockMultipleChoiceQuestion,
             };
@@ -53,7 +51,6 @@ describe("GetAnswerKeyPairValue Optimization Tests", () => {
     describe("Checkbox Questions", () => {
         it("should return array of selected choices", () => {
             const responseSet = {
-                questionId: "q2",
                 response: [0, 2],
                 question: mockCheckboxQuestion,
             };
@@ -63,7 +60,6 @@ describe("GetAnswerKeyPairValue Optimization Tests", () => {
         });
         it("should handle single checkbox selection", () => {
             const responseSet = {
-                questionId: "q2",
                 response: [1],
                 question: mockCheckboxQuestion,
             };
@@ -73,7 +69,6 @@ describe("GetAnswerKeyPairValue Optimization Tests", () => {
         });
         it("should handle empty checkbox selection", () => {
             const responseSet = {
-                questionId: "q2",
                 response: [],
                 question: mockCheckboxQuestion,
             };

@@ -47,6 +47,7 @@ const Content_model_1 = __importStar(require("../model/Content.model"));
 const Form_model_1 = __importStar(require("../model/Form.model"));
 const mongoose_1 = require("mongoose");
 class SolutionValidationService {
+    //Check the valid of question answers and scores
     static validateContent(content, parentScore) {
         var _a;
         const errors = [];
@@ -175,6 +176,38 @@ class SolutionValidationService {
         }
         return { isValid: errors.length === 0, errors };
     }
+    static isAnswerisempty(answer) {
+        if (answer === null || answer === undefined) {
+            return true;
+        }
+        if (typeof answer === "string") {
+            return answer.trim() === "";
+        }
+        if (typeof answer === "number") {
+            return false;
+        }
+        if (typeof answer === "boolean") {
+            return false;
+        }
+        if (Array.isArray(answer)) {
+            return answer.length === 0;
+        }
+        if (typeof answer === "object" && answer !== null) {
+            const rangeAnswer = answer;
+            if ("start" in rangeAnswer && "end" in rangeAnswer) {
+                const startEmpty = rangeAnswer.start === null ||
+                    rangeAnswer.start === undefined ||
+                    (typeof rangeAnswer.start === "string" &&
+                        rangeAnswer.start.trim() === "");
+                const endEmpty = rangeAnswer.end === null ||
+                    rangeAnswer.end === undefined ||
+                    (typeof rangeAnswer.end === "string" &&
+                        rangeAnswer.end.trim() === "");
+                return startEmpty && endEmpty;
+            }
+        }
+        return false;
+    }
     static isValidDateString(date) {
         if (date instanceof Date)
             return !isNaN(date.getTime());
@@ -210,7 +243,7 @@ class SolutionValidationService {
                     validationResults.push(result);
                     continue;
                 }
-                const parentScore = (_a = contents.find((ques) => { var _a; return ques._id === ((_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qId); })) === null || _a === void 0 ? void 0 : _a.score;
+                const parentScore = (_a = contents.find((ques) => { var _a; return ques._id.toString() === ((_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qId); })) === null || _a === void 0 ? void 0 : _a.score;
                 const result = this.validateContent(content, parentScore);
                 validationResults.push(result);
                 if (!content.parentcontent)
@@ -254,6 +287,21 @@ class SolutionValidationService {
             return errors;
         });
     }
+    static calcualteResponseTotalScore(responseSet) {
+        var _a;
+        let totalscore = 0;
+        for (let r = 0; r < responseSet.length; r++) {
+            const res = responseSet[r];
+            //Ignore the response have no saved question and question with parentContent
+            if (res.question) {
+                const ques = res.question;
+                if (!ques.parentcontent) {
+                    totalscore += (_a = res.score) !== null && _a !== void 0 ? _a : 0;
+                }
+            }
+        }
+        return totalscore;
+    }
     static calculateResponseScore(userAnswer, correctAnswer, questionType, maxScore) {
         if (!correctAnswer || maxScore === 0)
             return 0;
@@ -261,8 +309,9 @@ class SolutionValidationService {
             case Content_model_1.QuestionType.Text:
                 return 0;
             case Content_model_1.QuestionType.MultipleChoice:
-            case Content_model_1.QuestionType.CheckBox: {
-                return this.calculateArrayScore(userAnswer, correctAnswer, maxScore);
+            case Content_model_1.QuestionType.CheckBox:
+            case Content_model_1.QuestionType.Selection: {
+                return this.calculateChoiceQuestionScore(userAnswer, correctAnswer, maxScore);
             }
             case Content_model_1.QuestionType.ShortAnswer:
             case Content_model_1.QuestionType.Paragraph:
@@ -274,8 +323,6 @@ class SolutionValidationService {
             case Content_model_1.QuestionType.RangeDate:
             case Content_model_1.QuestionType.RangeNumber:
                 return this.calculateRangeScore(userAnswer, correctAnswer, maxScore);
-            case Content_model_1.QuestionType.Selection:
-                return this.calculateArrayScore(userAnswer, correctAnswer, maxScore);
             default:
                 return 0;
         }
@@ -283,7 +330,7 @@ class SolutionValidationService {
     /**
      * Calculate score for array-based answers (multiple choice, checkbox, selection)
      */
-    static calculateArrayScore(userAnswer, correctAnswer, maxScore) {
+    static calculateChoiceQuestionScore(userAnswer, correctAnswer, maxScore) {
         if (!Array.isArray(userAnswer) || !Array.isArray(correctAnswer))
             return 0;
         const userSet = new Set(userAnswer);
@@ -333,6 +380,7 @@ class SolutionValidationService {
         const correctEnd = new Date(correctAnswer.end).getTime() || correctAnswer.end;
         return userStart === correctStart && userEnd === correctEnd ? maxScore : 0;
     }
+    //Partial text match return partial score for paragrah and short answer
     static calculateTextSimilarity(text1, text2) {
         const words1 = text1.split(/\s+/);
         const words2 = text2.split(/\s+/);

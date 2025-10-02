@@ -1,14 +1,12 @@
 import { model, Schema, Types } from "mongoose";
 import { ContentType, RangeType } from "./Content.model";
-import { returnscore } from "./Form.model";
 
 export type ResponseAnswerType =
   | string
   | number
   | boolean
   | RangeType<number>
-  | RangeType<Date>
-  | Date
+  | RangeType<string>
   | Array<number>;
 
 export type ResponseAnswerReturnType = {
@@ -17,35 +15,52 @@ export type ResponseAnswerReturnType = {
 };
 
 export interface ResponseSetType {
-  questionId: Types.ObjectId;
-  question: ContentType;
+  question: ContentType | Types.ObjectId;
   response: ResponseAnswerType | ResponseAnswerReturnType;
   score?: number;
-  isManuallyScored?: boolean;
+  scoringMethod?: ScoringMethod;
+}
+
+export enum RespondentType {
+  user = "USER",
+  guest = "GUEST",
 }
 
 export enum completionStatus {
   completed = "completed",
   partial = "partial",
   abandoned = "abandoned",
+  idle = "idle",
 }
 
 export interface FormResponseType {
   _id: Types.ObjectId;
   formId: Types.ObjectId;
   userId?: Types.ObjectId;
-  guest?: GuestType;
   responseset: Array<ResponseSetType>;
-  returnscore?: returnscore;
   totalScore?: number;
   isCompleted?: boolean;
   submittedAt?: Date;
-  isAutoScored?: boolean;
   completionStatus?: completionStatus;
   respondentEmail?: string;
   respondentName?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  respondentType?: RespondentType;
+
+  // Browser fingerprinting fields for anonymous tracking
+  respondentFingerprint?: string;
+  respondentIP?: string;
+  respondentSessionId?: string;
+  deviceInfo?: {
+    userAgent: string;
+    platform: string;
+    screen: string;
+    timezone: string;
+    acceptLanguage: string;
+    acceptEncoding: string;
+  };
+  fingerprintStrength?: number;
 }
 
 export interface GuestType {
@@ -53,9 +68,22 @@ export interface GuestType {
   email: string;
   name?: string;
 }
+
+export enum ScoringMethod {
+  AUTO = "auto",
+  MANUAL = "manual",
+  NONE = "none",
+}
+
+export interface SubmitionProcessionReturnType {
+  maxScore: number;
+  totalScore: number;
+  message: string;
+}
+
 //Sub Doc
 const ResponseSetSchema = new Schema<ResponseSetType>({
-  questionId: {
+  question: {
     type: Schema.Types.ObjectId,
     ref: "Content",
     required: true,
@@ -69,20 +97,10 @@ const ResponseSetSchema = new Schema<ResponseSetType>({
     type: Number,
     required: false,
   },
-  isManuallyScored: {
-    type: Boolean,
-    default: false,
-  },
-});
-
-const GuestSchema = new Schema<GuestType>({
-  email: {
-    required: false,
+  scoringMethod: {
     type: String,
-  },
-  name: {
-    type: String,
-    required: false,
+    enum: ScoringMethod,
+    default: ScoringMethod.NONE,
   },
 });
 
@@ -101,10 +119,6 @@ const ResponseSchema = new Schema<FormResponseType>(
       required: false,
       index: true,
     },
-    guest: {
-      type: GuestSchema,
-      required: false,
-    },
     responseset: {
       type: [ResponseSetSchema],
       validate: {
@@ -113,24 +127,12 @@ const ResponseSchema = new Schema<FormResponseType>(
       },
       required: true,
     },
-    returnscore: {
-      type: String,
-      enum: returnscore,
-      required: false,
-    },
+
     totalScore: {
       type: Number,
       default: 0,
     },
     isCompleted: {
-      type: Boolean,
-      default: false,
-    },
-    submittedAt: {
-      type: Date,
-      required: false,
-    },
-    isAutoScored: {
       type: Boolean,
       default: false,
     },
@@ -147,6 +149,29 @@ const ResponseSchema = new Schema<FormResponseType>(
       type: String,
       required: false,
     },
+    respondentType: {
+      type: String,
+      enum: RespondentType,
+      required: false,
+      default: null,
+    },
+
+    // Browser fingerprinting fields for anonymous tracking
+    respondentFingerprint: {
+      type: String,
+      required: false,
+      index: true,
+    },
+    respondentIP: {
+      type: String,
+      required: false,
+      index: true,
+    },
+
+    submittedAt: {
+      type: Date,
+      required: false,
+    },
   },
   { timestamps: true }
 );
@@ -155,6 +180,10 @@ ResponseSchema.index({ userId: 1, formId: 1 });
 ResponseSchema.index({ createdAt: 1 });
 ResponseSchema.index({ submittedAt: 1 });
 ResponseSchema.index({ totalScore: 1 });
+// Fingerprinting indexes for duplicate detection
+ResponseSchema.index({ formId: 1, respondentFingerprint: 1 });
+ResponseSchema.index({ formId: 1, respondentIP: 1 });
+ResponseSchema.index({ formId: 1, respondentEmail: 1 });
 
 // Pre-save middleware to calculate total score
 ResponseSchema.pre("save", function (next) {

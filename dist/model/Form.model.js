@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createFormValidate = exports.CollaboratorType = exports.returnscore = exports.TypeForm = exports.SubmitType = void 0;
+exports.createFormValidate = exports.DashboardTabType = exports.CollaboratorType = exports.returnscore = exports.TypeForm = exports.SubmitType = void 0;
 const mongoose_1 = require("mongoose");
 const zod_1 = __importDefault(require("zod"));
 const Response_model_1 = __importDefault(require("./Response.model"));
@@ -37,6 +37,13 @@ var CollaboratorType;
     CollaboratorType["editor"] = "EDITOR";
     CollaboratorType["creator"] = "CREATOR";
 })(CollaboratorType || (exports.CollaboratorType = CollaboratorType = {}));
+var DashboardTabType;
+(function (DashboardTabType) {
+    DashboardTabType["all"] = "all";
+    DashboardTabType["filledform"] = "filledForm";
+    DashboardTabType["myform"] = "myForm";
+    DashboardTabType["otherform"] = "otherForm";
+})(DashboardTabType || (exports.DashboardTabType = DashboardTabType = {}));
 const FormSettingSchema = new mongoose_1.Schema({
     qcolor: {
         type: String,
@@ -116,18 +123,6 @@ const FormSchema = new mongoose_1.Schema({
         type: Number,
         required: false,
     },
-    respondants: {
-        type: [mongoose_1.Schema.Types.ObjectId],
-        ref: "User",
-        required: false,
-    },
-    responses: [
-        {
-            type: mongoose_1.Schema.Types.ObjectId,
-            ref: "Response", // References the Response model
-            default: [],
-        },
-    ],
 }, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 FormSchema.index({ user: 1 });
 FormSchema.index({ owners: 1 });

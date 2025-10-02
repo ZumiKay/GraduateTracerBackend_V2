@@ -24,9 +24,11 @@ const Form_model_1 = __importDefault(require("../model/Form.model"));
 const Response_model_1 = __importDefault(require("../model/Response.model"));
 const respondentUtils_1 = require("../utilities/respondentUtils");
 const helper_1 = require("../utilities/helper");
+const MongoErrorHandler_1 = require("../utilities/MongoErrorHandler");
 // Get available columns for export
 function getAvailableColumns(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
+        const operationId = (0, MongoErrorHandler_1.generateOperationId)("get_available_columns");
         try {
             const { formId } = req.params;
             const form = yield Form_model_1.default.findById(formId).populate("contents");
@@ -56,7 +58,10 @@ function getAvailableColumns(req, res) {
             });
         }
         catch (error) {
-            console.error("Error fetching available columns:", error);
+            if ((0, MongoErrorHandler_1.handleDatabaseError)(error, res, "get available columns")) {
+                return;
+            }
+            console.error(`[${operationId}] Error fetching available columns:`, error);
             res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to fetch available columns"));
         }
     });

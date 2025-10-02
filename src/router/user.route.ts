@@ -137,27 +137,6 @@ UserRoute.get(
   form_responseController.GetPublicFormData as unknown as RequestHandler
 );
 
-UserRoute.get(
-  "/respondent/session",
-  authenicationController.CheckRespondentSession as unknown as RequestHandler
-);
-UserRoute.post(
-  "/respondent/login",
-  TrafficControl.LoginRateLimit,
-  validate(UserValidate) as never,
-  authenicationController.RespodnentLogin as unknown as RequestHandler
-);
-
-UserRoute.get(
-  "/respondent/renew-session",
-  TrafficControl.LoginRateLimit,
-  authenicationController.RenewRespondentSession as unknown as RequestHandler
-);
-UserRoute.delete(
-  "/respondent/logout",
-  authenicationController.RespondentLogout as unknown as RequestHandler
-);
-
 //Form Owner Management Routes
 UserRoute.post(
   "/addformowner",
@@ -244,35 +223,12 @@ UserRoute.post(
   EditFormContent as unknown as RequestHandler
 );
 
-//Form Response Route
-UserRoute.post(
-  "/submitform",
-  form_responseController.SubmitResponse as unknown as RequestHandler
-);
+//Validate form contenet
+
 UserRoute.get(
   "/validateformsubmission",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   form_responseController.ValidateFormForSubmission as unknown as RequestHandler
-);
-UserRoute.get(
-  "/getresponsebyform",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  form_responseController.GetResponseByFormId as unknown as RequestHandler
-);
-UserRoute.get(
-  "/getresponse",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  form_responseController.GetResponseByUserId as unknown as RequestHandler
-);
-UserRoute.get(
-  "/getuserresponses",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  form_responseController.GetUserResponses as unknown as RequestHandler
-);
-UserRoute.get(
-  "/getguestresponse",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  form_responseController.GetGuestResponse as unknown as RequestHandler
 );
 
 // Response Management Routes

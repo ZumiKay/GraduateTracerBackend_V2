@@ -9,7 +9,7 @@ describe("groupContentByParent", () => {
     const formId = new Types.ObjectId();
     const mockData: Array<ContentType> = [
       {
-        _id: "q1",
+        _id: new Types.ObjectId("q1"),
         qIdx: 1,
         formId,
         title: {
@@ -19,7 +19,7 @@ describe("groupContentByParent", () => {
         type: QuestionType.Text,
       },
       {
-        _id: "q2",
+        _id: new Types.ObjectId("q2"),
         qIdx: 2,
         formId,
         title: {
@@ -29,7 +29,7 @@ describe("groupContentByParent", () => {
         type: QuestionType.CheckBox,
       },
       {
-        _id: "q3",
+        _id: new Types.ObjectId("q3"),
         qIdx: 0,
         formId,
         title: {
@@ -63,7 +63,7 @@ describe("groupContentByParent", () => {
     const mockData: Array<ContentType> = [
       // Main questions (top level)
       {
-        _id: "q1", // Main question 1
+        _id: new Types.ObjectId("q1"), // Main question 1
         qIdx: 1,
         formId,
         title: {
@@ -73,7 +73,7 @@ describe("groupContentByParent", () => {
         type: QuestionType.Text,
       },
       {
-        _id: "q2", // Main question 2 with conditionals
+        _id: new Types.ObjectId("q2"), // Main question 2 with conditionals
         qIdx: 2,
         formId,
         title: {
@@ -95,7 +95,7 @@ describe("groupContentByParent", () => {
         ],
       },
       {
-        _id: "q3", // Main question 3
+        _id: new Types.ObjectId("q3"), // Main question 3
         qIdx: 3,
         formId,
         title: {
@@ -114,7 +114,7 @@ describe("groupContentByParent", () => {
 
       // First level of nested questions (sub-questions)
       {
-        _id: "s1", // Sub-question 1 of q2
+        _id: new Types.ObjectId("s1"), // Sub-question 1 of q2
         qIdx: 0,
         formId,
         title: {
@@ -128,7 +128,7 @@ describe("groupContentByParent", () => {
         },
       },
       {
-        _id: "s2", // Sub-question 2 of q2 with its own conditionals
+        _id: new Types.ObjectId("s2"), // Sub-question 2 of q2 with its own conditionals
         qIdx: 0,
         formId,
         title: {
@@ -154,7 +154,7 @@ describe("groupContentByParent", () => {
         ],
       },
       {
-        _id: "s3", // Sub-question of q3
+        _id: new Types.ObjectId("s3"), // Sub-question of q3
         qIdx: 0,
         formId,
         title: {
@@ -170,7 +170,7 @@ describe("groupContentByParent", () => {
 
       // Second level of nested questions (nested sub-questions)
       {
-        _id: "n1", // Nested question 1 of s2
+        _id: new Types.ObjectId("n1"), // Nested question 1 of s2
         qIdx: 0,
         formId,
         title: {
@@ -184,7 +184,7 @@ describe("groupContentByParent", () => {
         },
       },
       {
-        _id: "n2", // Nested question 2 of s2 with its own conditionals
+        _id: new Types.ObjectId("n2"), // Nested question 2 of s2 with its own conditionals
         qIdx: 0,
         formId,
         title: {
@@ -217,7 +217,7 @@ describe("groupContentByParent", () => {
 
       // Third level of nested questions (deeply nested)
       {
-        _id: "m1", // Deeply nested question 1 of n2
+        _id: new Types.ObjectId("m1"), // Deeply nested question 1 of n2
         qIdx: 0,
         formId,
         title: {
@@ -231,7 +231,7 @@ describe("groupContentByParent", () => {
         },
       },
       {
-        _id: "m2", // Deeply nested question 2 of n2
+        _id: new Types.ObjectId("m2"), // Deeply nested question 2 of n2
         qIdx: 0,
         formId,
         title: {
@@ -245,7 +245,7 @@ describe("groupContentByParent", () => {
         },
       },
       {
-        _id: "m3", // Deeply nested question 3 of n2 with fourth level
+        _id: new Types.ObjectId("m3"), // Deeply nested question 3 of n2 with fourth level
         qIdx: 0,
         formId,
         title: {
@@ -268,7 +268,7 @@ describe("groupContentByParent", () => {
 
       // Fourth level of nesting
       {
-        _id: "d1", // Fourth level nested question
+        _id: new Types.ObjectId("d1"), // Fourth level nested question
         qIdx: 0,
         formId,
         title: {
@@ -284,7 +284,7 @@ describe("groupContentByParent", () => {
 
       // Additional main question
       {
-        _id: "q4", // Main question 4
+        _id: new Types.ObjectId("q4"), // Main question 4
         qIdx: 4,
         formId,
         title: {
@@ -300,7 +300,7 @@ describe("groupContentByParent", () => {
 
     console.log(
       "Result IDs:",
-      result.map((item) => item._id)
+      result.map((item) => item._id?.toString() || "")
     );
 
     // Assert
@@ -320,7 +320,7 @@ describe("groupContentByParent", () => {
       "s3",
       "q4",
     ];
-    const resultIds = result.map((item) => item._id);
+    const resultIds = result.map((item) => item._id?.toString() || "");
 
     // Check that all items are included in the result
     expect(result.length).toBe(mockData.length);

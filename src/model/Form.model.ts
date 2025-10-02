@@ -24,6 +24,13 @@ export enum CollaboratorType {
   creator = "CREATOR",
 }
 
+export enum DashboardTabType {
+  all = "all",
+  filledform = "filledForm",
+  myform = "myForm",
+  otherform = "otherForm",
+}
+
 interface FromSettingType {
   _id?: string;
   qcolor?: string;
@@ -35,6 +42,7 @@ interface FromSettingType {
   autosave?: boolean;
   returnscore?: returnscore;
   acceptResponses?: boolean;
+  acceptGuest?: boolean;
 }
 
 export interface FormType {
@@ -94,6 +102,10 @@ const FormSettingSchema = new Schema<FromSettingType>({
     type: Boolean,
     default: true,
   },
+  acceptGuest: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const FormSchema = new Schema<FormType>(
@@ -139,18 +151,6 @@ const FormSchema = new Schema<FormType>(
       type: Number,
       required: false,
     },
-    respondants: {
-      type: [Schema.Types.ObjectId],
-      ref: "User",
-      required: false,
-    },
-    responses: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "Response", // References the Response model
-        default: [],
-      },
-    ],
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

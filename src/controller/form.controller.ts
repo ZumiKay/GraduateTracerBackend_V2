@@ -4,10 +4,15 @@ import {
   groupContentByParent,
   ReturnCode,
 } from "../utilities/helper";
-import Form, { CollaboratorType, FormType } from "../model/Form.model";
-import { CustomRequest } from "../types/customType";
-import { Types } from "mongoose";
-import Content, { QuestionType } from "../model/Content.model";
+import { MongoErrorHandler } from "../utilities/MongoErrorHandler";
+import Form, {
+  CollaboratorType,
+  DashboardTabType,
+  FormType,
+} from "../model/Form.model";
+import { CustomRequest, UserToken } from "../types/customType";
+import { RootFilterQuery, Types } from "mongoose";
+import Content, { ContentType, QuestionType } from "../model/Content.model";
 import SolutionValidationService from "../services/SolutionValidationService";
 import User, { UserType } from "../model/User.model";
 import {
@@ -19,6 +24,7 @@ import {
   projections,
   validateFormRequest,
 } from "../utilities/formHelpers";
+import FormResponse, { FormResponseType } from "../model/Response.model";
 
 interface CollaboratorRequest {
   formId: string;
@@ -40,6 +46,10 @@ export const ManageFormCollaborator = async (
   req: CustomRequest,
   res: Response
 ) => {
+  const operationId = MongoErrorHandler.generateOperationId(
+    "manage_collaborator"
+  );
+
   try {
     const { formId, email, role, action } =
       req.body as ManageFormCollaboratorBodyType;
@@ -120,8 +130,16 @@ export const ManageFormCollaborator = async (
       .status(200)
       .json(ReturnCode(200, `User successfully ${actionText} ${role}`));
   } catch (error) {
-    console.error("Error managing form collaborator:", error);
-    return res.status(500).json(ReturnCode(500, "Internal server error"));
+    console.error(`[${operationId}] Error managing form collaborator:`, error);
+
+    const mongoErrorHandled = MongoErrorHandler.handleMongoError(error, res, {
+      operationId,
+      customMessage: "Failed to manage form collaborator",
+    });
+
+    if (!mongoErrorHandled.handled) {
+      return res.status(500).json(ReturnCode(500, "Internal server error"));
+    }
   }
 };
 
@@ -289,12 +307,6 @@ export async function CreateForm(req: CustomRequest, res: Response) {
   if (!user) return res.status(401).json(ReturnCode(401, "Unauthorized"));
 
   try {
-    const existingForm = await Form.findOne({
-      $and: [{ title: formdata.title }, { user: user.id }],
-    });
-    if (existingForm)
-      return res.status(400).json(ReturnCode(400, "Form already exists"));
-
     const createdForm = await Form.create({ ...formdata, user: user.id });
     return res.status(201).json({
       ...ReturnCode(201, "Form Created"),
@@ -483,6 +495,10 @@ interface GetFilterFormParamType {
   q?: string;
   page?: string;
   limit?: string;
+  tab?: DashboardTabType;
+  type?: FormType;
+  created?: string;
+  updated?: string;
 }
 
 export async function GetFilterForm(req: CustomRequest, res: Response) {
@@ -492,14 +508,19 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
       q,
       page = "1",
       limit = "5",
+      tab,
+      created,
+      updated,
     } = req.query as GetFilterFormParamType;
 
-    if (!ty) {
+    if (tab && !Object.values(DashboardTabType).includes(tab)) {
       return res.status(400).json(ReturnCode(400, "Invalid type or query"));
     }
 
     const p = Number(page);
     const lt = Math.min(Number(limit), 50);
+    const createdAt = created ? parseInt(created) : undefined;
+    const updatedAt = updated ? parseInt(updated) : undefined;
 
     const requiresQuery = [
       "detail",
@@ -507,17 +528,20 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
       "setting",
       "search",
       "type",
-      "createddate",
-      "modifieddate",
       "preview",
       "total",
       "response",
+      "user",
     ];
-    if (requiresQuery.includes(ty) && !q) {
+    if (ty && !requiresQuery.includes(ty)) {
       return res.status(400).json(ReturnCode(400, "Invalid query"));
     }
 
     const user = req.user;
+
+    if (!user) {
+      return res.status(401).json(ReturnCode(401, "Authentication required"));
+    }
 
     // Handle different query types with optimized logic
     switch (ty) {
@@ -529,7 +553,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           ty,
           q as string,
           p,
-          user,
+          new Types.ObjectId(user.id),
           Number(page ?? "1")
         );
 
@@ -540,10 +564,36 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
         return await handleSettingQuery(res, q as string, user);
 
       case "user":
-        return await handleUserQuery(res, p, lt, user);
+        if (
+          (createdAt && ![1, -1].includes(createdAt)) ||
+          (updatedAt && ![1, -1].includes(updatedAt))
+        ) {
+          return res
+            .status(400)
+            .json(ReturnCode(400, "Sort values must be 1 or -1"));
+        }
+
+        const userTab = tab || DashboardTabType.myform;
+        return await handleUserQuery({
+          p,
+          lt,
+          userId: new Types.ObjectId(user.id),
+          tab: userTab,
+          res,
+          filter: {
+            query: q,
+            sort:
+              createdAt || updatedAt
+                ? {
+                    createdAt,
+                    updatedAt,
+                  }
+                : undefined,
+          },
+        });
 
       default:
-        return await handleSearchQuery(res, ty, q as string, p, lt, user);
+        return res.status(400).json(ReturnCode(400));
     }
   } catch (error) {
     console.error(
@@ -560,7 +610,7 @@ async function handleDetailQuery(
   ty: string,
   q: string,
   p: number,
-  user: any,
+  user: Types.ObjectId,
   page?: number
 ) {
   if (!user) return res.status(401).json(ReturnCode(401));
@@ -568,14 +618,13 @@ async function handleDetailQuery(
   const query = isValidObjectIdString(q) ? { _id: q } : { title: q };
   const detailForm = await Form.findOne(query)
     .select(projections.detail)
-    .populate({ path: "user", select: "email", options: { lean: true } })
     .lean()
     .exec();
 
   if (!detailForm)
     return res.status(404).json(ReturnCode(404, "No Form Found"));
 
-  const accessInfo = validateAccess(detailForm, user.id);
+  const accessInfo = validateAccess(detailForm, user);
   if (!accessInfo.hasAccess)
     return res.status(403).json(ReturnCode(403, "Access denied"));
 
@@ -712,135 +761,184 @@ async function handleSettingQuery(res: Response, q: string, user: any) {
   });
 }
 
-async function handleUserQuery(
-  res: Response,
-  p: number,
-  lt: number,
-  user: any
-) {
-  if (!user) return res.status(401).json(ReturnCode(401));
-
-  const userQuery = {
-    $or: [{ user: user.id }, { owners: user.id }, { editors: user.id }],
+async function handleUserQuery({
+  p,
+  userId,
+  tab,
+  res,
+  lt,
+  filter,
+}: {
+  p: number;
+  userId: Types.ObjectId;
+  tab: DashboardTabType;
+  res: Response;
+  lt: number;
+  filter?: {
+    query?: string;
+    type?: FormType;
+    sort?: {
+      createdAt?: number;
+      updatedAt?: number;
+    };
   };
-  const [totalCount, userForms] = await Promise.all([
-    Form.countDocuments(userQuery),
-    Form.find(userQuery)
-      .skip((p - 1) * lt)
-      .limit(lt)
-      .select(projections.basic)
-      .populate({ path: "responses", select: "_id", options: { lean: true } })
-      .populate({ path: "user", select: "email", options: { lean: true } })
-      .sort({ updatedAt: -1 })
-      .lean()
-      .exec(),
-  ]);
+}) {
+  try {
+    // Validate input parameters
+    if (!userId || !tab || p < 1 || lt < 1) {
+      return res.status(400).json(ReturnCode(400));
+    }
 
-  const userIdStr = user.id.toString();
-  const formattedForms = userForms.map((form) => ({
-    ...form,
-    updatedAt: form.updatedAt ? FormatToGeneralDate(form.updatedAt) : undefined,
-    createdAt: form.createdAt ? FormatToGeneralDate(form.createdAt) : undefined,
-    isOwner: form.user._id.toString() === userIdStr,
-    isCollaborator:
-      form.owners?.some((owner: any) => owner.toString() === userIdStr) ||
-      form.editors?.some((editor: any) => editor.toString() === userIdStr),
-  }));
+    const baseQuery = await buildBaseQuery(tab, userId);
 
-  const totalPages = Math.ceil(totalCount / lt);
-  return res.status(200).json({
-    ...ReturnCode(200),
-    data: formattedForms,
-    pagination: {
-      currentPage: p,
-      totalPages,
-      totalCount,
-      limit: lt,
-      hasNextPage: p < totalPages,
-      hasPrevPage: p > 1,
-    },
-  });
+    const filterQuery = buildFilterQuery(filter);
+
+    const finalQuery = { ...baseQuery, ...filterQuery };
+
+    const sortOptions = buildSortOptions(filter);
+
+    //Flag Filled Form
+    const filledFormIds: Array<Types.ObjectId> = [];
+    if (tab === DashboardTabType.filledform) {
+      const user = await User.findById(userId).select("email").lean();
+
+      const filledForms = await FormResponse.find({
+        userId: userId,
+        respondentEmail: user?.email,
+      })
+        .select("formId")
+        .lean();
+
+      filledFormIds.push(...filledForms.map((i) => i.formId));
+    }
+
+    const [results] = await Form.aggregate([
+      { $match: finalQuery },
+      {
+        $facet: {
+          totalCount: [{ $count: "count" }],
+          data: [
+            { $sort: sortOptions },
+            { $skip: (p - 1) * lt },
+            { $limit: lt },
+            {
+              $project: {
+                _id: 1,
+                title: 1,
+                type: 1,
+                totalScore: 1,
+                createdAt: 1,
+                updatedAt: 1,
+              },
+            },
+          ],
+        },
+      },
+    ]).exec();
+
+    const totalCount = results.totalCount[0]?.count || 0;
+    const userForms = (results.data as FormType[]).map((form) => ({
+      ...form,
+      isFilled: filledFormIds.includes(form._id),
+    }));
+
+    return res.status(200).json({
+      ...ReturnCode(200),
+      data: {
+        userForms,
+        pagination: {
+          totalCount,
+          totalPage: totalCount / lt,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error in handleUserQuery:", error);
+    return res.status(500).json(ReturnCode(500, "Internal server error"));
+  }
 }
 
-async function handleSearchQuery(
-  res: Response,
-  ty: string,
-  q: string,
-  p: number,
-  lt: number,
-  user: any
-) {
-  let conditions: any = {};
-
-  switch (ty) {
-    case "search":
-      conditions = {
+// Helper function to build base query based on tab type
+async function buildBaseQuery(
+  tab: DashboardTabType,
+  userId: Types.ObjectId
+): Promise<RootFilterQuery<FormType>> {
+  switch (tab) {
+    case DashboardTabType.all:
+      return {
         $or: [
-          { title: { $regex: q, $options: "i" } },
-          { description: { $regex: q, $options: "i" } },
+          { user: new Types.ObjectId(userId) },
+          { editors: { $in: [userId] } },
+          { owners: { $in: [userId] } },
         ],
       };
-      break;
-    case "type":
-      conditions = { type: q };
-      break;
-    case "createddate":
-      const createdDate = new Date(q);
-      conditions = {
-        createdAt: {
-          $gte: new Date(createdDate.setHours(0, 0, 0, 0)),
-          $lt: new Date(createdDate.setHours(23, 59, 59, 999)),
-        },
+
+    case DashboardTabType.myform:
+      return {
+        $or: [{ user: userId }, { owners: { $in: [userId] } }],
       };
-      break;
-    case "modifieddate":
-      const modifiedDate = new Date(q);
-      conditions = {
-        updatedAt: {
-          $gte: new Date(modifiedDate.setHours(0, 0, 0, 0)),
-          $lt: new Date(modifiedDate.setHours(23, 59, 59, 999)),
-        },
+
+    case DashboardTabType.otherform:
+      return {
+        editors: { $in: [userId] },
+        user: { $ne: userId }, // Exclude forms owned by the user
       };
-      break;
+
+    case DashboardTabType.filledform:
+      // Optimized: Use aggregation to get form IDs directly
+      const filledFormIds = await FormResponse.distinct("formId", { userId });
+      return {
+        _id: { $in: filledFormIds },
+      };
+
+    default:
+      throw new Error(`Invalid tab type: ${tab}`);
+  }
+}
+
+// Helper function to build filter query
+function buildFilterQuery(filter?: {
+  query?: string;
+  type?: FormType;
+}): RootFilterQuery<FormType> {
+  const filterQuery: RootFilterQuery<FormType> = {};
+
+  if (filter?.query) {
+    const searchQuery = filter.query.trim();
+    if (searchQuery) {
+      filterQuery.title = { $regex: searchQuery, $options: "i" };
+    }
   }
 
-  const [totalCount, forms] = await Promise.all([
-    Form.countDocuments(conditions),
-    Form.find(conditions)
-      .skip((p - 1) * lt)
-      .limit(lt)
-      .select(projections.basic)
-      .populate({ path: "user", select: "email", options: { lean: true } })
-      .sort({ updatedAt: -1 })
-      .lean()
-      .exec(),
-  ]);
+  if (filter?.type) {
+    filterQuery.type = filter.type;
+  }
 
-  const formattedForms = forms.map((form) => {
-    const accessInfo = user
-      ? validateAccess(form, user.id)
-      : { isPrimaryOwner: false, isOwner: false, isEditor: false };
-    return {
-      ...form,
-      updatedAt: form.updatedAt,
-      createdAt: form.createdAt,
-      ...accessInfo,
-    };
-  });
+  return filterQuery;
+}
 
-  const totalPages = Math.ceil(totalCount / lt);
-  return res.status(200).json({
-    ...ReturnCode(200),
-    data: formattedForms,
-    pagination: {
-      currentPage: p,
-      totalPages,
-      totalCount,
-      limit: lt,
-      hasNextPage: p < totalPages,
-      hasPrevPage: p > 1,
-    },
-  });
+// Helper function to build sort options
+function buildSortOptions(filter?: {
+  sort?: {
+    createdAt?: number;
+    updatedAt?: number;
+  };
+}): Record<string, 1 | -1> {
+  const sortOptions: Record<string, 1 | -1> = {};
+
+  if (filter?.sort?.createdAt) {
+    sortOptions.createdAt = filter.sort.createdAt as 1 | -1;
+  }
+
+  if (filter?.sort?.updatedAt) {
+    sortOptions.updatedAt = filter.sort.updatedAt as 1 | -1;
+  }
+
+  if (Object.keys(sortOptions).length === 0) {
+    sortOptions.updatedAt = -1;
+  }
+
+  return sortOptions;
 }
 
 export async function ValidateFormBeforeAction(
@@ -899,9 +997,93 @@ export async function ValidateFormBeforeAction(
   }
 }
 
-// Re-export utilities for backward compatibility
-export {
-  hasFormAccess,
-  isPrimaryOwner,
-  verifyRole,
-} from "../utilities/formHelpers";
+export const GetFilledForm = async (req: CustomRequest, res: Response) => {
+  try {
+    const { formId, responseId } = req.params;
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json(ReturnCode(401, "Unauthorized"));
+    }
+
+    if (!isValidObjectIdString(formId)) {
+      return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+    }
+
+    const formObjectId = new Types.ObjectId(formId);
+    const userObjectId = new Types.ObjectId(user.id);
+
+    const form = await Form.findById(formObjectId).lean();
+
+    if (!form) {
+      return res.status(404).json(ReturnCode(404, "Form not found"));
+    }
+
+    const responseQuery: Record<string, Types.ObjectId> = {
+      formId: formObjectId,
+      userId: userObjectId,
+    };
+
+    if (responseId && isValidObjectIdString(responseId)) {
+      responseQuery._id = new Types.ObjectId(responseId);
+    }
+
+    //Get User Response
+    const userResponses = await FormResponse.find({
+      $and: [
+        { formId: responseQuery.formId },
+        { userId: responseQuery.userId },
+      ],
+    })
+      .populate({
+        path: "responseset.question",
+        select: "-hasAnswer -isValidated -page -require",
+      })
+      .sort({ submittedAt: -1 }) // get in descending order
+      .lean();
+
+    if (userResponses.length === 0) {
+      return res
+        .status(404)
+        .json(ReturnCode(404, "No responses found for this form"));
+    }
+
+    //Data mutation
+    let currentResponse = userResponses[0];
+    if (responseId && isValidObjectIdString(responseId)) {
+      const specificResponse = userResponses.find(
+        (resp) => resp._id.toString() === responseId
+      );
+      if (specificResponse) {
+        currentResponse = specificResponse;
+      }
+    }
+
+    const formatResponseData = (response: FormResponseType) => ({
+      ...response,
+      submittedAt: response.submittedAt
+        ? FormatToGeneralDate(response.submittedAt)
+        : undefined,
+      updatedAt: response.updatedAt
+        ? FormatToGeneralDate(response.updatedAt)
+        : undefined,
+    });
+
+    const responseData = {
+      response: formatResponseData(currentResponse),
+
+      //All user response
+      userResponses: userResponses.map((i) => i._id),
+    };
+
+    return res.status(200).json({
+      ...ReturnCode(200, "Filled form data retrieved successfully"),
+      data: responseData,
+    });
+  } catch (error) {
+    console.error("Get Filled Form Error:", error);
+    return res
+      .status(500)
+      .json(ReturnCode(500, "Failed to retrieve filled form data"));
+  }
+};

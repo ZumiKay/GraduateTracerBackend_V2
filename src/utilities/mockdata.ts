@@ -6,6 +6,7 @@ import {
   RangeType,
   ConditionalType,
 } from "../model/Content.model";
+import { ResponseAnswerType } from "../model/Response.model";
 
 export class MockContentFactory {
   static createFormId(): Types.ObjectId {
@@ -38,7 +39,7 @@ export class MockContentFactory {
   ): ContentType {
     const choices = this.createChoiceOptions(4);
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle(
         "What is your favorite programming language?"
       ),
@@ -63,7 +64,7 @@ export class MockContentFactory {
   static createCheckboxContent(overrides?: Partial<ContentType>): ContentType {
     const choices = this.createChoiceOptions(5);
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle(
         "Select all programming languages you know"
       ),
@@ -87,7 +88,7 @@ export class MockContentFactory {
 
   static createTextContent(overrides?: Partial<ContentType>): ContentType {
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle("What is your full name?"),
       type: QuestionType.Text,
       qIdx: 2,
@@ -106,7 +107,7 @@ export class MockContentFactory {
     overrides?: Partial<ContentType>
   ): ContentType {
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle("Explain the concept of polymorphism"),
       type: QuestionType.ShortAnswer,
       qIdx: 3,
@@ -128,7 +129,7 @@ export class MockContentFactory {
 
   static createNumberContent(overrides?: Partial<ContentType>): ContentType {
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle(
         "How many years of programming experience do you have?"
       ),
@@ -151,7 +152,7 @@ export class MockContentFactory {
 
   static createDateContent(overrides?: Partial<ContentType>): ContentType {
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle("When did you start programming?"),
       type: QuestionType.Date,
       qIdx: 5,
@@ -160,7 +161,7 @@ export class MockContentFactory {
       score: 0,
       answer: {
         _id: new Types.ObjectId(),
-        answer: new Date("2020-01-01"),
+        answer: new Date("2020-01-01") as unknown as ResponseAnswerType,
         isCorrect: true,
       },
       require: false,
@@ -175,7 +176,7 @@ export class MockContentFactory {
     overrides?: Partial<ContentType>
   ): ContentType {
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle("Select your salary range (in thousands)"),
       type: QuestionType.RangeNumber,
       qIdx: 6,
@@ -197,7 +198,7 @@ export class MockContentFactory {
 
   static createRangeDateContent(overrides?: Partial<ContentType>): ContentType {
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle("Select your project duration"),
       type: QuestionType.RangeDate,
       qIdx: 7,
@@ -212,7 +213,7 @@ export class MockContentFactory {
         answer: {
           start: new Date("2024-03-01"),
           end: new Date("2024-09-01"),
-        } as RangeType<Date>,
+        } as never,
         isCorrect: true,
       },
       require: false,
@@ -226,7 +227,7 @@ export class MockContentFactory {
   static createSelectionContent(overrides?: Partial<ContentType>): ContentType {
     const choices = this.createChoiceOptions(3);
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle("Choose your preferred IDE"),
       type: QuestionType.Selection,
       qIdx: 8,
@@ -248,7 +249,7 @@ export class MockContentFactory {
 
   static createParagraphContent(overrides?: Partial<ContentType>): ContentType {
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle(
         "Describe your biggest programming project"
       ),
@@ -283,7 +284,7 @@ export class MockContentFactory {
     };
 
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle(
         "Which JavaScript framework do you prefer? (Conditional)"
       ),
@@ -329,10 +330,13 @@ export class MockContentFactory {
     const rangeDate = this.createRangeDateContent({ formId, qIdx: 7 });
     const selection = this.createSelectionContent({ formId, qIdx: 8 });
     const paragraph = this.createParagraphContent({ formId, qIdx: 9 });
-    const conditional = this.createConditionalContent(multipleChoice._id!, {
-      formId,
-      qIdx: 10,
-    });
+    const conditional = this.createConditionalContent(
+      multipleChoice._id?.toString() as string,
+      {
+        formId,
+        qIdx: 10,
+      }
+    );
 
     return [
       multipleChoice,
@@ -355,7 +359,7 @@ export class MockContentFactory {
     overrides?: Partial<ContentType>
   ): ContentType {
     return {
-      _id: new Types.ObjectId().toString(),
+      _id: new Types.ObjectId(),
       title: this.createContentTitle(`Sample ${type} Question`),
       type,
       qIdx: 0,

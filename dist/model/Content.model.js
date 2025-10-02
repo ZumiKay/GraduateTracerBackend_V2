@@ -156,7 +156,7 @@ const ContentSchema = new mongoose_1.Schema({
         type: Boolean,
         default: false,
     },
-});
+}, { timestamps: true });
 //Pre-save middleware to update form total score
 ContentSchema.pre("save", function (next) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -211,3 +211,5 @@ ContentSchema.index({ formId: 1, page: 1 });
 ContentSchema.index({ idx: 1 });
 const Content = (0, mongoose_1.model)("Content", ContentSchema);
 exports.default = Content;
+//helper function
+const GetQuestionContentAsString = () => { };

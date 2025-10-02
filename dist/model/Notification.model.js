@@ -83,8 +83,8 @@ const NotificationSchema = new mongoose_1.Schema({
     toJSON: {
         transform: (_, ret) => {
             ret.id = ret._id;
-            delete ret._id;
-            delete ret.__v;
+            ret === null || ret === void 0 ? true : delete ret._id;
+            ret === null || ret === void 0 ? true : delete ret.__v;
             return ret;
         },
     },

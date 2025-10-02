@@ -5,6 +5,7 @@ import {
   ReturnCode,
   ValidatePassword,
 } from "../utilities/helper";
+import { MongoErrorHandler } from "../utilities/MongoErrorHandler";
 import { z } from "zod";
 import User, { ROLE, UserType } from "../model/User.model";
 import HandleEmail from "../utilities/email";
@@ -22,6 +23,8 @@ export const UserValidate = z.object({
 
 export async function GetRespondentProfile(req: Request, res: Response) {
   const data = req.body as { email: string };
+  const operationId = MongoErrorHandler.generateOperationId("get_profile");
+
   try {
     const profile = await User.findOne({ email: data.email })
       .select("_id")
@@ -32,12 +35,21 @@ export async function GetRespondentProfile(req: Request, res: Response) {
     }
     return res.status(404).json(ReturnCode(404, "No User Found"));
   } catch (error) {
-    return res.status(500).json(ReturnCode(500));
+    const mongoErrorHandled = MongoErrorHandler.handleMongoError(error, res, {
+      operationId,
+      customMessage: "Failed to retrieve user profile",
+    });
+
+    if (!mongoErrorHandled.handled) {
+      return res.status(500).json(ReturnCode(500));
+    }
   }
 }
 
 export async function RegisterUser(req: Request, res: Response) {
   const data = req.body as UserType;
+  const operationId = MongoErrorHandler.generateOperationId("register_user");
+
   try {
     const isUser = await User.findOne({ email: data.email });
     if (isUser)
@@ -52,8 +64,16 @@ export async function RegisterUser(req: Request, res: Response) {
 
     return res.status(201).json(ReturnCode(201, "User registered"));
   } catch (error) {
-    console.log("Register User", error);
-    return res.status(500).json(ReturnCode(500));
+    console.log(`[${operationId}] Register User Error:`, error);
+
+    const mongoErrorHandled = MongoErrorHandler.handleMongoError(error, res, {
+      operationId,
+      customMessage: "Failed to register user",
+    });
+
+    if (!mongoErrorHandled.handled) {
+      return res.status(500).json(ReturnCode(500));
+    }
   }
 }
 

@@ -10,14 +10,18 @@ const UsersessionSchema = new mongoose_1.Schema({
     user: {
         type: mongoose_1.Schema.Types.ObjectId,
         ref: "User",
-        required: true,
+        required: false,
     },
     expireAt: {
         type: mongoose_1.Schema.Types.Date,
         required: true,
     },
+    respondent: {
+        type: mongoose_1.Schema.Types.Boolean,
+        required: false,
+        default: null,
+    },
 }, { timestamps: true });
-UsersessionSchema.index({ session_id: 1 });
 UsersessionSchema.index({ user: 1 });
 const Usersession = (0, mongoose_1.model)("Usersession", UsersessionSchema);
 exports.default = Usersession;

@@ -4,10 +4,8 @@ import { ContentType, QuestionType } from "../../model/Content.model";
 
 describe("groupContentByParent with conditional order", () => {
   test("maintains order based on parent conditional array", () => {
-    // Create a shared formId for all test items
     const formId = new Types.ObjectId();
 
-    // Create basic content title object structure
     const createTitle = (text: string) => ({
       type: "doc",
       content: [
@@ -34,19 +32,17 @@ describe("groupContentByParent with conditional order", () => {
     const m1Id = createId("507f1f77bcf86cd799439019");
     const m2Id = createId("507f1f77bcf86cd79943901a");
 
-    // Create test data with the structure described in the scenario:
-    // q2 has s1, s2 and s2 has its own condition n1, n2, n3, and n2 has m1, m2
     const testData: ContentType[] = [
       // Main questions
       {
-        _id: q1Id.toString(),
+        _id: q1Id,
         formId,
         title: createTitle("Question 1"),
         type: QuestionType.Text,
         qIdx: 1,
       },
       {
-        _id: q2Id.toString(),
+        _id: q2Id,
         formId,
         title: createTitle("Question 2"),
         type: QuestionType.CheckBox,
@@ -67,7 +63,7 @@ describe("groupContentByParent with conditional order", () => {
         ],
       },
       {
-        _id: q3Id.toString(),
+        _id: q3Id,
         formId,
         title: createTitle("Question 3"),
         type: QuestionType.Text,
@@ -76,7 +72,7 @@ describe("groupContentByParent with conditional order", () => {
 
       // First level sub-questions (of q2)
       {
-        _id: s1Id.toString(),
+        _id: s1Id,
         formId,
         title: createTitle("Sub-question 1"),
         type: QuestionType.Text,
@@ -87,7 +83,7 @@ describe("groupContentByParent with conditional order", () => {
         },
       },
       {
-        _id: s2Id.toString(),
+        _id: s2Id,
         formId,
         title: createTitle("Sub-question 2"),
         type: QuestionType.Text,
@@ -120,7 +116,7 @@ describe("groupContentByParent with conditional order", () => {
 
       // Second level sub-questions (of s2)
       {
-        _id: n1Id.toString(),
+        _id: n1Id,
         formId,
         title: createTitle("Nested 1"),
         type: QuestionType.Text,
@@ -131,7 +127,7 @@ describe("groupContentByParent with conditional order", () => {
         },
       },
       {
-        _id: n2Id.toString(),
+        _id: n2Id,
         formId,
         title: createTitle("Nested 2"),
         type: QuestionType.Text,
@@ -156,7 +152,7 @@ describe("groupContentByParent with conditional order", () => {
         ],
       },
       {
-        _id: n3Id.toString(),
+        _id: n3Id,
         formId,
         title: createTitle("Nested 3"),
         type: QuestionType.Text,
@@ -169,7 +165,7 @@ describe("groupContentByParent with conditional order", () => {
 
       // Third level sub-questions (of n2)
       {
-        _id: m1Id.toString(),
+        _id: m1Id,
         formId,
         title: createTitle("Most Nested 1"),
         type: QuestionType.Text,
@@ -180,7 +176,7 @@ describe("groupContentByParent with conditional order", () => {
         },
       },
       {
-        _id: m2Id.toString(),
+        _id: m2Id,
         formId,
         title: createTitle("Most Nested 2"),
         type: QuestionType.Text,
