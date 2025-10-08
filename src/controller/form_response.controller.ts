@@ -31,9 +31,7 @@ import {
 } from "../model/Response.model";
 import { hasFormAccess, verifyRole } from "../utilities/formHelpers";
 import Formsession from "../model/Formsession.model";
-import UserMiddleware, {
-  GetPublicFormDataType,
-} from "../middleware/User.middleware";
+import { GetPublicFormDataType } from "../middleware/User.middleware";
 import Usersession from "../model/Usersession.model";
 import FormsessionService from "./formsession.controller";
 
@@ -953,12 +951,13 @@ class FormResponseController {
 
           //Verify user and auto logged in existed user
           if (initialData.setting?.email) {
-            if (isSwitched === undefined || !bool.includes(isSwitched)) {
-              return res.status(400).json(ReturnCode(400));
-            }
             //Extract Token
 
             const refreshToken = req.cookies[process.env.REFRESH_TOKEN_COOKIE];
+
+            if (refreshToken && (!isSwitched || !bool.includes(isSwitched))) {
+              return res.status(400).json(ReturnCode(400));
+            }
 
             if (isSwitched === bool[1] && refreshToken) {
               //*Auto login for exist user

@@ -146,7 +146,8 @@ export default class FormsessionMiddleware {
     const { ty } = req.query as GetPublicFormDataType;
     const { formId } = req.params as { formId?: string };
 
-    if (!formId) return res.status(400).json(ReturnCode(400));
+    if (!formId)
+      return res.status(400).json(ReturnCode(400, "Form id is missing"));
 
     try {
       switch (ty) {

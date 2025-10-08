@@ -22,7 +22,7 @@ ResponseRouter.post(
 );
 
 ResponseRouter.get(
-  "/verifyformsession",
+  "/verifyformsession/:formId",
   FormsessionMiddleware.VerifyFormsession as unknown as RequestHandler,
   FormsessionService.SessionVerification as unknown as RequestHandler
 );

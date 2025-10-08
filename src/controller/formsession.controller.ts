@@ -379,7 +379,7 @@ export default class FormsessionService {
 
     try {
       const session = await Formsession.findOne({
-        session_id: req.formsession,
+        session_id: req.formsession?.sub,
       }).lean();
 
       if (!session || !req.formsession || !req.formsession.exp)
@@ -387,12 +387,12 @@ export default class FormsessionService {
 
       const isExpired =
         session.expiredAt >= new Date() ||
-        req.formsession.exp >= new Date().getTime();
+        new Date(req.formsession.exp * 1000) >= new Date();
 
       if (isExpired) {
         if (!isActive)
-          return res.status(200).json({
-            ...ReturnCode(200, "Session expire"),
+          return res.status(401).json({
+            ...ReturnCode(401, "Session expire"),
             data: {
               isExpired,
             },
