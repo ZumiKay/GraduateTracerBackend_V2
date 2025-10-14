@@ -12,6 +12,7 @@ declare namespace NodeJS {
     RECAPCHA_SECRETKEY: string;
     LOGIN_ATTEMPT: string;
     RESPONDENT_COOKIE: string;
+    ACCESS_RESPONDENT_COOKIE: string;
     RESPONDENT_TOKEN_JWT_SECRET: string;
     // Email service configuration
     SMTP_HOST: string;

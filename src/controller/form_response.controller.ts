@@ -31,7 +31,10 @@ import {
 } from "../model/Response.model";
 import { hasFormAccess, verifyRole } from "../utilities/formHelpers";
 import Formsession from "../model/Formsession.model";
-import { GetPublicFormDataType } from "../middleware/User.middleware";
+import {
+  GetPublicFormDataType,
+  GetPublicFormDataTyEnum,
+} from "../middleware/User.middleware";
 import Usersession from "../model/Usersession.model";
 import FormsessionService from "./formsession.controller";
 
@@ -912,6 +915,7 @@ class FormResponseController {
 
   public GetPublicFormData = async (req: CustomRequest, res: Response) => {
     try {
+      // Optimize: Early environment validation
       if (
         !process.env.REFRESH_TOKEN_COOKIE ||
         !process.env.ACCESS_TOKEN_COOKIE ||
@@ -921,18 +925,32 @@ class FormResponseController {
       }
 
       const { formId } = req.params;
-      const { p, ty, isSwitched } = req.query as GetPublicFormDataType;
+      let { p, ty, isSwitched } = req.query as GetPublicFormDataType;
+
+      // Optimize: Early validation for performance
+      if (!ty) return res.status(400).json(ReturnCode(400));
+      if (!Types.ObjectId.isValid(formId)) {
+        return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+      }
+
       const bool = ["true", "false"];
       const page = Number(p ?? "1");
 
-      if (!ty) return res.status(400).json(ReturnCode(400));
+      const refreshTokenCookie = process.env.REFRESH_TOKEN_COOKIE;
+      const isUserAlreadyAuthenticated = !!req.formsession?.sub;
+
+      if (req.formsession) {
+        //If user is authenticate fetch data
+        ty = GetPublicFormDataTyEnum.data;
+      }
 
       //handle Form data type base on fetch type
       switch (ty) {
         case "initial": {
+          // Optimize: Get form data with all needed fields in one query
           const initialData = await Form.findById(formId)
             .select(
-              "_id title type setting.email setting.acceptResponses setting.acceptGuest"
+              "_id title type totalpage totalscore setting.email setting.acceptResponses setting.acceptGuest setting.submitonce"
             )
             .lean();
 
@@ -951,22 +969,59 @@ class FormResponseController {
 
           //Verify user and auto logged in existed user
           if (initialData.setting?.email) {
-            //Extract Token
+            // Early return for already authenticated users with combined data
+            if (isUserAlreadyAuthenticated) {
+              try {
+                // Fetch form content for authenticated user to avoid separate API call
+                const formData = await ResponseQueryService.getPublicFormData(
+                  formId,
+                  page,
+                  req,
+                  res
+                );
 
-            const refreshToken = req.cookies[process.env.REFRESH_TOKEN_COOKIE];
+                return res.status(200).json({
+                  ...ReturnCode(200),
+                  data: {
+                    ...initialData,
+                    isAuthenticated: true,
+                    isLoggedin: true,
+                    ...formData,
+                  },
+                });
+              } catch (error) {
+                // Fallback to initial data only if form content fetch fails
+                console.warn(
+                  "Failed to fetch form content for authenticated user:",
+                  error
+                );
+                return res.status(200).json({
+                  ...ReturnCode(200),
+                  data: {
+                    ...initialData,
+                    isAuthenticated: true,
+                    isLoggedin: true,
+                  },
+                });
+              }
+            }
+
+            //Extract Token
+            const refreshToken = req.cookies[refreshTokenCookie];
 
             if (refreshToken && (!isSwitched || !bool.includes(isSwitched))) {
               return res.status(400).json(ReturnCode(400));
             }
 
-            if (isSwitched === bool[1] && refreshToken) {
-              //*Auto login for exist user
+            if (isSwitched === bool[1] && refreshToken && !req.formsession) {
+              //*Auto login for exist user - Optimized with parallel queries
               const isRefreshToken = ExtractTokenPaylod({
                 token: refreshToken,
               });
               if (!isRefreshToken) {
                 return res.status(401).json(ReturnCode(401));
               }
+
               const usersession = await Usersession.findOne({
                 session_id: refreshToken,
               })
@@ -984,29 +1039,53 @@ class FormResponseController {
                 return res.status(401).json(ReturnCode(401));
               }
 
-              const isFormSession = await Formsession.findOne({
-                $and: [
-                  { form: new Types.ObjectId(formId) },
-                  { respondentEmail: usersession.user.email },
-                ],
-              }).lean();
+              // Optimize: Check for existing form session in parallel with duplicate session check
+              const [duplicateRemovalCode, existingFormSession] =
+                await Promise.all([
+                  FormsessionService.handleAutoLoginDuplicateSession(
+                    usersession.user.email,
+                    formId,
+                    initialData
+                  ),
+                  Formsession.findOne({
+                    $and: [
+                      { form: new Types.ObjectId(formId) },
+                      { respondentEmail: usersession.user.email },
+                    ],
+                  }).lean(),
+                ]);
 
-              //Delete the expired session and proceed to create a new one
-              if (isFormSession) {
-                if (isFormSession.expiredAt <= new Date())
-                  await Formsession.deleteOne({ _id: isFormSession._id });
-                else {
-                  ///Valid Form session exist
+              if (duplicateRemovalCode) {
+                // Duplicate session found, return the removal code
+                return res.status(403).json({
+                  ...ReturnCode(403, "Duplicate session detected"),
+                  data: {
+                    duplicateSession: true,
+                    removalCode: duplicateRemovalCode,
+                    redirectUrl: `/replace-session/${duplicateRemovalCode}/${formId}`,
+                  },
+                });
+              }
+
+              if (existingFormSession) {
+                if (existingFormSession.expiredAt <= new Date()) {
+                  await Formsession.deleteOne({ _id: existingFormSession._id });
+                } else {
+                  ///Valid Form session exist - Set cookie and mark as authenticated
                   isAuthenticated = true;
                   FormsessionService.setCookie(
                     res,
-                    isFormSession.session_id,
+                    existingFormSession.session_id,
+                    undefined,
                     usersession.expireAt
                   );
                 }
               }
 
-              if (!isFormSession) {
+              if (
+                !existingFormSession ||
+                existingFormSession.expiredAt <= new Date()
+              ) {
                 //Create formsession
                 const generateSession =
                   await FormsessionService.GenerateUniqueSessionId({
@@ -1024,6 +1103,7 @@ class FormResponseController {
                 FormsessionService.setCookie(
                   res,
                   generateSession,
+                  undefined,
                   usersession.expireAt
                 );
                 isAuthenticated = true;
@@ -1033,6 +1113,42 @@ class FormResponseController {
             //If the form is not require email state it as authenticate
             isAuthenticated = true;
           }
+
+          if (isAuthenticated) {
+            try {
+              const formData = await ResponseQueryService.getPublicFormData(
+                formId,
+                page,
+                req,
+                res
+              );
+
+              return res.status(200).json({
+                ...ReturnCode(200),
+                data: {
+                  ...initialData,
+                  isAuthenticated,
+                  isLoggedIn: !!req.formsession,
+                  ...formData,
+                },
+              });
+            } catch (error) {
+              // Fallback to initial data if form content fetch fails
+              console.warn(
+                "Failed to fetch form content for authenticated user:",
+                error
+              );
+              return res.status(200).json({
+                ...ReturnCode(200),
+                data: {
+                  ...initialData,
+                  isAuthenticated,
+                  isLoggedin: !!req.formsession,
+                },
+              });
+            }
+          }
+
           return res.status(200).json({
             ...ReturnCode(200),
             data: { ...initialData, isAuthenticated },
@@ -1040,6 +1156,10 @@ class FormResponseController {
         }
 
         case "data": {
+          if (!Types.ObjectId.isValid(formId)) {
+            return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+          }
+
           const formData = await ResponseQueryService.getPublicFormData(
             formId,
             page,
@@ -1049,7 +1169,11 @@ class FormResponseController {
 
           return res.status(200).json({
             ...ReturnCode(200),
-            data: { ...formData, isAuthenticated: true },
+            data: {
+              ...formData,
+              isAuthenticated: true,
+              ...(req.formsession && { isLoggedIn: true }),
+            },
           });
         }
         default:

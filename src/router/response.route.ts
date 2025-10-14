@@ -11,19 +11,12 @@ const ResponseRouter = Router();
 
 //Form session management
 ResponseRouter.post(
-  "/respodnentlogin",
+  "/respondentlogin",
   FormsessionService.RespondentLogin as unknown as RequestHandler
-);
-
-ResponseRouter.post(
-  "/userrespondentlogin",
-  FormsessionMiddleware.VerifyUserRespondentLogin as unknown as RequestHandler,
-  FormsessionService.UserRespondentLogin as unknown as RequestHandler
 );
 
 ResponseRouter.get(
   "/verifyformsession/:formId",
-  FormsessionMiddleware.VerifyFormsession as unknown as RequestHandler,
   FormsessionService.SessionVerification as unknown as RequestHandler
 );
 

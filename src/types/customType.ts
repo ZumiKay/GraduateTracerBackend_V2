@@ -16,6 +16,8 @@ export interface UserToken extends JwtPayload {
 interface FormsessionpayloadType extends JwtPayload {
   sub?: string;
   email?: string;
+  access_token?: string; // The access_id token
+  access_payload?: JwtPayload; // Decoded access token payload
 }
 export interface CustomRequest extends Request {
   user?: UserToken;

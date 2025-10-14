@@ -67,7 +67,8 @@ export const handleDuplicateSession = async (
     const emailResult = await sendRemovalLinkEmail(
       respondentEmail,
       removeCode,
-      undefined, // Form title will be fetched using formId
+      formId,
+
       process.env.FRONTEND_URL
     );
 

@@ -11,12 +11,15 @@ import HandleEmail from "./email";
 export const sendRemovalLinkEmail = async (
   respondentEmail: string,
   removeCode: string,
+  formId: string,
   formTitle?: string,
   baseUrl?: string
 ): Promise<{ success: boolean; message: string }> => {
+  const encodedRemoveCode = encodeURIComponent(removeCode);
+  const encodedFormId = encodeURIComponent(formId);
   const frontendUrl =
     baseUrl || process.env.FRONTEND_URL || "http://localhost:3000";
-  const removalUrl = `${frontendUrl}/response/session/replace?code=${removeCode}`;
+  const removalUrl = `${frontendUrl}/response/session/replace/${encodedFormId}/${encodedRemoveCode}`;
 
   const subject = "Remove Your Form Response - Action Required";
 
@@ -293,6 +296,7 @@ export const sendRemovalLinkEmail = async (
  */
 export const sendBulkRemovalEmails = async (
   recipients: Array<{ email: string; removeCode: string }>,
+  formId: string,
   formTitle?: string,
   baseUrl?: string
 ): Promise<Array<{ email: string; success: boolean; message: string }>> => {
@@ -304,6 +308,7 @@ export const sendBulkRemovalEmails = async (
       const result = await sendRemovalLinkEmail(
         recipient.email,
         recipient.removeCode,
+        formId,
         formTitle,
         baseUrl
       );

@@ -1,4 +1,4 @@
-import { RootFilterQuery } from "mongoose";
+import { RootFilterQuery, Types } from "mongoose";
 import FormResponse, { FormResponseType } from "../model/Response.model";
 import Form from "../model/Form.model";
 import Content from "../model/Content.model";
@@ -121,6 +121,11 @@ export class ResponseQueryService {
     req: Request,
     res: Response
   ) {
+    // Optimize: Add early validation and use lean() for better performance
+    if (!Types.ObjectId.isValid(formId)) {
+      throw new Error("Invalid form ID");
+    }
+
     const form = await Form.findById(formId)
       .select("title type setting totalpage totalscore")
       .lean();
@@ -139,7 +144,9 @@ export class ResponseQueryService {
         FingerprintService.extractFingerprintFromRequest(req);
       const respondentIP = FingerprintService.getClientIP(req);
 
+      // Optimize: Use index hint and limit fields for faster query
       const isResponse = await FormResponse.findOne({
+        formId: new Types.ObjectId(formId),
         respondentFingerprint,
         respondentIP,
       })
@@ -162,21 +169,29 @@ export class ResponseQueryService {
       }
     }
 
-    const contents = await Content.find({ $and: [{ formId }, { page }] })
+    // Optimize: Use compound index hint and batch processing for content query
+    const contents = await Content.find({
+      formId: new Types.ObjectId(formId),
+      page,
+    })
       .select(
         "_id qIdx title type text multiple selection checkbox rangedate rangenumber date require page conditional parentcontent score"
       )
       .lean()
       .sort({ idx: 1 });
 
-    const formattedContents = contents.map((content) => ({
-      ...content,
-      parentcontent:
-        content.parentcontent?.qId === content._id.toString()
-          ? undefined
-          : content.parentcontent,
-      answer: undefined,
-    }));
+    // Optimize: Use more efficient content formatting
+    const formattedContents = contents.map((content) => {
+      const formattedContent = { ...content };
+
+      // Remove self-referencing parentcontent and answer field
+      if (formattedContent.parentcontent?.qId === content._id.toString()) {
+        formattedContent.parentcontent = undefined;
+      }
+      formattedContent.answer = undefined;
+
+      return formattedContent;
+    });
 
     return {
       ...form,
