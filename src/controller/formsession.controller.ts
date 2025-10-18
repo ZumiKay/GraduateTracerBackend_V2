@@ -18,6 +18,7 @@ import { compareSync } from "bcrypt";
 interface RespodentLoginProps {
   formId: string;
   email: string;
+  name?: string;
   rememberMe: boolean;
   password?: string;
   isGuest?: boolean;
@@ -48,13 +49,12 @@ export default class FormsessionService {
   }: {
     email: string;
     maxAttempts?: number;
-    expireIn?: string;
+    expireIn?: string | number;
   }): Promise<string> {
     if (!process.env.RESPONDENT_TOKEN_JWT_SECRET) {
       throw new Error("RESPONDENT_TOKEN_JWT_SECRET is not configured");
     }
 
-    // ⚡ Enhanced base payload with more entropy
     const basePayload = {
       email,
       timestamp: Date.now(),
@@ -63,7 +63,6 @@ export default class FormsessionService {
     };
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // ⚡ Enhanced entropy generation
       const payload = {
         ...basePayload,
         attempt,
@@ -77,7 +76,6 @@ export default class FormsessionService {
         process.env.RESPONDENT_TOKEN_JWT_SECRET
       );
 
-      // ⚡ Optimized existence check with lean query
       const existingSession = await Formsession.exists({ session_id }).lean();
 
       if (!existingSession) {
@@ -85,7 +83,6 @@ export default class FormsessionService {
       }
     }
 
-    // ⚡ Enhanced fallback with maximum entropy
     const fallbackPayload = {
       ...basePayload,
       fallback: true,
@@ -180,7 +177,7 @@ export default class FormsessionService {
       return new Date(req.user.exp * 1000);
     }
 
-    return getDateByMinute(rememberMe ? 24 * 60 * 60 : 60 * 60);
+    return getDateByMinute(rememberMe ? 24 * 60 : 60);
   }
 
   public static async handleAutoLoginDuplicateSession(
@@ -262,19 +259,16 @@ export default class FormsessionService {
     form: { type: TypeForm; setting?: { submitonce?: boolean } }
   ): Promise<boolean> {
     try {
-      // ⚡ Early exit - check if this form type requires duplicate session handling
       const requiresDuplicateSessionHandling =
         form.type === TypeForm.Quiz ||
         (form.type === TypeForm.Normal && form.setting?.submitonce === true);
 
       if (!requiresDuplicateSessionHandling) {
-        return false; // Skip expensive database operations
+        return false;
       }
 
-      // ⚡ Optimized query with selective fields and index usage
       const existingSession = await Formsession.findOne({
-        respondentEmail: email,
-        form: formId,
+        $and: [{ respondentEmail: email }, { form: formId }],
       })
         .select("session_id access_id _id")
         .lean()
@@ -284,7 +278,6 @@ export default class FormsessionService {
         return false;
       }
 
-      // ⚡ Batch token validation for better performance
       const [isSessionActive, isAccessActive] = [
         this.ExtractToken({ token: existingSession.session_id }),
         existingSession.access_id
@@ -293,15 +286,12 @@ export default class FormsessionService {
       ];
 
       if (isSessionActive) {
-        // ⚡ Duplicate Session Detected
         if (isAccessActive) {
           try {
-            // ⚡ Parallel operations for removal code generation and database update
             const [removeCode] = await Promise.all([
               this.GenerateUniqueRemoveCode({ formsession: Formsession }),
             ]);
 
-            // ⚡ Parallel database update and email sending
             await Promise.all([
               Formsession.updateOne(
                 { session_id: existingSession.session_id },
@@ -341,11 +331,19 @@ export default class FormsessionService {
           const newAccessId = await this.GenerateUniqueAccessId({
             email,
             formId, // Include formId for better uniqueness
+            expireIn: "30m",
           });
+
+          this.setCookie(
+            res,
+            newAccessId,
+            process.env.ACCESS_RESPONDENT_COOKIE as string,
+            getDateByMinute(30)
+          );
 
           await Formsession.updateOne(
             { session_id: existingSession.session_id },
-            { access_id: newAccessId }
+            { access_id: newAccessId, removeCode: null }
           );
 
           res.status(200).json({
@@ -426,7 +424,7 @@ export default class FormsessionService {
       });
     }
 
-    const { formId, email, password, rememberMe, isGuest } =
+    const { formId, email, password, rememberMe, isGuest, name } =
       req.body as RespodentLoginProps;
 
     // ⚡ Early validation to fail fast
@@ -442,7 +440,6 @@ export default class FormsessionService {
     }
 
     try {
-      // ⚡ Optimized parallel queries with selective fields
       const [form, userData] = await Promise.all([
         Form.findById(formId)
           .select(
@@ -451,13 +448,11 @@ export default class FormsessionService {
           .lean()
           .exec(), // .exec() for better performance
 
-        // Only query user if needed
         !isGuest && password
           ? User.findOne({ email }).select("email password").lean().exec()
           : Promise.resolve(null),
       ]);
 
-      // ⚡ Early form validation with specific error messages
       if (!form) {
         return res.status(400).json({
           success: false,
@@ -484,7 +479,6 @@ export default class FormsessionService {
         });
       }
 
-      // ⚡ Early guest validation
       if (isGuest && !form.setting?.acceptGuest) {
         return res.status(403).json({
           success: false,
@@ -494,7 +488,6 @@ export default class FormsessionService {
         });
       }
 
-      // ⚡ Optimized user authentication for non-guest users
       if (!isGuest) {
         if (!password) {
           return res.status(400).json({
@@ -514,7 +507,6 @@ export default class FormsessionService {
           });
         }
 
-        // ⚡ Password validation happens after all other checks
         const isValidPassword = compareSync(password, userData.password);
         if (!isValidPassword) {
           return res.status(401).json({
@@ -526,7 +518,6 @@ export default class FormsessionService {
         }
       }
 
-      // ⚡ Handle existing active sessions (this already handles response)
       const hasDuplicateSession = await this.handleDuplicateSession(
         email,
         formId,
@@ -538,18 +529,25 @@ export default class FormsessionService {
         return; // Response already sent by handleDuplicateSession
       }
 
-      // ⚡ Pre-calculate expiredAt for reuse
       const expiredAt = this.calculateExpiredAt(req, rememberMe, isGuest);
       const accessExpiredAt = getDateByMinute(30);
 
-      // ⚡ Parallel token generation and session creation
       let session_id: string;
       let access_id: string;
 
       try {
+        // Calculate seconds until expiration for JWT
+        const expiresInSeconds = Math.floor(
+          (expiredAt.getTime() - Date.now()) / 1000
+        );
+
         [session_id, access_id] = await Promise.all([
-          this.GenerateUniqueSessionId({ email }),
-          this.GenerateUniqueAccessId({ email, formId }),
+          this.GenerateUniqueSessionId({
+            email,
+            expireIn:
+              expiresInSeconds > 0 ? expiresInSeconds : isGuest ? "1d" : "7d",
+          }),
+          this.GenerateUniqueAccessId({ email, formId, expireIn: "30m" }),
         ]);
       } catch (tokenError) {
         console.error("Token generation error:", tokenError);
@@ -561,7 +559,6 @@ export default class FormsessionService {
         });
       }
 
-      // ⚡ Single database operation for session creation
       try {
         await Formsession.create({
           form: formId,
@@ -569,6 +566,7 @@ export default class FormsessionService {
           access_id,
           expiredAt,
           respondentEmail: email,
+          respondentName: name ?? email.split("@")[0],
           isGuest,
         });
       } catch (sessionCreateError) {
@@ -581,20 +579,6 @@ export default class FormsessionService {
         });
       }
 
-      // ⚡ Early return for guest users (no cookies needed)
-      if (isGuest) {
-        return res.status(200).json({
-          success: true,
-          status: 200,
-          message: "Guest login successful",
-          data: {
-            session_id,
-            timeStamp: expiredAt.getTime(),
-          },
-        });
-      }
-
-      // ⚡ Cookie setting for non-guest users
       try {
         this.setCookie(res, session_id, undefined, expiredAt);
         this.setCookie(
@@ -637,7 +621,6 @@ export default class FormsessionService {
 
   //   Replace all active session with new one
   public static ReplaceSession = async (req: CustomRequest, res: Response) => {
-    // ⚡ Early environment validation
     if (
       !process.env.RESPONDENT_TOKEN_JWT_SECRET ||
       !process.env.ACCESS_RESPONDENT_COOKIE ||
@@ -654,18 +637,17 @@ export default class FormsessionService {
     const { code } = req.params as { code?: string };
     const { skiplogin } = req.query as { skiplogin?: string };
 
-    // ⚡ Optimized parameter validation
     if (!code) return res.status(404).json(ReturnCode(404));
 
     const isSkipAutoLogin = skiplogin ? parseInt(skiplogin, 10) : undefined;
-    if (isSkipAutoLogin !== 1 || (isSkipAutoLogin && isNaN(isSkipAutoLogin))) {
+    if (
+      isSkipAutoLogin &&
+      (isSkipAutoLogin !== 1 || (isSkipAutoLogin && isNaN(isSkipAutoLogin)))
+    ) {
       return res.status(400).json(ReturnCode(400));
     }
 
-    console.log({ code }, { isSkipAutoLogin });
-
     try {
-      // ⚡ Optimized database query with lean() and specific field selection
       const formsession = await Formsession.findOne({
         removeCode: parseInt(code),
       })
@@ -678,7 +660,6 @@ export default class FormsessionService {
         .lean()
         .exec();
 
-      // ⚡ Early validation with better error handling
       if (!formsession) {
         return res.status(404).json(ReturnCode(404, "Invalid code"));
       }
@@ -688,79 +669,60 @@ export default class FormsessionService {
         return res.status(404).json(ReturnCode(404, "Form is closed"));
       }
 
-      // ⚡ Skip login optimization - early return
       if (isSkipAutoLogin === 1) {
         await Formsession.deleteOne({ _id: formsession._id }).lean();
         return res.status(200).json(ReturnCode(200));
       }
 
-      // ⚡ Parallel ID generation for better performance
       const [newUniqueSessionId, newUniqueAccessId] = await Promise.all([
         this.GenerateUniqueSessionId({
           email: formsession.respondentEmail,
+          expireIn: "7d",
         }),
-        formsession.isGuest
-          ? Promise.resolve(null) // Don't generate access ID for guests
-          : this.GenerateUniqueAccessId({
-              email: formsession.respondentEmail,
-            }),
+
+        this.GenerateUniqueAccessId({
+          email: formsession.respondentEmail,
+          expireIn: "30m",
+        }),
       ]);
 
-      // ⚡ Optimized expiration date calculation
       const expiredAt = formsession.isGuest
         ? getDateByNumDay(1)
         : getDateByNumDay(7);
 
-      // ⚡ Atomic session update
       await Formsession.updateOne(
         { _id: formsession._id },
         {
           session_id: newUniqueSessionId,
+          access_id: newUniqueAccessId,
           expiredAt,
-          // ⚡ Clear removeCode after use for security
           $unset: { removeCode: 1 },
         }
       ).lean();
 
-      // ⚡ Optimized response handling
-      if (formsession.isGuest) {
-        return res.status(200).json({
-          ...ReturnCode(200, "Success"),
-          data: {
-            session_id: newUniqueSessionId,
-            email: formsession.respondentEmail,
-            name: formsession.respondentName,
-            timeStamp: expiredAt.getTime(),
-            isActive: true,
-          },
-        });
-      } else {
-        // ⚡ Optimized cookie setting for non-guest users
-        const cookieOptions = {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "PROD",
-          sameSite: "strict" as const,
-        };
+      const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "PROD",
+        sameSite: "strict" as const,
+      };
 
-        // Set main session cookie
+      // Set main session cookie
+      res.cookie(process.env.RESPONDENT_COOKIE as string, newUniqueSessionId, {
+        ...cookieOptions,
+        maxAge: expiredAt.getTime() - Date.now(),
+      });
+
+      // Set access cookie with shorter expiration
+      if (newUniqueAccessId) {
+        const accessExpiry = getDateByMinute(30);
         res.cookie(
-          process.env.RESPONDENT_COOKIE as string,
-          newUniqueSessionId,
-          { ...cookieOptions, maxAge: expiredAt.getTime() - Date.now() }
+          process.env.ACCESS_RESPONDENT_COOKIE as string,
+          newUniqueAccessId,
+          { ...cookieOptions, maxAge: accessExpiry.getTime() - Date.now() }
         );
-
-        // Set access cookie with shorter expiration
-        if (newUniqueAccessId) {
-          const accessExpiry = getDateByMinute(30);
-          res.cookie(
-            process.env.ACCESS_RESPONDENT_COOKIE as string,
-            newUniqueAccessId,
-            { ...cookieOptions, maxAge: accessExpiry.getTime() - Date.now() }
-          );
-        }
-
-        return res.status(200).json(ReturnCode(200, "Logging to form"));
       }
+
+      return res.status(200).json(ReturnCode(200, "Logging to form"));
     } catch (error) {
       console.error("Replace form session error:", error);
       return res
@@ -804,12 +766,15 @@ export default class FormsessionService {
   ) => {
     if (
       !process.env.RESPONDENT_COOKIE ||
-      !process.env.RESPONDENT_TOKEN_JWT_SECRET
+      !process.env.RESPONDENT_TOKEN_JWT_SECRET ||
+      !process.env.ACCESS_RESPONDENT_COOKIE
     ) {
       return res.status(500).json(ReturnCode(500));
     }
     const respondentCookie =
       req.cookies[process.env.RESPONDENT_COOKIE as string];
+    const accessRespondentCookie =
+      req.cookies[process.env.ACCESS_RESPONDENT_COOKIE as string];
 
     //If no logged in session no content
     if (!respondentCookie) {
@@ -825,44 +790,58 @@ export default class FormsessionService {
 
       const extractedToken = this.ExtractToken({
         token: respondentCookie,
-      }) as JwtPayload | null;
+      });
 
-      if (!extractedToken || !extractedToken.exp) {
+      if (extractedToken.isExpired) {
         return res.status(401).json(ReturnCode(401));
       }
 
-      const isExpired =
-        session.expiredAt >= new Date() ||
-        extractedToken.exp >= new Date().getTime();
+      //Refresh token expired
+      if (extractedToken.isExpired) {
+        return res.status(401).json(ReturnCode(401, "Session expired"));
+      }
 
-      if (isExpired) {
-        //*Renew Session
-        const newSessionId = await this.GenerateUniqueSessionId({
-          email: session.respondentEmail,
-        });
+      //Verify AccessTokeno
+      const verifiedAccessToken = this.ExtractToken({
+        token: accessRespondentCookie,
+      });
 
-        await Formsession.updateOne(
-          { _id: session._id },
-          { session_id: newSessionId }
-        );
+      if (!verifiedAccessToken.data) {
+        return res.status(401).json(ReturnCode(401, "Invalid Session"));
+      }
 
-        const cookieOptions = {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "PROD",
-          sameSite: "strict" as const,
-        };
+      //If access token expired, regenerate it
+      if (verifiedAccessToken.isExpired) {
+        try {
+          const newAccessId = await this.GenerateUniqueAccessId({
+            email: session.respondentEmail,
+            formId: session.form?.toString(),
+            expireIn: "30m",
+          });
 
-        res.cookie(
-          process.env.RESPONDENT_COOKIE as string,
-          newSessionId,
-          cookieOptions
-        );
+          await Formsession.updateOne(
+            { session_id: respondentCookie },
+            { access_id: newAccessId }
+          );
+
+          this.setCookie(
+            res,
+            newAccessId,
+            process.env.ACCESS_RESPONDENT_COOKIE as string,
+            getDateByMinute(30)
+          );
+        } catch (refreshError) {
+          return res
+            .status(401)
+            .json(ReturnCode(401, "Session refresh failed"));
+        }
       }
 
       return res.status(200).json({
         ...ReturnCode(200),
         data: {
-          email: session.respondentEmail,
+          respondentEmail: session.respondentEmail,
+          respondentName: session.respondentName,
           isGuest: session.isGuest,
         },
       });
@@ -872,7 +851,11 @@ export default class FormsessionService {
     }
   };
 
-  public static ExtractToken = ({ token }: { token: string }) => {
+  public static ExtractToken = ({
+    token,
+  }: {
+    token: string;
+  }): { data: string | JwtPayload | null; isExpired?: boolean } => {
     try {
       const isValid = JWT.verify(
         token,
@@ -880,11 +863,14 @@ export default class FormsessionService {
       );
 
       if (isValid) {
-        return isValid;
+        return { data: isValid };
       }
-      return null;
-    } catch (_) {
-      return null;
+      return { data: null };
+    } catch (error) {
+      if (error instanceof JWT.TokenExpiredError) {
+        return { data: null, isExpired: true };
+      }
+      return { data: null };
     }
   };
   private static GenerateUniqueRemoveCode = async ({

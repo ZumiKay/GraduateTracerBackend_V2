@@ -9,18 +9,9 @@ import UserMiddleware, {
   GetPublicFormDataType,
 } from "./User.middleware";
 import { JwtPayload } from "jsonwebtoken";
+import { getDateByMinute, ReturnCode } from "../utilities/helper";
 
 export default class FormsessionMiddleware {
-  private static calculateTokenExpiresIn(dbExpiredAt: Date): string {
-    const now = new Date();
-    const timeDiff = dbExpiredAt.getTime() - now.getTime();
-
-    const hoursRemaining = Math.ceil(timeDiff / (1000 * 60 * 60));
-
-    // Ensure minimum of 1 hour
-    return `${Math.max(hoursRemaining, 1)}h`;
-  }
-
   public static VerifyFormsession = async (
     req: CustomRequest,
     res: Response,
@@ -77,9 +68,9 @@ export default class FormsessionMiddleware {
       // Verify session token
       const extractedSessionToken = FormsessionService.ExtractToken({
         token: sessionToken,
-      }) as JwtPayload;
+      });
 
-      if (extractedSessionToken === null) {
+      if (!extractedSessionToken.data) {
         return res.status(401).json({
           success: false,
           status: 401,
@@ -88,12 +79,14 @@ export default class FormsessionMiddleware {
         });
       }
 
-      // Verify access token if present
-      let extractedAccessToken: JwtPayload | null = null;
-      if (accessToken) {
-        extractedAccessToken = FormsessionService.ExtractToken({
-          token: accessToken,
-        }) as JwtPayload;
+      const verifiedAccessToken = accessToken
+        ? FormsessionService.ExtractToken({
+            token: accessToken,
+          })
+        : undefined;
+
+      if (verifiedAccessToken && !verifiedAccessToken.data) {
+        return res.status(401).json(ReturnCode(401, "Invalid Session"));
       }
 
       try {
@@ -118,7 +111,7 @@ export default class FormsessionMiddleware {
         }
 
         const dbExpiredAt = new Date(isSession.expiredAt);
-        if (dbExpiredAt <= new Date()) {
+        if (dbExpiredAt <= new Date() || extractedSessionToken.isExpired) {
           await Formsession.deleteOne({ session_id: sessionToken });
           return res.status(401).json({
             success: false,
@@ -128,90 +121,47 @@ export default class FormsessionMiddleware {
           });
         }
 
-        // Check if session token is expired or about to expire (within 5 minutes)
-        const now = Math.floor(Date.now() / 1000);
-        const sessionTokenExp = extractedSessionToken.exp;
-        const fiveMinutesFromNow = now + 5 * 60; // 5 minutes buffer
-
-        // Check if access token is expired or missing
-        const isAccessTokenExpired =
-          !extractedAccessToken ||
-          (extractedAccessToken.exp && extractedAccessToken.exp < now);
-
-        // Renew tokens if needed
-        if (
-          (sessionTokenExp && sessionTokenExp < fiveMinutesFromNow) ||
-          isAccessTokenExpired
-        ) {
-          console.log(
-            `Token renewal triggered for session: ${sessionToken.substring(
-              0,
-              10
-            )}...`
-          );
-
-          const [newSessionId, newAccessId] = await Promise.all([
-            FormsessionService.GenerateUniqueSessionId({
-              email: isSession.respondentEmail,
-              expireIn: this.calculateTokenExpiresIn(dbExpiredAt),
-            }),
-            FormsessionService.GenerateUniqueAccessId({
-              email: isSession.respondentEmail,
-              formId: formId,
-              expireIn: "30m", // Access token shorter expiry
-            }),
-          ]);
+        // Renew access tokens if needed
+        if (!verifiedAccessToken || verifiedAccessToken.isExpired) {
+          const newAccessId = await FormsessionService.GenerateUniqueAccessId({
+            email: isSession.respondentEmail,
+            expireIn: "30m",
+          });
 
           // Update both session_id and access_id in database
           await Formsession.updateOne(
             { session_id: sessionToken },
             {
-              session_id: newSessionId,
               access_id: newAccessId,
             }
           );
 
-          // Set new cookies with both tokens
-          const sessionCookieOptions = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "PROD",
-            sameSite: "strict" as const,
-            expires: dbExpiredAt,
-          };
-
-          const accessCookieOptions = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "PROD",
-            sameSite: "strict" as const,
-            maxAge: 30 * 60 * 1000, // 30 minutes
-          };
-
-          res.cookie(
-            process.env.RESPONDENT_COOKIE,
-            newSessionId,
-            sessionCookieOptions
-          );
-
-          res.cookie(
-            process.env.ACCESS_RESPONDENT_COOKIE,
+          FormsessionService.setCookie(
+            res,
             newAccessId,
-            accessCookieOptions
+            process.env.ACCESS_RESPONDENT_COOKIE,
+            getDateByMinute(0)
           );
-
-          const newExtractedSessionToken = FormsessionService.ExtractToken({
-            token: newSessionId,
-          }) as JwtPayload;
 
           const newExtractedAccessToken = FormsessionService.ExtractToken({
             token: newAccessId,
           }) as JwtPayload;
 
           req.formsession = {
-            ...newExtractedSessionToken,
-            sub: newSessionId,
+            ...extractedSessionToken,
+            sub: sessionToken,
             access_token: newAccessId,
             access_payload: newExtractedAccessToken,
           } as never;
+
+          FormsessionService.setCookie(
+            res,
+            newAccessId,
+            process.env.ACCESS_RESPONDENT_COOKIE,
+            getDateByMinute(30)
+          );
+
+          console.log("Generate New Access Id", { newAccessId });
           return next();
         }
 
@@ -220,7 +170,7 @@ export default class FormsessionMiddleware {
           ...extractedSessionToken,
           sub: sessionToken,
           access_token: accessToken,
-          access_payload: extractedAccessToken,
+          access_payload: verifiedAccessToken.data,
         } as never;
         return next();
       } catch (error) {
@@ -267,11 +217,7 @@ export default class FormsessionMiddleware {
             ? req.cookies[process.env.RESPONDENT_COOKIE]
             : undefined;
 
-          const hasAccessToken = process.env.ACCESS_RESPONDENT_COOKIE
-            ? req.cookies[process.env.ACCESS_RESPONDENT_COOKIE]
-            : undefined;
-
-          if (isLoggedIn || hasAccessToken) {
+          if (isLoggedIn) {
             await this.VerifyFormsession(req, res, next);
             return;
           }

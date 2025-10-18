@@ -52,7 +52,6 @@ const FormSessionSchema = new Schema<Formsessiondatatype>({
   removeCode: {
     type: Schema.Types.String,
     default: null,
-    unique: true,
     required: false,
   },
 });
