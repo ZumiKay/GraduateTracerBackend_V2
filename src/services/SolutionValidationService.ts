@@ -6,6 +6,7 @@ import Content, {
 import Form, { TypeForm, returnscore } from "../model/Form.model";
 import { Types } from "mongoose";
 import { ResponseAnswerType, ResponseSetType } from "../model/Response.model";
+import { isRangeValueValid } from "../utilities/helper";
 
 export interface ValidationResult {
   isValid: boolean;
@@ -160,29 +161,42 @@ export class SolutionValidationService {
 
       case QuestionType.Date:
         if (!(answer instanceof Date) && !this.isValidDateString(answer)) {
-          errors.push("Date answer must be a valid date");
+          errors.push(`Question ${content.qIdx} have invalid answer`);
         }
         break;
 
       case QuestionType.RangeDate:
-        if (
-          !this.isValidRangeObject(answer) ||
-          !this.isValidDateString(answer.start) ||
-          !this.isValidDateString(answer.end)
-        ) {
-          errors.push("Range date answer must have valid start and end dates");
+        {
+          if (
+            !this.isValidRangeObject(answer) ||
+            !this.isValidDateString(answer.start) ||
+            !this.isValidDateString(answer.end)
+          ) {
+            errors.push(
+              "Range date answer must have valid start and end dates"
+            );
+          }
+
+          if (!isRangeValueValid(answer, true)) {
+            errors.push(`Question ${content.qIdx} have invalid answer`);
+          }
         }
         break;
 
       case QuestionType.RangeNumber:
-        if (
-          !this.isValidRangeObject(answer) ||
-          typeof answer.start !== "number" ||
-          typeof answer.end !== "number"
-        ) {
-          errors.push(
-            "Range number answer must have valid start and end numbers"
-          );
+        {
+          if (
+            !this.isValidRangeObject(answer) ||
+            typeof answer.start !== "number" ||
+            typeof answer.end !== "number"
+          ) {
+            errors.push(
+              "Range number answer must have valid start and end numbers"
+            );
+          }
+          if (!isRangeValueValid(answer)) {
+            errors.push(`Question ${content.qIdx} have invalid answer`);
+          }
         }
         break;
 
@@ -257,6 +271,12 @@ export class SolutionValidationService {
 
   /**
    * Validates entire form for quiz requirements
+   * @param formId type string
+   * @returns canReturnScoreAutomatically,
+      totalValidQuestions,
+      totalInvalidQuestions,
+      totalScore,
+      validationResults, 
    */
   static async validateForm(formId: string): Promise<FormValidationSummary> {
     const form = await Form.findById(formId);

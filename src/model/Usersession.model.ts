@@ -34,6 +34,7 @@ const UsersessionSchema = new Schema<UsersessionschemaType>(
   { timestamps: true }
 );
 UsersessionSchema.index({ user: 1 });
+UsersessionSchema.index({ session_id: 1 });
 
 const Usersession = model("Usersession", UsersessionSchema);
 

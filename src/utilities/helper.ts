@@ -6,6 +6,7 @@ import {
   ContentType,
   ParentContentType,
   QuestionType,
+  RangeType,
 } from "../model/Content.model";
 import { ResponseSetType } from "../model/Response.model";
 
@@ -90,19 +91,74 @@ export const GenerateToken = (
   return token;
 };
 
-export const ExtractTokenPaylod = ({
+/**
+ * Extracts and verifies JWT token payload with enhanced error handling
+ *
+ * @param token - JWT token string to verify and decode
+ * @param customSecret - Optional custom secret key (defaults to process.env.JWT_SECRET)
+ * @param ignoreExpiration - If true, will not throw error for expired tokens (default: false)
+ * @returns Decoded token payload or null if verification fails
+ *
+ * @example
+ * ```typescript
+ * const payload = ExtractTokenPayload({ token: "eyJhbGc..." });
+ * if (payload) {
+ *   console.log(payload.userId);
+ * }
+ * ```
+ */
+export const ExtractTokenPayload = ({
   token,
   customSecret,
+  ignoreExpiration = false,
 }: {
   token: string;
   customSecret?: string;
-}) => {
-  const payload = JWT.verify(
-    token,
-    customSecret ?? (process.env.JWT_SECRET || "secret")
-  );
-  return payload;
+  ignoreExpiration?: boolean;
+}): JWT.JwtPayload | string | null => {
+  try {
+    // Validate token format
+    if (!token || typeof token !== "string" || token.trim() === "") {
+      console.error("ExtractTokenPayload: Invalid token format");
+      return null;
+    }
+
+    // Validate secret
+    const secret = customSecret ?? process.env.JWT_SECRET;
+    if (!secret) {
+      console.error("ExtractTokenPayload: JWT secret is not configured");
+      return null;
+    }
+
+    // Verify and decode token
+    const payload = JWT.verify(token, secret, {
+      ignoreExpiration,
+      algorithms: ["HS256"], // Explicit algorithm for security
+    });
+
+    return payload;
+  } catch (error) {
+    if (error instanceof JWT.TokenExpiredError) {
+      console.error("ExtractTokenPayload: Token has expired", {
+        expiredAt: error.expiredAt,
+      });
+    } else if (error instanceof JWT.JsonWebTokenError) {
+      console.error("ExtractTokenPayload: Invalid token", {
+        message: error.message,
+      });
+    } else if (error instanceof JWT.NotBeforeError) {
+      console.error("ExtractTokenPayload: Token not active yet", {
+        date: error.date,
+      });
+    } else {
+      console.error("ExtractTokenPayload: Unexpected error", error);
+    }
+    return null;
+  }
 };
+
+// Alias for backward compatibility (fixing typo)
+export const ExtractTokenPaylod = ExtractTokenPayload;
 
 export const getDateByNumDay = (add: number): Date => {
   const today = new Date();
@@ -220,11 +276,11 @@ export const groupContentByParent = (data: Array<ContentType>) => {
 
     const children = childrenMap.get(item._id.toString());
     if (children && children.length > 0) {
-      // Sort children by qIdx in descending order (higher qIdx first)
+      // Sort children by qIdx in ascending order (lower qIdx first)
       children.sort((a, b) => {
         const aIdx = a.qIdx || 0;
         const bIdx = b.qIdx || 0;
-        return bIdx - aIdx; // Descending order
+        return aIdx - bIdx; // Ascending order
       });
 
       for (const child of children) {
@@ -432,3 +488,93 @@ const processContentTitleInternal = (contentTitle: ContentTitle): string => {
 };
 
 export const stringToBoolean = (str: string) => str.toLowerCase() === "true";
+
+/**
+ * Converts ISO date string to Unix timestamp (milliseconds)
+ *
+ * @param isoString - ISO 8601 date string
+ * @returns Unix timestamp in milliseconds, or NaN if invalid
+ *
+ * @example
+ * ```typescript
+ * const timestamp = ISODateToNumber("2025-10-24T00:00:00.000Z");
+ * console.log(timestamp); // 1729728000000
+ * ```
+ */
+const ISODateToNumber = (isoString: string): number => {
+  if (!isoString || typeof isoString !== "string") {
+    console.error("ISODateToNumber: Invalid input", isoString);
+    return NaN;
+  }
+
+  const timestamp = new Date(isoString).getTime();
+
+  if (isNaN(timestamp)) {
+    console.error("ISODateToNumber: Invalid ISO date string", isoString);
+  }
+
+  return timestamp;
+};
+
+/**
+ * Validates if a range value has valid start and end values
+ *
+ * @param value - Range object with start and end properties
+ * @param isDate - If true, treats values as ISO date strings; otherwise as numbers
+ * @returns true if range is valid (start < end), false otherwise
+ *
+ */
+export const isRangeValueValid = (
+  value: RangeType<string | number>,
+  isDate?: boolean
+): boolean => {
+  // Check if both start and end exist
+  if (!value.start || !value.end) {
+    console.warn("isRangeValueValid: Missing start or end value", value);
+    return false;
+  }
+
+  try {
+    let startValue: number;
+    let endValue: number;
+
+    if (isDate) {
+      // Handle date ranges
+      startValue = ISODateToNumber(value.start as string);
+      endValue = ISODateToNumber(value.end as string);
+
+      if (isNaN(startValue) || isNaN(endValue)) {
+        console.error("isRangeValueValid: Invalid date string(s)", value);
+        return false;
+      }
+    } else {
+      // Handle number ranges
+      startValue =
+        typeof value.start === "string" ? parseFloat(value.start) : value.start;
+      endValue =
+        typeof value.end === "string" ? parseFloat(value.end) : value.end;
+
+      if (isNaN(startValue) || isNaN(endValue)) {
+        console.error("isRangeValueValid: Invalid number value(s)", value);
+        return false;
+      }
+    }
+
+    const isValid = startValue < endValue;
+
+    if (!isValid) {
+      console.warn(
+        "isRangeValueValid: Start value is not less than end value",
+        {
+          start: startValue,
+          end: endValue,
+        }
+      );
+    }
+
+    return isValid;
+  } catch (error) {
+    console.error("isRangeValueValid: Error validating range", error, value);
+    return false;
+  }
+};

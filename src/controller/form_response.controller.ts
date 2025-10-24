@@ -1,9 +1,5 @@
 import { Response } from "express";
-import {
-  contentTitleToString,
-  ExtractTokenPaylod,
-  ReturnCode,
-} from "../utilities/helper";
+import { contentTitleToString, ReturnCode } from "../utilities/helper";
 import { MongoErrorHandler } from "../utilities/MongoErrorHandler";
 import Zod from "zod";
 import { Types } from "mongoose";
@@ -35,8 +31,6 @@ import {
   GetPublicFormDataType,
   GetPublicFormDataTyEnum,
 } from "../middleware/User.middleware";
-import Usersession from "../model/Usersession.model";
-import FormsessionService from "./formsession.controller";
 
 interface SubmitResponseBodyType {
   formInfo?: Pick<FormType, "_id" | "type">;
@@ -328,11 +322,7 @@ class FormResponseController {
 
       if (!form) {
         console.warn(`[${submissionId}] Form not found:`, formInfo!._id);
-        return res.status(404).json({
-          ...ReturnCode(404, "Form not found"),
-          submissionId,
-          formId: formInfo!._id,
-        });
+        return res.status(404).json(ReturnCode(404));
       }
 
       if (form.setting?.submitonce && form.type === TypeForm.Normal) {
@@ -398,13 +388,16 @@ class FormResponseController {
         });
       }
 
+      //Form submittion process
       let result: Partial<SubmitionProcessionReturnType | undefined>;
       try {
         if (formInfo!.type === TypeForm.Quiz) {
+          //Quiz type submission handler
           result = await ResponseProcessingService.processFormSubmission(
             submissionDataWithTracking
           );
         } else {
+          //Normal type submission handler
           result = await ResponseProcessingService.processNormalFormSubmission(
             submissionDataWithTracking
           );
@@ -519,7 +512,7 @@ class FormResponseController {
     }
   };
 
-  private validateSubmissionInput(body: any): {
+  private validateSubmissionInput(body: SubmitResponseBodyType): {
     isValid: boolean;
     message: string;
     errors: string[];
@@ -561,10 +554,10 @@ class FormResponseController {
       errors.push("At least one response is required");
     } else {
       responseSet.forEach((response, index) => {
-        if (!response.questionId) {
+        if (!response.question) {
           errors.push(`Response ${index + 1}: Question ID is required`);
         }
-        if (response.answer === undefined || response.answer === null) {
+        if (response.response === undefined || response.response === null) {
           errors.push(`Response ${index + 1}: Answer is required`);
         }
       });
@@ -925,7 +918,7 @@ class FormResponseController {
       }
 
       const { formId } = req.params;
-      let { p, ty, isSwitched } = req.query as GetPublicFormDataType;
+      let { p, ty } = req.query as GetPublicFormDataType;
 
       // Optimize: Early validation for performance
       if (!ty) return res.status(400).json(ReturnCode(400));
@@ -933,10 +926,8 @@ class FormResponseController {
         return res.status(400).json(ReturnCode(400, "Invalid form ID"));
       }
 
-      const bool = ["true", "false"];
       const page = Number(p ?? "1");
 
-      const refreshTokenCookie = process.env.REFRESH_TOKEN_COOKIE;
       const isUserAlreadyAuthenticated = !!req.formsession?.sub;
 
       if (req.formsession) {
@@ -944,10 +935,8 @@ class FormResponseController {
         ty = GetPublicFormDataTyEnum.data;
       }
 
-      //handle Form data type base on fetch type
       switch (ty) {
         case "initial": {
-          // Optimize: Get form data with all needed fields in one query
           const initialData = await Form.findById(formId)
             .select(
               "_id title type totalpage totalscore setting.email setting.acceptResponses setting.acceptGuest setting.submitonce"
@@ -972,7 +961,6 @@ class FormResponseController {
             // Early return for already authenticated users with combined data
             if (isUserAlreadyAuthenticated) {
               try {
-                // Fetch form content for authenticated user to avoid separate API call
                 const formData = await ResponseQueryService.getPublicFormData(
                   formId,
                   page,
@@ -990,163 +978,18 @@ class FormResponseController {
                   },
                 });
               } catch (error) {
-                // Fallback to initial data only if form content fetch fails
                 console.warn(
                   "Failed to fetch form content for authenticated user:",
                   error
                 );
-                return res.status(200).json({
-                  ...ReturnCode(200),
-                  data: {
-                    ...initialData,
-                    isAuthenticated: true,
-                    isLoggedin: true,
-                  },
-                });
+                //Optional Error
+                return res.status(200).json(ReturnCode(500));
               }
             }
-
-            //Extract Token
-            const refreshToken = req.cookies[refreshTokenCookie];
-
-            if (refreshToken && (!isSwitched || !bool.includes(isSwitched))) {
-              return res.status(400).json(ReturnCode(400));
-            }
-
-            if (isSwitched === bool[1] && refreshToken && !req.formsession) {
-              //*Auto login for exist user - Optimized with parallel queries
-              const isRefreshToken = ExtractTokenPaylod({
-                token: refreshToken,
-              });
-              if (!isRefreshToken) {
-                return res.status(401).json(ReturnCode(401));
-              }
-
-              const usersession = await Usersession.findOne({
-                session_id: refreshToken,
-              })
-                .select("expireAt user")
-                .populate({ path: "user", select: "email" })
-                .lean();
-
-              if (!usersession || !usersession.user) {
-                return res.status(401).json(ReturnCode(401));
-              }
-
-              //Delete the session if expire
-              if (usersession.expireAt <= new Date()) {
-                await Usersession.deleteOne({ session_id: refreshToken });
-                return res.status(401).json(ReturnCode(401));
-              }
-
-              // Optimize: Check for existing form session in parallel with duplicate session check
-              const [duplicateRemovalCode, existingFormSession] =
-                await Promise.all([
-                  FormsessionService.handleAutoLoginDuplicateSession(
-                    usersession.user.email,
-                    formId,
-                    initialData
-                  ),
-                  Formsession.findOne({
-                    $and: [
-                      { form: new Types.ObjectId(formId) },
-                      { respondentEmail: usersession.user.email },
-                    ],
-                  }).lean(),
-                ]);
-
-              if (duplicateRemovalCode) {
-                // Duplicate session found, return the removal code
-                return res.status(403).json({
-                  ...ReturnCode(403, "Duplicate session detected"),
-                  data: {
-                    duplicateSession: true,
-                    removalCode: duplicateRemovalCode,
-                    redirectUrl: `/replace-session/${duplicateRemovalCode}/${formId}`,
-                  },
-                });
-              }
-
-              if (existingFormSession) {
-                if (existingFormSession.expiredAt <= new Date()) {
-                  await Formsession.deleteOne({ _id: existingFormSession._id });
-                } else {
-                  ///Valid Form session exist - Set cookie and mark as authenticated
-                  isAuthenticated = true;
-                  FormsessionService.setCookie(
-                    res,
-                    existingFormSession.session_id,
-                    undefined,
-                    usersession.expireAt
-                  );
-                }
-              }
-
-              if (
-                !existingFormSession ||
-                existingFormSession.expiredAt <= new Date()
-              ) {
-                //Create formsession
-                const generateSession =
-                  await FormsessionService.GenerateUniqueSessionId({
-                    email: usersession.user.email,
-                    maxAttempts: 5,
-                  });
-                await Formsession.create({
-                  form: formId,
-                  session_id: generateSession,
-                  expiredAt: usersession.expireAt,
-                  respondentEmail: usersession.user.email,
-                });
-
-                //Set Cookie
-                FormsessionService.setCookie(
-                  res,
-                  generateSession,
-                  undefined,
-                  usersession.expireAt
-                );
-                isAuthenticated = true;
-              }
-            }
+            isAuthenticated = false;
           } else {
             //If the form is not require email state it as authenticate
             isAuthenticated = true;
-          }
-
-          if (isAuthenticated) {
-            try {
-              const formData = await ResponseQueryService.getPublicFormData(
-                formId,
-                page,
-                req,
-                res
-              );
-
-              return res.status(200).json({
-                ...ReturnCode(200),
-                data: {
-                  ...initialData,
-                  isAuthenticated,
-                  isLoggedIn: !!req.formsession,
-                  ...formData,
-                },
-              });
-            } catch (error) {
-              // Fallback to initial data if form content fetch fails
-              console.warn(
-                "Failed to fetch form content for authenticated user:",
-                error
-              );
-              return res.status(200).json({
-                ...ReturnCode(200),
-                data: {
-                  ...initialData,
-                  isAuthenticated,
-                  isLoggedin: !!req.formsession,
-                },
-              });
-            }
           }
 
           return res.status(200).json({

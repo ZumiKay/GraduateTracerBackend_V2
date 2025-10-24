@@ -149,6 +149,8 @@ export class ResponseProcessingService {
       }
     }
 
+    //*Score calculate process
+
     let scoredResponses: ResponseSetType[] = [];
     let totalScore = 0;
     let isAutoScored = false;
@@ -290,7 +292,7 @@ export class ResponseProcessingService {
           }
         }
 
-        //Verify answer format
+        //Verify answer format and validity
         const isVerify = SolutionValidationService.validateAnswerFormat(
           question.type,
           userresponse.response,
@@ -298,7 +300,7 @@ export class ResponseProcessingService {
         );
 
         if (!isVerify.isValid) {
-          throw new Error("Format");
+          throw new Error("Invalid Format");
         }
 
         const maxScore = question.score || 0;

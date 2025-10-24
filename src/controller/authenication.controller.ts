@@ -177,32 +177,26 @@ class AuthenticationController {
       const accessToken = req?.cookies[process.env.ACCESS_TOKEN_COOKIE ?? ""];
 
       if (!refreshToken) {
-        return res
-          .status(204)
-          .json({ authenticated: false, message: "No refresh token found" });
+        return res.status(401).json(ReturnCode(401, "No refresh token found"));
       }
 
-      // Verify the refresh token is still valid
       const userSession = await Usersession.findOne({
-        $and: [
-          {
-            session_id: refreshToken,
-          },
-          {
-            expireAt: { $gte: new Date() },
-          },
-          {
-            respondent: null,
-          },
-        ],
-      }).populate({ path: "user", select: "_id email role" });
+        session_id: refreshToken,
+        expireAt: { $gte: new Date() },
+        respondent: null,
+      })
+        .populate({ path: "user", select: "_id email role" })
+        .lean();
 
-      if (!userSession || !userSession.user) {
+      // Clean up expired sessions asynchronously
+      Usersession.deleteMany({ expireAt: { $lt: new Date() } }).exec();
+
+      if (!userSession?.user) {
+        // Invalid or expired session
         if (userSession) {
-          await Usersession.deleteOne({ session_id: refreshToken });
+          Usersession.deleteOne({ session_id: refreshToken }).exec();
         }
 
-        // Clear cookies
         this.clearAccessTokenCookie(res);
         this.clearRefreshTokenCookie(res);
 
@@ -211,19 +205,7 @@ class AuthenticationController {
 
       const user = userSession.user as any;
 
-      const currentUser = await User.findById(user._id).select(
-        "_id email role"
-      );
-      if (!currentUser) {
-        // User was deleted, clean up session
-        await Usersession.deleteOne({ session_id: refreshToken });
-        this.clearAccessTokenCookie(res);
-        this.clearRefreshTokenCookie(res);
-
-        return res.status(401).json(ReturnCode(401, "User no longer exists"));
-      }
-
-      // Verify access token if present
+      // Verify access token
       let tokenValid = false;
       if (accessToken) {
         try {
@@ -232,8 +214,7 @@ class AuthenticationController {
             process.env.JWT_SECRET || "secret"
           ) as any;
           tokenValid = decoded.id === user._id.toString();
-        } catch (error) {
-          // Access token invalid/expired, but refresh token is valid
+        } catch {
           tokenValid = false;
         }
       }
@@ -242,9 +223,9 @@ class AuthenticationController {
         ...ReturnCode(200),
         data: {
           user: {
-            _id: currentUser._id,
-            email: currentUser.email,
-            role: currentUser.role,
+            _id: user._id,
+            email: user.email,
+            role: user.role,
           },
           session: {
             sessionId: userSession.session_id,
