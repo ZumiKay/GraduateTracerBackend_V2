@@ -517,7 +517,7 @@ export default class FormsessionService {
 
       const expiresInSeconds = expiredAt
         ? Math.floor((expiredAt.getTime() - Date.now()) / 1000)
-        : "1d";
+        : "1d"; //Testing expiration token
 
       try {
         [session_id, access_id] = await Promise.all([
@@ -528,7 +528,7 @@ export default class FormsessionService {
           this.GenerateUniqueAccessId({
             email: userEmail,
             formId,
-            expireIn: "30m",
+            expireIn: "1m",
           }),
         ]);
       } catch (tokenError) {
@@ -808,12 +808,12 @@ export default class FormsessionService {
         token: respondentCookie,
       });
 
-      if (extractedToken.isExpired) {
-        return res.status(401).json(ReturnCode(401));
-      }
-
-      //Refresh token expired
-      if (extractedToken.isExpired) {
+      //Refresh token expired or invalid
+      if (extractedToken.isExpired || !extractedToken.data) {
+        //Clear invalid session
+        res.clearCookie(process.env.RESPONDENT_COOKIE as string);
+        res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
+        await Formsession.deleteOne({ session_id: respondentCookie });
         return res.status(401).json(ReturnCode(401, "Session expired"));
       }
 
@@ -822,8 +822,13 @@ export default class FormsessionService {
         token: accessRespondentCookie,
       });
 
-      if (!verifiedAccessToken.data) {
-        return res.status(401).json(ReturnCode(401, "Invalid Session"));
+      if (!verifiedAccessToken.data && !verifiedAccessToken.isExpired) {
+        return res.status(401).json({
+          ...ReturnCode(401, "Invalid Session"),
+          data: {
+            respondentEmail: session.respondentEmail,
+          },
+        });
       }
 
       //If access token expired, regenerate it

@@ -9,7 +9,7 @@ import FormResponse, {
   SubmitionProcessionReturnType,
 } from "../model/Response.model";
 import Content, { ContentType, QuestionType } from "../model/Content.model";
-import Form, { returnscore } from "../model/Form.model";
+import Form, { FormType, returnscore } from "../model/Form.model";
 import SolutionValidationService from "./SolutionValidationService";
 import EmailService from "./EmailService";
 import User from "../model/User.model";
@@ -29,6 +29,11 @@ interface submissionDataType {
   userId?: string;
   req?: Request;
   returnResponse?: boolean;
+}
+
+interface AddScoreReturnType {
+  response: Array<ResponseSetType>;
+  isNonScore?: boolean;
 }
 
 export class ResponseProcessingService {
@@ -70,7 +75,7 @@ export class ResponseProcessingService {
 
     contents.forEach((question) => {
       const response = responseset.find(
-        (i) => i.question._id?.toString() === question._id.toString()
+        (i) => i.question === question._id.toString()
       );
 
       //Verify required question
@@ -119,27 +124,19 @@ export class ResponseProcessingService {
   }
 
   static async processFormSubmission(
-    submissionData: submissionDataType
+    submissionData: submissionDataType,
+    form: FormType
   ): Promise<SubmitionProcessionReturnType> {
     const { formId, responseset, respondentEmail, respondentName } =
       submissionData;
-
-    const form = await Form.findById(formId);
-    if (!form) {
-      throw new Error("Form not found");
-    }
 
     if (form.setting?.email && !respondentEmail) {
       throw new Error("Email is required for this form");
     }
 
-    //Verify respondent
-    const user = await User.findById(respondentEmail).select("email").lean();
-
     //Verify if user alr respond for single response form
     if (!form.setting?.submitonce) {
       const hasResponse = await FormResponse.findOne({
-        userId: respondentEmail,
         respondentEmail,
         formId,
       });
@@ -149,27 +146,32 @@ export class ResponseProcessingService {
       }
     }
 
+    const user = await User.findOne({
+      email: submissionData.respondentEmail,
+    })
+      .lean()
+      .select("_id email");
+
     //*Score calculate process
 
     let scoredResponses: ResponseSetType[] = [];
     let totalScore = 0;
     let isAutoScored = false;
+    let isNonScore = false;
 
     // Auto-score
     if (form.setting?.returnscore === returnscore.partial) {
-      scoredResponses = await this.addScore(
-        responseset.map(
-          (response) => new Types.ObjectId(response.question.toString())
-        ),
-        responseset
-      );
+      const addscore = await this.addScore(responseset);
+
       isAutoScored = true;
+      // Check if all questions have no score
+      isNonScore = addscore.isNonScore || false;
     } else {
       const contents = await Content.find({ formId: formId }).lean();
 
       contents.forEach((question) => {
         const response = responseset.find(
-          (i) => i.question._id?.toString() === question._id.toString()
+          (i) => i.question === question._id.toString()
         );
 
         //Verify required question
@@ -221,7 +223,7 @@ export class ResponseProcessingService {
     const savedResponse = await FormResponse.create(responseData);
 
     // Send results email if auto-scored
-    if (isAutoScored && respondentEmail) {
+    if (isAutoScored && respondentEmail && !isNonScore) {
       const emailService = new EmailService();
       const email = user ? user.email : respondentEmail;
       if (email) {
@@ -236,11 +238,12 @@ export class ResponseProcessingService {
       }
     }
 
-    const isHavePartialScore = scoredResponses.some(
-      (i) => i.scoringMethod === ScoringMethod.MANUAL
-    );
+    const isHavePartialScore =
+      scoredResponses.some((i) => i.scoringMethod === ScoringMethod.MANUAL) ||
+      isNonScore;
 
     return {
+      isNonScore,
       totalScore,
       maxScore: form.totalscore || 0,
       message: !isAutoScored
@@ -251,29 +254,40 @@ export class ResponseProcessingService {
     };
   }
 
+  /**
+   *Add Score Method //
+   *Verify answer format //
+   *If all question have no score return isNonScore //
+   *Only avaliable if form returntype is PARTIAL
+   */
   static async addScore(
-    qids: Array<Types.ObjectId>,
     response: Array<ResponseSetType>
-  ): Promise<Array<ResponseSetType>> {
-    if (qids.length === 0) {
-      return response;
+  ): Promise<AddScoreReturnType> {
+    if (response.length === 0) {
+      return { response };
     }
     try {
       //Fetch all content responsible in the qids
-      const content = await Content.find({ _id: { $in: qids } })
+      const content = await Content.find({
+        _id: {
+          $in: response.map((i) => new Types.ObjectId(i.question as string)),
+        },
+      })
         .lean()
         .exec();
 
       if (content.length === 0) {
-        return response;
+        return { response };
       }
 
       let result: Array<ResponseSetType> = [];
+      let isNonScore = false;
+
       //Scoring process
       for (let i = 0; i < content.length; i++) {
         const question = content[i];
         const userresponse = response.find(
-          (resp) => resp.question._id?.toString() === question._id?.toString()
+          (resp) => resp.question === question._id?.toString()
         );
 
         if (!userresponse) {
@@ -305,6 +319,11 @@ export class ResponseProcessingService {
 
         const maxScore = question.score || 0;
 
+        // Track if any question has a score
+        if (maxScore > 0) {
+          isNonScore = true;
+        }
+
         if (question.answer && question.answer?.answer) {
           const partialScored =
             SolutionValidationService.calculateResponseScore(
@@ -325,10 +344,11 @@ export class ResponseProcessingService {
             scoringMethod: ScoringMethod.MANUAL,
           });
       }
-      return result;
+
+      return { response: result, isNonScore };
     } catch (error) {
       console.error("AddScore Error:", error);
-      return response;
+      return { response };
     }
   }
 

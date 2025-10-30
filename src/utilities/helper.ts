@@ -11,7 +11,7 @@ import {
 import { ResponseSetType } from "../model/Response.model";
 
 export function ReturnCode(
-  code: 200 | 201 | 204 | 400 | 401 | 403 | 404 | 500,
+  code: 200 | 201 | 204 | 400 | 401 | 403 | 404 | 409 | 500,
   custommess?: string
 ) {
   const returnValue = (code: number, message: string) => ({ code, message });
@@ -39,6 +39,9 @@ export function ReturnCode(
       break;
     case 404:
       message = "Not Found";
+      break;
+    case 409:
+      message = "Duplicated Detected";
       break;
     case 500:
       message = "Server Error";

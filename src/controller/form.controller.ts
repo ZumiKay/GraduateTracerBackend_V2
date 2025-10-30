@@ -646,6 +646,7 @@ async function handleDetailQuery(
     page: p,
   })
     .select(contentProjection)
+    .sort({ qIdx: 1 })
     .lean()
     .exec();
 
@@ -669,7 +670,7 @@ async function handleDetailQuery(
     ...ReturnCode(200),
     data: {
       ...detailForm,
-      contents: groupContentByParent(resultContent),
+      contents: resultContent,
       contentIds: undefined,
       validationSummary,
       ...accessInfo,

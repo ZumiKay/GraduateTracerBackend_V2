@@ -15,7 +15,7 @@ export type ResponseAnswerReturnType = {
 };
 
 export interface ResponseSetType {
-  question: ContentType | Types.ObjectId;
+  question: ContentType | Types.ObjectId | string;
   response: ResponseAnswerType | ResponseAnswerReturnType;
   score?: number;
   scoringMethod?: ScoringMethod;
@@ -79,6 +79,7 @@ export interface SubmitionProcessionReturnType {
   maxScore: number;
   totalScore: number;
   message: string;
+  isNonScore?: boolean;
 }
 
 //Sub Doc

@@ -2,7 +2,7 @@ import { Response } from "express";
 import { contentTitleToString, ReturnCode } from "../utilities/helper";
 import { MongoErrorHandler } from "../utilities/MongoErrorHandler";
 import Zod from "zod";
-import { Types } from "mongoose";
+import { isValidObjectId, Types } from "mongoose";
 import { CustomRequest } from "../types/customType";
 import SolutionValidationService from "../services/SolutionValidationService";
 import EmailService from "../services/EmailService";
@@ -25,7 +25,11 @@ import {
   ResponseSetType,
   SubmitionProcessionReturnType,
 } from "../model/Response.model";
-import { hasFormAccess, verifyRole } from "../utilities/formHelpers";
+import {
+  hasFormAccess,
+  isValidObjectIdString,
+  verifyRole,
+} from "../utilities/formHelpers";
 import Formsession from "../model/Formsession.model";
 import {
   GetPublicFormDataType,
@@ -33,7 +37,10 @@ import {
 } from "../middleware/User.middleware";
 
 interface SubmitResponseBodyType {
-  formInfo?: Pick<FormType, "_id" | "type">;
+  formInfo?: {
+    _id: string;
+    type: TypeForm;
+  };
   responseSet?: Array<ResponseSetType>;
   respondentEmail?: string;
   respondentName?: string;
@@ -290,111 +297,57 @@ class FormResponseController {
         });
       }
 
-      const { formInfo, responseSet, respondentEmail, respondentName } =
+      const { responseSet, respondentEmail, respondentName } =
         req.body as SubmitResponseBodyType;
 
-      let form;
-      try {
-        form = await Form.findById(formInfo!._id)
-          .select("setting type title")
-          .lean();
-      } catch (dbError) {
-        const errorHandled = MongoErrorHandler.handleMongoError(dbError, res, {
-          operationId: submissionId,
-          customMessage: "Failed to retrieve form information",
-          includeErrorDetails: true,
-        });
+      const { formId } = req.params as { formId: string };
 
-        if (errorHandled.handled) {
-          return;
-        }
-
-        console.error(
-          `[${submissionId}] Unexpected error retrieving form:`,
-          dbError
-        );
-        return res.status(500).json({
-          ...ReturnCode(500, "Database error occurred while retrieving form"),
-          submissionId,
-          formId: formInfo!._id,
-        });
-      }
+      const form = await Form.findById(formId)
+        .select("setting type title")
+        .lean();
 
       if (!form) {
-        console.warn(`[${submissionId}] Form not found:`, formInfo!._id);
-        return res.status(404).json(ReturnCode(404));
+        console.warn(`[${submissionId}] Form not found:`, formId);
+        return res.status(404).json(ReturnCode(404, "Form not found"));
       }
 
+      //Check duplicate response for public form (SINGLE FORM)
       if (form.setting?.submitonce && form.type === TypeForm.Normal) {
-        try {
-          const trackingResult =
-            await RespondentTrackingService.checkRespondentExists(
-              formInfo!._id.toString(),
-              req,
-              FormResponse
-            );
+        const trackingResult =
+          await RespondentTrackingService.checkRespondentExists(formId, req);
 
-          if (trackingResult.hasResponded) {
-            console.info(`[${submissionId}] Duplicate submission detected:`, {
-              formId: formInfo!._id,
-              trackingMethod: trackingResult.trackingMethod,
-              responseId: trackingResult.responseId,
-            });
-
-            return res.status(409).json({
-              code: 409,
-              message: "Duplicate submission detected",
-              details: `You have already submitted a response to this form`,
-              trackingMethod: trackingResult.trackingMethod,
-              previousResponseId: trackingResult.responseId,
-              submissionId,
-              formTitle: form.title,
-            });
-          }
-        } catch (trackingError) {
-          console.error(
-            `[${submissionId}] Error during duplicate check:`,
-            trackingError
-          );
+        if (trackingResult.hasResponded) {
+          return res
+            .status(409)
+            .json(ReturnCode(409, "You have submitted response."));
         }
       }
 
-      let submissionDataWithTracking;
-      try {
-        const baseSubmissionData = {
-          formId: formInfo!._id.toString(),
-          responseset: responseSet,
-          respondentEmail,
-          respondentName,
-        };
+      //Prepare submission data with tracking for public form
 
-        submissionDataWithTracking =
-          RespondentTrackingService.createSubmissionWithTracking(
-            baseSubmissionData,
-            req
-          );
-      } catch (trackingError) {
-        console.error(
-          `[${submissionId}] Error creating tracking data:`,
-          trackingError
+      let submissionDataWithTracking;
+
+      const baseSubmissionData = {
+        formId: formId,
+        responseset: responseSet,
+        respondentEmail,
+        respondentName,
+      };
+
+      submissionDataWithTracking =
+        RespondentTrackingService.createSubmissionWithTracking(
+          baseSubmissionData,
+          req
         );
-        return res.status(500).json({
-          ...ReturnCode(500, "Failed to prepare submission data"),
-          submissionId,
-          error:
-            trackingError instanceof Error
-              ? trackingError.message
-              : "Unknown tracking error",
-        });
-      }
 
       //Form submittion process
       let result: Partial<SubmitionProcessionReturnType | undefined>;
       try {
-        if (formInfo!.type === TypeForm.Quiz) {
+        if (form.type === TypeForm.Quiz) {
           //Quiz type submission handler
           result = await ResponseProcessingService.processFormSubmission(
-            submissionDataWithTracking
+            submissionDataWithTracking,
+            form
           );
         } else {
           //Normal type submission handler
@@ -430,7 +383,9 @@ class FormResponseController {
 
       //Delete user session if form is single response
       if (form.setting?.submitonce && req.formsession) {
-        await Formsession.deleteOne({ session_id: req.formsession });
+        res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
+        res.clearCookie(process.env.RESPONDENT_COOKIE as string);
+        await Formsession.deleteOne({ session_id: req.formsession.sub });
       }
 
       return res.status(200).json({
@@ -438,8 +393,8 @@ class FormResponseController {
         data: result,
         submissionId,
         meta: {
-          formId: formInfo!._id,
-          formType: formInfo!.type,
+          formId,
+          formType: form.type,
           submittedAt: new Date().toISOString(),
         },
       });
@@ -527,24 +482,7 @@ class FormResponseController {
       };
     }
 
-    const { formInfo, responseSet, respondentEmail, respondentName } = body;
-
-    if (!formInfo) {
-      errors.push("Form information is required");
-    } else {
-      if (!formInfo._id) {
-        errors.push("Form ID is required");
-      }
-      if (!formInfo.type) {
-        errors.push("Form type is required");
-      } else if (!Object.values(TypeForm).includes(formInfo.type)) {
-        errors.push(
-          `Invalid form type: ${formInfo.type}. Must be one of: ${Object.values(
-            TypeForm
-          ).join(", ")}`
-        );
-      }
-    }
+    const { responseSet, respondentEmail, respondentName } = body;
 
     if (!responseSet) {
       errors.push("Response set is required");

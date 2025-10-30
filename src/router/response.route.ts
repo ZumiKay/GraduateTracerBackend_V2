@@ -84,7 +84,7 @@ ResponseRouter.get(
 
 // Submit form response for registered user
 ResponseRouter.post(
-  "/submit-response",
+  "/submit-response/:formId",
   FormsessionMiddleware.VerifyFormsession as unknown as RequestHandler,
   FormResponseController.SubmitFormResponse as unknown as RequestHandler
 );

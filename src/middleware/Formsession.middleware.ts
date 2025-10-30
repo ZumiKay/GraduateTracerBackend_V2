@@ -27,6 +27,7 @@ export default class FormsessionMiddleware {
 
     //Verify required param
     const { formId } = req.params as { formId?: string };
+
     if (!formId || !isValidObjectId(formId))
       return res.status(400).json({
         success: false,
@@ -134,13 +135,6 @@ export default class FormsessionMiddleware {
             {
               access_id: newAccessId,
             }
-          );
-
-          FormsessionService.setCookie(
-            res,
-            newAccessId,
-            process.env.ACCESS_RESPONDENT_COOKIE,
-            getDateByMinute(0)
           );
 
           const newExtractedAccessToken = FormsessionService.ExtractToken({

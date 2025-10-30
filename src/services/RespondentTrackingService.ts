@@ -1,5 +1,6 @@
 import { Request } from "express";
 import { FingerprintService } from "../utilities/fingerprint";
+import FormResponse from "../model/Response.model";
 
 export interface RespondentTrackingResult {
   hasResponded: boolean;
@@ -8,6 +9,7 @@ export interface RespondentTrackingResult {
   fingerprint?: string;
   ipAddress?: string;
   fingerprintStrength?: number;
+  respondentEmail?: string;
 }
 
 export interface TrackingData {
@@ -29,50 +31,47 @@ export class RespondentTrackingService {
   static async checkRespondentExists(
     formId: string,
     req: Request,
-    ResponseModel: any
+    respondentEmail?: string
   ): Promise<RespondentTrackingResult> {
     const trackingData = this.generateTrackingData(req);
 
     // Check by fingerprint first (most reliable for unique identification)
-    try {
-      const existingResponseByFingerprint = await ResponseModel.findOne({
-        formId,
-        respondentFingerprint: trackingData.fingerprint,
-      }).lean();
 
-      if (existingResponseByFingerprint) {
-        return {
-          hasResponded: true,
-          trackingMethod: "fingerprint",
-          responseId: existingResponseByFingerprint._id.toString(),
-          fingerprint: trackingData.fingerprint,
-          ipAddress: trackingData.ip,
-          fingerprintStrength: trackingData.fingerprintStrength,
-        };
-      }
-    } catch (error) {
-      console.warn("Error checking fingerprint:", error);
+    const existingResponseByFingerprint = await FormResponse.findOne({
+      formId,
+      respondentFingerprint: trackingData.fingerprint,
+    }).lean();
+
+    if (existingResponseByFingerprint) {
+      return {
+        hasResponded: true,
+        trackingMethod: "fingerprint",
+        responseId: existingResponseByFingerprint._id.toString(),
+        fingerprint: trackingData.fingerprint,
+        ipAddress: trackingData.ip,
+        fingerprintStrength: trackingData.fingerprintStrength,
+        respondentEmail,
+      };
     }
 
     // Fallback to IP address (less reliable but better than nothing)
-    try {
-      const existingResponseByIP = await ResponseModel.findOne({
-        formId,
-        respondentIP: trackingData.ip,
-      }).lean();
 
-      if (existingResponseByIP) {
-        return {
-          hasResponded: true,
-          trackingMethod: "ip",
-          responseId: existingResponseByIP._id.toString(),
-          fingerprint: trackingData.fingerprint,
-          ipAddress: trackingData.ip,
-          fingerprintStrength: trackingData.fingerprintStrength,
-        };
-      }
-    } catch (error) {
-      console.warn("Error checking IP address:", error);
+    const existingResponseByIP = await FormResponse.findOne({
+      formId,
+      respondentIP: trackingData.ip,
+      respondentEmail,
+    }).lean();
+
+    if (existingResponseByIP) {
+      return {
+        hasResponded: true,
+        trackingMethod: "ip",
+        responseId: existingResponseByIP._id.toString(),
+        fingerprint: trackingData.fingerprint,
+        ipAddress: trackingData.ip,
+        fingerprintStrength: trackingData.fingerprintStrength,
+        respondentEmail,
+      };
     }
 
     return {

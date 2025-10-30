@@ -8,6 +8,7 @@ export enum ROLE {
 export interface UserType {
   _id: Types.ObjectId;
   email: string;
+  name?: string;
   password: string;
   role: ROLE;
   code?: string;
@@ -17,6 +18,11 @@ const UserSchema = new Schema<UserType>({
   email: {
     type: String,
     required: true,
+  },
+  name: {
+    type: String,
+    required: false,
+    default: null,
   },
   password: {
     type: String,
