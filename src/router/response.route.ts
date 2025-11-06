@@ -6,6 +6,7 @@ import form_responseController from "../controller/form_response.controller";
 import { GetFilledForm } from "../controller/form.controller";
 import FormsessionMiddleware from "../middleware/Formsession.middleware";
 import FormsessionService from "../controller/formsession.controller";
+import { ResponseQueryService } from "../services/ResponseQueryService";
 
 const ResponseRouter = Router();
 
@@ -33,9 +34,9 @@ ResponseRouter.delete(
 
 //Fetch selected user response
 ResponseRouter.get(
-  "/getuserresponses",
+  "/getuserresponses/:formId/:page/:resIdx/:userId",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
-  form_responseController.GetUserResponses as unknown as RequestHandler
+  ResponseQueryService.getUserResponses as unknown as RequestHandler
 );
 
 // Get list of respondent by formId

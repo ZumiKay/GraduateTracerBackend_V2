@@ -48,7 +48,6 @@ export interface FormResponseType {
   createdAt?: Date;
   updatedAt?: Date;
   respondentType?: RespondentType;
-
   // Browser fingerprinting fields for anonymous tracking
   respondentFingerprint?: string;
   respondentIP?: string;

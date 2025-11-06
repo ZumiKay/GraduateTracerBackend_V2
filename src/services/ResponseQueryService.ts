@@ -1,4 +1,4 @@
-import { RootFilterQuery, Types } from "mongoose";
+import { isValidObjectId, RootFilterQuery, Types } from "mongoose";
 import FormResponse, {
   FormResponseType,
   ResponseSetType,
@@ -12,7 +12,7 @@ import { ResponseValidationService } from "./ResponseValidationService";
 import { FingerprintService } from "../utilities/fingerprint";
 import { Response } from "express";
 import { CustomRequest } from "../types/customType";
-import { contentTitleToString } from "../utilities/helper";
+import { contentTitleToString, ReturnCode } from "../utilities/helper";
 
 export interface ResponseFilterType {
   formId: string;
@@ -29,6 +29,7 @@ export interface ResponseFilterType {
   limit: number;
   id?: string;
   userId?: string;
+  resIdx?: string;
 }
 
 export class ResponseQueryService {
@@ -81,6 +82,76 @@ export class ResponseQueryService {
     limit: number
   ) {
     return this.fetchResponsesWithPagination({ formId }, page, limit);
+  }
+
+  /**
+  Get Response by UserId and With Pagination for multiple responses
+  @RequestParam formId | page | resIdx | useId
+  @page for navigate within form
+  @resIdx resIdx for navigate user responses
+  */
+  static async getResponsebyUserIdWithPagination(
+    req: CustomRequest,
+    res: Response
+  ) {
+    const { formId, page, resIdx, userId } =
+      req.params as unknown as ResponseFilterType;
+
+    // Validate parameters
+    if (!isValidObjectId(formId)) {
+      return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+    }
+
+    const pageNum = Number(page);
+    const responseIdx = Number(resIdx);
+    const limit = 1; // One response at a time based on resIdx
+
+    if (isNaN(pageNum) || isNaN(responseIdx) || responseIdx < 0) {
+      return res
+        .status(400)
+        .json(ReturnCode(400, "Invalid page or response index"));
+    }
+
+    try {
+      const query = {
+        formId: new Types.ObjectId(formId),
+        userId,
+      };
+
+      const totalCount = await FormResponse.countDocuments(query);
+
+      if (responseIdx >= totalCount) {
+        return res
+          .status(404)
+          .json(ReturnCode(404, "Response index out of range"));
+      }
+
+      const response = await FormResponse.findOne(query)
+        .skip(responseIdx)
+        .limit(limit)
+        .lean();
+
+      if (!response) {
+        return res.status(404).json(ReturnCode(404, "Response not found"));
+      }
+
+      const pagination = ResponseValidationService.createPaginationResponse(
+        responseIdx + 1,
+        limit,
+        totalCount
+      );
+
+      return res.status(200).json({
+        ...ReturnCode(200),
+        data: {
+          response,
+          pagination,
+        },
+      });
+    } catch (error) {
+      console.log("Get response by userId", error);
+      return res.status(500).json(ReturnCode(500, "Internal server error"));
+    }
   }
 
   static async getResponsesWithFilters(filters: ResponseFilterType) {
