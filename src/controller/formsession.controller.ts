@@ -63,7 +63,7 @@ export default class FormsessionService {
       email,
       timestamp: Date.now(),
       random: Math.random().toString(36).substring(2),
-      process: process.pid, // Process ID for multi-instance uniqueness
+      process: process.pid,
     };
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -71,7 +71,7 @@ export default class FormsessionService {
         ...basePayload,
         attempt,
         entropy: Math.random().toString(36).substring(2),
-        nanotime: process.hrtime.bigint().toString(), // High-resolution time
+        nanotime: process.hrtime.bigint().toString(),
       };
 
       const session_id = GenerateToken(
@@ -773,8 +773,8 @@ export default class FormsessionService {
     }
   };
 
-  /*
-   *Session verification && Renew
+  /**
+   * Session verification && Renew Access Session Token
    */
   public static SessionVerification = async (
     req: CustomRequest,
@@ -817,12 +817,18 @@ export default class FormsessionService {
         return res.status(401).json(ReturnCode(401, "Session expired"));
       }
 
-      //Verify AccessTokeno
-      const verifiedAccessToken = this.ExtractToken({
-        token: accessRespondentCookie,
-      });
+      //Verify AccessToken
+      const verifiedAccessToken = accessRespondentCookie
+        ? this.ExtractToken({
+            token: accessRespondentCookie,
+          })
+        : undefined;
 
-      if (!verifiedAccessToken.data && !verifiedAccessToken.isExpired) {
+      if (
+        verifiedAccessToken &&
+        !verifiedAccessToken.data &&
+        !verifiedAccessToken.isExpired
+      ) {
         return res.status(401).json({
           ...ReturnCode(401, "Invalid Session"),
           data: {
@@ -832,30 +838,22 @@ export default class FormsessionService {
       }
 
       //If access token expired, regenerate it
-      if (verifiedAccessToken.isExpired) {
-        try {
-          const newAccessId = await this.GenerateUniqueAccessId({
-            email: session.respondentEmail,
-            formId: session.form?.toString(),
-            expireIn: "30m",
-          });
+      if (!verifiedAccessToken || verifiedAccessToken.isExpired) {
+        const newAccessId = await FormsessionService.GenerateUniqueAccessId({
+          email: session.respondentEmail,
+        });
 
-          await Formsession.updateOne(
-            { session_id: respondentCookie },
-            { access_id: newAccessId }
-          );
+        await Formsession.updateOne(
+          { session_id: session.session_id },
+          { access_id: newAccessId }
+        );
 
-          this.setCookie(
-            res,
-            newAccessId,
-            process.env.ACCESS_RESPONDENT_COOKIE as string,
-            getDateByMinute(30)
-          );
-        } catch (refreshError) {
-          return res
-            .status(401)
-            .json(ReturnCode(401, "Session refresh failed"));
-        }
+        FormsessionService.setCookie(
+          res,
+          newAccessId,
+          process.env.ACCESS_RESPONDENT_COOKIE as string,
+          getDateByMinute(30)
+        );
       }
 
       return res.status(200).json({
@@ -886,12 +884,12 @@ export default class FormsessionService {
       if (isValid) {
         return { data: isValid };
       }
-      return { data: null };
+      return { data: null, isExpired: false };
     } catch (error) {
       if (error instanceof JWT.TokenExpiredError) {
         return { data: null, isExpired: true };
       }
-      return { data: null };
+      return { data: null, isExpired: false };
     }
   };
   private static GenerateUniqueRemoveCode = async ({

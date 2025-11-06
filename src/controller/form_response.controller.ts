@@ -2,14 +2,17 @@ import { Response } from "express";
 import { contentTitleToString, ReturnCode } from "../utilities/helper";
 import { MongoErrorHandler } from "../utilities/MongoErrorHandler";
 import Zod from "zod";
-import { isValidObjectId, Types } from "mongoose";
+import { Types } from "mongoose";
 import { CustomRequest } from "../types/customType";
 import SolutionValidationService from "../services/SolutionValidationService";
 import EmailService from "../services/EmailService";
 import FormLinkService from "../services/FormLinkService";
 import User from "../model/User.model";
 import { ResponseValidationService } from "../services/ResponseValidationService";
-import { ResponseQueryService } from "../services/ResponseQueryService";
+import {
+  ResponseFilterType,
+  ResponseQueryService,
+} from "../services/ResponseQueryService";
 import { ResponseProcessingService } from "../services/ResponseProcessingService";
 import { ResponseAnalyticsService } from "../services/ResponseAnalyticsService";
 import { RespondentTrackingService } from "../services/RespondentTrackingService";
@@ -35,12 +38,9 @@ import {
   GetPublicFormDataType,
   GetPublicFormDataTyEnum,
 } from "../middleware/User.middleware";
+import { FingerprintService } from "../utilities/fingerprint";
 
 interface SubmitResponseBodyType {
-  formInfo?: {
-    _id: string;
-    type: TypeForm;
-  };
   responseSet?: Array<ResponseSetType>;
   respondentEmail?: string;
   respondentName?: string;
@@ -329,7 +329,7 @@ class FormResponseController {
 
       const baseSubmissionData = {
         formId: formId,
-        responseset: responseSet,
+        responseSet,
         respondentEmail,
         respondentName,
       };
@@ -732,7 +732,7 @@ class FormResponseController {
       if (!form) return;
 
       // Extract filter parameters matching frontend implementation
-      const filters = {
+      const filters: ResponseFilterType = {
         formId: validation.formId!,
         searchTerm: req.query.q as string,
         completionStatus: req.query.status as string,
@@ -745,15 +745,41 @@ class FormResponseController {
         sortOrder: req.query.sortOrder as string,
         page: validation.page!,
         limit: validation.limit!,
+        id: validation.rid as string,
+        userId: validation.uid as string,
       };
 
       const result = await ResponseQueryService.getResponsesWithFilters(
         filters
       );
-      res.status(200).json({ ...ReturnCode(200), data: result });
+
+      if (!result)
+        return res.status(404).json(ReturnCode(404, "Response not found"));
+
+      return res.status(200).json({ ...ReturnCode(200), data: result });
     } catch (error) {
       console.error("Get Responses With Filters Error:", error);
       res.status(500).json(ReturnCode(500, "Failed to retrieve responses"));
+    }
+  };
+
+  public GetResponseByID = async (req: CustomRequest, res: Response) => {
+    const { id } = req.params as { id: string };
+    if (!isValidObjectIdString(id)) {
+      return res.status(400).json(ReturnCode(400));
+    }
+
+    try {
+      const result = await ResponseQueryService.GetResponseById({ id });
+
+      if (!result) {
+        return res.status(404).json(ReturnCode(404));
+      }
+
+      return res.status(200).json({ ...ReturnCode(200), data: result });
+    } catch (error) {
+      console.log("Get Response By ID");
+      res.status(500).json(ReturnCode(500, "Error Occured"));
     }
   };
 
@@ -866,7 +892,7 @@ class FormResponseController {
 
       const page = Number(p ?? "1");
 
-      const isUserAlreadyAuthenticated = !!req.formsession?.sub;
+      const isUserAlreadyAuthenticated = !!req.formsession;
 
       if (req.formsession) {
         //If user is authenticate fetch data
@@ -899,6 +925,8 @@ class FormResponseController {
             // Early return for already authenticated users with combined data
             if (isUserAlreadyAuthenticated) {
               try {
+                //If single submit form
+
                 const formData = await ResponseQueryService.getPublicFormData(
                   formId,
                   page,
@@ -1398,6 +1426,11 @@ class FormResponseController {
         return res.status(400).json(ReturnCode(400, "Form ID is required"));
       }
 
+      const invalidIds = responseIds.filter((id) => isValidObjectIdString(id));
+      if (invalidIds.length > 0) {
+        return res.status(400).json(ReturnCode(400, "Invalid Data"));
+      }
+
       const form = await ResponseValidationService.validateFormAccess(
         formId,
         validation.user.id,
@@ -1416,6 +1449,9 @@ class FormResponseController {
     } catch (error) {
       console.error("Bulk Delete Responses Error:", error);
       if (error instanceof Error && error.message.includes("don't exist")) {
+        return res.status(400).json(ReturnCode(400, error.message));
+      }
+      if (error instanceof Error && error.message.includes("Invalid")) {
         return res.status(400).json(ReturnCode(400, error.message));
       }
       res.status(500).json(ReturnCode(500, "Failed to delete responses"));

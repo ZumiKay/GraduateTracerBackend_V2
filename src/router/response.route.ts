@@ -53,6 +53,13 @@ ResponseRouter.get(
   FormResponseController.GetResponsesWithFilters as unknown as RequestHandler
 );
 
+//Get response by id
+ResponseRouter.get(
+  "/getresponseById/:id",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  FormResponseController.GetResponseByID as unknown as RequestHandler
+);
+
 //Validate Form data before submission
 
 ResponseRouter.get(

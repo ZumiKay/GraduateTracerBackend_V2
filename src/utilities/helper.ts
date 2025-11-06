@@ -392,6 +392,8 @@ export const isObject = (value: any) => {
   );
 };
 
+/**
+ *Convert TipTab JSON Content to string  */
 export const contentTitleToString = (
   contentTitle: ContentTitle | null | undefined
 ): string => {

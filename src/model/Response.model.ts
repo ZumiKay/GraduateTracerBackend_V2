@@ -38,6 +38,7 @@ export interface FormResponseType {
   formId: Types.ObjectId;
   userId?: Types.ObjectId;
   responseset: Array<ResponseSetType>;
+  maxScore?: number;
   totalScore?: number;
   isCompleted?: boolean;
   submittedAt?: Date;
@@ -79,6 +80,9 @@ export interface SubmitionProcessionReturnType {
   maxScore: number;
   totalScore: number;
   message: string;
+  responseId?: string;
+  respondentEmail?: string;
+  isComplete?: boolean;
   isNonScore?: boolean;
 }
 
@@ -129,6 +133,10 @@ const ResponseSchema = new Schema<FormResponseType>(
       required: true,
     },
 
+    maxScore: {
+      type: Number,
+      default: 0,
+    },
     totalScore: {
       type: Number,
       default: 0,

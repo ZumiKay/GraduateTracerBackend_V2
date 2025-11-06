@@ -107,39 +107,33 @@ export class SolutionValidationService {
 
   static validateAnswerFormat(
     questionType: QuestionType,
-    answer: any,
+    answer: ResponseAnswerType,
     content: ContentType
   ): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     switch (questionType) {
       case QuestionType.MultipleChoice:
-        if (!Array.isArray(answer) || answer.length === 0) {
-          errors.push(
-            "Multiple choice answer must be an array with at least one selection"
-          );
-        } else {
-          const maxIndex = (content.multiple?.length || 0) - 1;
-          const invalidIndices = answer.filter(
-            (idx: number) => idx > maxIndex || idx < 0
-          );
-          if (invalidIndices.length > 0) {
-            errors.push(`Invalid answer indices: ${invalidIndices.join(", ")}`);
-          }
+      case QuestionType.Selection:
+        if (typeof answer !== "number") {
+          errors.push(`Multiple Question ${content.qIdx} have invalid answer`);
         }
         break;
 
       case QuestionType.CheckBox:
         if (!Array.isArray(answer)) {
-          errors.push("Checkbox answer must be an array");
+          errors.push(`Checkbox Question ${content.qIdx} have invalid answer`);
         } else {
+          //Verify integrity of check answer
           const maxIndex = (content.checkbox?.length || 0) - 1;
           const invalidIndices = answer.filter(
             (idx: number) => idx > maxIndex || idx < 0
           );
           if (invalidIndices.length > 0) {
             errors.push(
-              `Invalid checkbox indices: ${invalidIndices.join(", ")}`
+              `Question ${
+                content.qIdx
+              } Invalid checkbox indices: ${invalidIndices.join(", ")}`
             );
           }
         }
@@ -149,35 +143,34 @@ export class SolutionValidationService {
       case QuestionType.ShortAnswer:
       case QuestionType.Paragraph:
         if (typeof answer !== "string") {
-          errors.push("Text answer must be a string");
+          errors.push(`Question ${content.qIdx} Text answer must be a string`);
         }
         break;
 
       case QuestionType.Number:
         if (typeof answer !== "number") {
-          errors.push("Number answer must be a number");
+          errors.push(
+            `Question ${content.qIdx} number answer must be a number`
+          );
         }
         break;
 
       case QuestionType.Date:
-        if (!(answer instanceof Date) && !this.isValidDateString(answer)) {
+        if (typeof answer !== "string") {
           errors.push(`Question ${content.qIdx} have invalid answer`);
         }
         break;
 
       case QuestionType.RangeDate:
         {
-          if (
-            !this.isValidRangeObject(answer) ||
-            !this.isValidDateString(answer.start) ||
-            !this.isValidDateString(answer.end)
-          ) {
+          if (!this.isValidRangeObject(answer)) {
             errors.push(
               "Range date answer must have valid start and end dates"
             );
           }
 
-          if (!isRangeValueValid(answer, true)) {
+          //Verify if range date value is correct format
+          if (!isRangeValueValid(answer as RangeType<string>, true)) {
             errors.push(`Question ${content.qIdx} have invalid answer`);
           }
         }
@@ -185,26 +178,19 @@ export class SolutionValidationService {
 
       case QuestionType.RangeNumber:
         {
+          const localAnswer = answer as RangeType<number>;
           if (
             !this.isValidRangeObject(answer) ||
-            typeof answer.start !== "number" ||
-            typeof answer.end !== "number"
+            typeof localAnswer.start !== "number" ||
+            typeof localAnswer.end !== "number"
           ) {
             errors.push(
               "Range number answer must have valid start and end numbers"
             );
           }
-          if (!isRangeValueValid(answer)) {
+          if (!isRangeValueValid(localAnswer)) {
             errors.push(`Question ${content.qIdx} have invalid answer`);
           }
-        }
-        break;
-
-      case QuestionType.Selection:
-        if (!Array.isArray(answer) || answer.length === 0) {
-          errors.push(
-            "Selection answer must be an array with at least one selection"
-          );
         }
         break;
 
@@ -253,15 +239,6 @@ export class SolutionValidationService {
       }
     }
 
-    return false;
-  }
-
-  private static isValidDateString(date: any): boolean {
-    if (date instanceof Date) return !isNaN(date.getTime());
-    if (typeof date === "string") {
-      const parsedDate = new Date(date);
-      return !isNaN(parsedDate.getTime());
-    }
     return false;
   }
 

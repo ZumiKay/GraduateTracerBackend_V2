@@ -8,6 +8,7 @@ import FormResponse, {
   FormResponseType,
 } from "../model/Response.model";
 import { hasFormAccess } from "../utilities/formHelpers";
+import { ResponseFilterType } from "./ResponseQueryService";
 
 export interface RespondentCheckResult {
   hasResponded: boolean;
@@ -307,6 +308,7 @@ export class ResponseValidationService {
     limit?: number;
     isValid: boolean;
     uid?: string;
+    rid?: string;
   }> {
     const user = req.user;
 
@@ -332,6 +334,7 @@ export class ResponseValidationService {
         page: Number(req.query.page || req.query.p) || 1,
         limit: Number(req.query.limit || req.query.lt) || 10,
         uid: (req.query.uid as string) ?? undefined,
+        rid: (req.query.rid as string) ?? undefined,
         isValid: true,
       };
     }
@@ -417,16 +420,7 @@ export class ResponseValidationService {
     }
   }
 
-  static buildFilterQuery(filters: {
-    formId: string;
-    searchTerm?: string;
-    completionStatus?: string;
-    startDate?: string;
-    endDate?: string;
-    minScore?: string;
-    maxScore?: string;
-    email?: string; // Legacy parameter for backwards compatibility
-  }) {
+  static buildFilterQuery(filters: ResponseFilterType) {
     const query: RootFilterQuery<FormResponseType> = {
       formId: new Types.ObjectId(filters.formId),
     };
@@ -485,6 +479,12 @@ export class ResponseValidationService {
       if (filters.maxScore !== undefined && filters.maxScore !== "") {
         query.totalScore.$lte = Number(filters.maxScore);
       }
+    }
+
+    //Id and userId filter
+    if (filters.id || filters.userId) {
+      query._id = filters.id;
+      query.userId = filters.userId;
     }
 
     return query;

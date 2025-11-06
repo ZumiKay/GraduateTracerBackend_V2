@@ -23,7 +23,7 @@ interface ValidateResultReturnType {
 
 interface submissionDataType {
   formId: string;
-  responseset: ResponseSetType[];
+  responseSet: ResponseSetType[];
   respondentEmail?: string;
   respondentName?: string;
   userId?: string;
@@ -39,7 +39,7 @@ interface AddScoreReturnType {
 export class ResponseProcessingService {
   static async processNormalFormSubmission({
     formId,
-    responseset,
+    responseSet,
     respondentEmail,
     respondentName,
     req,
@@ -74,7 +74,7 @@ export class ResponseProcessingService {
     const contents = await Content.find({ formId: formId }).lean();
 
     contents.forEach((question) => {
-      const response = responseset.find(
+      const response = responseSet.find(
         (i) => i.question === question._id.toString()
       );
 
@@ -94,7 +94,7 @@ export class ResponseProcessingService {
       }
       const toverify = SolutionValidationService.validateAnswerFormat(
         question.type,
-        response.response,
+        response.response as ResponseAnswerType,
         question
       );
 
@@ -105,7 +105,7 @@ export class ResponseProcessingService {
 
     await FormResponse.create({
       formId: new Types.ObjectId(formId),
-      responseset,
+      responseset: responseSet,
       submittedAt: new Date(),
       completionStatus: completionStatus.completed,
       respondentFingerprint: browserfingerprinting,
@@ -127,7 +127,7 @@ export class ResponseProcessingService {
     submissionData: submissionDataType,
     form: FormType
   ): Promise<SubmitionProcessionReturnType> {
-    const { formId, responseset, respondentEmail, respondentName } =
+    const { formId, responseSet, respondentEmail, respondentName } =
       submissionData;
 
     if (form.setting?.email && !respondentEmail) {
@@ -161,16 +161,17 @@ export class ResponseProcessingService {
 
     // Auto-score
     if (form.setting?.returnscore === returnscore.partial) {
-      const addscore = await this.addScore(responseset);
+      const addscore = await this.addScore(responseSet);
 
       isAutoScored = true;
       // Check if all questions have no score
       isNonScore = addscore.isNonScore || false;
+      scoredResponses = addscore.response;
     } else {
       const contents = await Content.find({ formId: formId }).lean();
 
       contents.forEach((question) => {
-        const response = responseset.find(
+        const response = responseSet.find(
           (i) => i.question === question._id.toString()
         );
 
@@ -190,7 +191,7 @@ export class ResponseProcessingService {
         }
         const toverify = SolutionValidationService.validateAnswerFormat(
           question.type,
-          response.response,
+          response.response as ResponseAnswerType,
           question
         );
 
@@ -206,6 +207,7 @@ export class ResponseProcessingService {
     const responseData: Partial<FormResponseType> = {
       formId: new Types.ObjectId(formId),
       responseset: scoredResponses,
+      maxScore: form.totalscore,
       totalScore,
       isCompleted: true,
       submittedAt: new Date(),
@@ -245,6 +247,7 @@ export class ResponseProcessingService {
     return {
       isNonScore,
       totalScore,
+      respondentEmail,
       maxScore: form.totalscore || 0,
       message: !isAutoScored
         ? "Score will be return by form owner"
@@ -286,8 +289,8 @@ export class ResponseProcessingService {
       //Scoring process
       for (let i = 0; i < content.length; i++) {
         const question = content[i];
-        const userresponse = response.find(
-          (resp) => resp.question === question._id?.toString()
+        const userresponse = response.find((resp) =>
+          question._id.equals(new Types.ObjectId(resp.question.toString()))
         );
 
         if (!userresponse) {
@@ -309,12 +312,13 @@ export class ResponseProcessingService {
         //Verify answer format and validity
         const isVerify = SolutionValidationService.validateAnswerFormat(
           question.type,
-          userresponse.response,
+          userresponse.response as ResponseAnswerType,
           question
         );
 
         if (!isVerify.isValid) {
-          throw new Error("Invalid Format");
+          console.log({ question, userresponse });
+          throw new Error(isVerify.errors.join("||"));
         }
 
         const maxScore = question.score || 0;

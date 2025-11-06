@@ -13,9 +13,14 @@ export interface UserToken extends JwtPayload {
   };
 }
 
+interface CustomJWTPayloadType extends JwtPayload {
+  email?: string;
+  timestamp?: number;
+}
 interface FormsessionpayloadType extends JwtPayload {
   sub?: string;
   email?: string;
+  data?: CustomJWTPayloadType;
   access_token?: string; // The access_id token
   access_payload?: JwtPayload; // Decoded access token payload
 }
