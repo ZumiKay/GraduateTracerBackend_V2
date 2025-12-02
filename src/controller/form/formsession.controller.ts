@@ -1,21 +1,23 @@
 import { Response } from "express";
-import { CustomRequest, UserToken } from "../types/customType";
+import { CustomRequest, UserToken } from "../../types/customType";
 import {
   ExtractTokenPaylod,
   GenerateToken,
   getDateByMinute,
   getDateByNumDay,
   ReturnCode,
-} from "../utilities/helper";
+} from "../../utilities/helper";
 import { z } from "zod";
 import JWT, { JwtPayload } from "jsonwebtoken";
-import Formsession, { Formsessiondatatype } from "../model/Formsession.model";
+import Formsession, {
+  Formsessiondatatype,
+} from "../../model/Formsession.model";
 import { Model } from "mongoose";
-import { sendRemovalLinkEmail } from "../utilities/removalEmail";
-import Form, { FormType, TypeForm } from "../model/Form.model";
-import User from "../model/User.model";
+import { sendRemovalLinkEmail } from "../../utilities/removalEmail";
+import Form, { FormType, TypeForm } from "../../model/Form.model";
+import User from "../../model/User.model";
 import { compareSync } from "bcrypt";
-import Usersession from "../model/Usersession.model";
+import Usersession from "../../model/Usersession.model";
 
 interface RespodentLoginProps {
   formId: string;
@@ -554,7 +556,7 @@ export default class FormsessionService {
           access_id,
           expiredAt,
           respondentEmail: userEmail,
-          respondentName: name || userEmail.split("@")[0], // Extract name from email if not provided
+          respondentName: name ?? userEmail.split("@")[0], // Extract name from email if not provided
           isGuest,
         });
       } catch (sessionCreateError) {
@@ -872,13 +874,18 @@ export default class FormsessionService {
 
   public static ExtractToken = ({
     token,
+    customSecret,
   }: {
     token: string;
-  }): { data: string | JwtPayload | null; isExpired?: boolean } => {
+    customSecret?: string;
+  }): {
+    data: string | JwtPayload | null;
+    isExpired?: boolean;
+  } => {
     try {
       const isValid = JWT.verify(
         token,
-        process.env.RESPONDENT_TOKEN_JWT_SECRET || "secret"
+        customSecret ?? (process.env.RESPONDENT_TOKEN_JWT_SECRET || "secret")
       );
 
       if (isValid) {

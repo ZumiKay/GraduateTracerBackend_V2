@@ -10,6 +10,7 @@ import NotificationRouter from "./router/notification.route";
 import ExportRouter from "./router/export.route";
 import cookieparser from "cookie-parser";
 import { rateLimit } from "express-rate-limit";
+import encryptRoute from "./router/encrypt.route";
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.use("/v0/api", UserRoute);
 app.use("/v0/api/response", ResponseRouter);
 app.use("/v0/api/notifications", NotificationRouter);
 app.use("/v0/api/exports", ExportRouter);
+app.use("/v0/api/de", encryptRoute);
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Hello, TypeScript with Express!");

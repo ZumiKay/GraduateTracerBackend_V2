@@ -1,11 +1,11 @@
 import { RootFilterQuery, Types } from "mongoose";
-import { CustomRequest } from "../types/customType";
+import { CustomRequest, UserToken } from "../types/customType";
 import { Request, Response } from "express";
 import { ReturnCode } from "../utilities/helper";
 import Form from "../model/Form.model";
 import FormResponse, {
-  completionStatus,
   FormResponseType,
+  ResponseCompletionStatus,
 } from "../model/Response.model";
 import { hasFormAccess } from "../utilities/formHelpers";
 import { ResponseFilterType } from "./ResponseQueryService";
@@ -250,8 +250,8 @@ export class ResponseValidationService {
     const options: RespondentCheckOptions = { ...additionalOptions };
 
     // Extract user ID from authenticated request
-    if ("user" in req && req.user && req.user.id) {
-      options.userId = req.user.id.toString();
+    if ("user" in req && req.user && req.user.sub) {
+      options.userId = req.user.sub.toString();
     }
 
     // Extract guest email from request body
@@ -302,7 +302,7 @@ export class ResponseValidationService {
     requireFormId?: boolean;
     requireUserInfo?: boolean;
   }): Promise<{
-    user: any;
+    user: UserToken | null;
     formId?: string;
     page?: number;
     limit?: number;
@@ -396,9 +396,7 @@ export class ResponseValidationService {
         return null;
       }
 
-      const form = await Form.findById(response.formId)
-        .populate({ path: "user", select: "email" })
-        .lean();
+      const form = await Form.findById(response.formId).lean();
 
       if (!form) {
         res.status(404).json(ReturnCode(404, "Form not found"));
@@ -439,16 +437,16 @@ export class ResponseValidationService {
     // Completion status filter
     if (filters.completionStatus) {
       switch (filters.completionStatus) {
-        case completionStatus.completed:
+        case ResponseCompletionStatus.completed:
           query.isCompleted = true;
           break;
-        case completionStatus.partial:
+        case ResponseCompletionStatus.partial:
           query.$and = [
             { isCompleted: { $ne: true } },
             { submittedAt: { $exists: true } },
           ];
           break;
-        case completionStatus.abandoned:
+        case ResponseCompletionStatus.abandoned:
           query.$and = [
             { isCompleted: { $ne: true } },
             { submittedAt: { $exists: false } },

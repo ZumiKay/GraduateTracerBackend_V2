@@ -1,11 +1,11 @@
 import { Request, Response } from "express";
-import { ReturnCode } from "../utilities/helper";
+import { ReturnCode } from "../../utilities/helper";
 import Content, {
   AnswerKey,
   ConditionalType,
   ContentType,
-} from "../model/Content.model";
-import Form from "../model/Form.model";
+} from "../../model/Content.model";
+import Form from "../../model/Form.model";
 import mongoose, { Types } from "mongoose";
 
 class QuestionController {

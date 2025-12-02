@@ -1,12 +1,13 @@
 import { RequestHandler, Router } from "express";
-import FormResponseController from "../controller/form_response.controller";
+import FormResponseController from "../controller/response/form_response.controller";
 import UserMiddleware from "../middleware/User.middleware";
-import FormResponseReturnController from "../controller/form_response_return.controller";
-import form_responseController from "../controller/form_response.controller";
-import { GetFilledForm } from "../controller/form.controller";
+import form_responseController from "../controller/response/form_response.controller";
+import { GetFilledForm } from "../controller/form/form.controller";
 import FormsessionMiddleware from "../middleware/Formsession.middleware";
-import FormsessionService from "../controller/formsession.controller";
 import { ResponseQueryService } from "../services/ResponseQueryService";
+import FormsessionService from "../controller/form/formsession.controller";
+import form_response_returnController from "../controller/response/form_response_return.controller";
+import analyticsController from "../controller/analytics/analytics.controller";
 
 const ResponseRouter = Router();
 
@@ -42,7 +43,7 @@ ResponseRouter.get(
 // Get list of respondent by formId
 
 ResponseRouter.get(
-  "/getrespondents",
+  "/getrespondents/:formId",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   FormResponseController.GetResponsesInfo as unknown as RequestHandler
 );
@@ -56,7 +57,7 @@ ResponseRouter.get(
 
 //Get response by id
 ResponseRouter.get(
-  "/getresponseById/:id",
+  "/getresponseById/:id/:formId",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   FormResponseController.GetResponseByID as unknown as RequestHandler
 );
@@ -104,11 +105,25 @@ ResponseRouter.put(
   FormResponseController.UpdateResponseScore as unknown as RequestHandler
 );
 
-// Get response analytics for charts
-ResponseRouter.get(
-  "/analytics",
+// Update individual question score
+ResponseRouter.put(
+  "/update-question-score",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
-  FormResponseController.GetResponseAnalytics as unknown as RequestHandler
+  FormResponseController.UpdateQuestionScore as unknown as RequestHandler
+);
+
+// Batch update scores for multiple responses
+ResponseRouter.put(
+  "/batch-update-scores",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  FormResponseController.BatchUpdateScores as unknown as RequestHandler
+);
+
+// Recalculate total score for a response
+ResponseRouter.put(
+  "/recalculate-score",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  FormResponseController.RecalculateResponseScore as unknown as RequestHandler
 );
 
 // Delete a response
@@ -132,15 +147,15 @@ ResponseRouter.post(
   FormResponseController.SendResponseCardEmail as unknown as RequestHandler
 );
 
-//Return Response
+//Return Response to user through email
 ResponseRouter.post(
   "/return",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
-  FormResponseReturnController.ReturnResponse as unknown as RequestHandler
+  form_response_returnController.ReturnResponse as unknown as RequestHandler
 );
 
 ResponseRouter.get(
-  "/response/:formId/:responseId/export/pdf",
+  "/:formId/:responseId/export/pdf",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   form_responseController.ExportResponsePDF as unknown as RequestHandler
 );
@@ -156,6 +171,13 @@ ResponseRouter.get(
   "/filled-form/:formId/:responseId",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   GetFilledForm as unknown as RequestHandler
+);
+
+//Analytics routes
+ResponseRouter.get(
+  "/getanalytics",
+  UserMiddleware.VerifyToken,
+  analyticsController.GetAnalyticsData as unknown as RequestHandler
 );
 
 export default ResponseRouter;

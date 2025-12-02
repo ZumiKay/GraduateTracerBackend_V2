@@ -4,16 +4,18 @@ import {
   RandomNumber,
   ReturnCode,
   ValidatePassword,
-} from "../utilities/helper";
-import { MongoErrorHandler } from "../utilities/MongoErrorHandler";
+} from "../../utilities/helper";
+import { MongoErrorHandler } from "../../utilities/MongoErrorHandler";
 import { z } from "zod";
-import User, { ROLE, UserType } from "../model/User.model";
-import HandleEmail from "../utilities/email";
+import User, { ROLE, UserType } from "../../model/User.model";
+import HandleEmail from "../../utilities/email";
 import bcrypt from "bcrypt";
+import { CustomRequest } from "../../types/customType";
 
 export const UserValidate = z.object({
   body: z.object({
     email: z.string().email("Email is required"),
+    name: z.string().optional(),
     password: z
       .string()
       .refine((pass) => ValidatePassword(pass), "Invalid Password"),
@@ -46,14 +48,39 @@ export async function GetRespondentProfile(req: Request, res: Response) {
   }
 }
 
+export async function GetUserProfile(req: CustomRequest, res: Response) {
+  const user = req.user;
+
+  if (!user) return res.status(403).json(ReturnCode(403));
+
+  try {
+    const userProfile = await User.findById(user.sub)
+      .select("email name role")
+      .lean();
+
+    if (!userProfile)
+      return res.status(404).json(ReturnCode(404, "Can't find user"));
+
+    return res.status(200).json({ data: userProfile });
+  } catch (error) {
+    console.log("Get User Profile", error);
+
+    return res.status(500).json(ReturnCode(500));
+  }
+}
+
 export async function RegisterUser(req: Request, res: Response) {
   const data = req.body as UserType;
   const operationId = MongoErrorHandler.generateOperationId("register_user");
 
   try {
-    const isUser = await User.findOne({ email: data.email });
+    const isUser = await User.findOne({
+      $and: [{ email: data.email }, { name: data.name }],
+    });
     if (isUser)
-      return res.status(400).json(ReturnCode(400, "Email already exist"));
+      return res
+        .status(400)
+        .json(ReturnCode(400, "Username or email already exist"));
 
     const password = hashedPassword(data.password);
     await User.create({
@@ -79,7 +106,7 @@ export async function RegisterUser(req: Request, res: Response) {
 
 interface EditUser extends UserType {
   type: "vfy" | "confirm" | "edit";
-  edittype: "email" | "password";
+  edittype: "email" | "password" | "name";
   code: string;
   newpassword: string;
 }
@@ -90,6 +117,18 @@ export async function EditUser(req: Request, res: Response) {
   try {
     if (!edituserdata._id || !edituserdata.edittype)
       return res.status(400).json(ReturnCode(400));
+
+    if (edituserdata.edittype === "name") {
+      const isName = await User.findOne({ name: edituserdata.name }).lean();
+      if (isName) {
+        return res.status(400).json(ReturnCode(400, "Username already exist"));
+      }
+
+      await User.updateOne(
+        { _id: edituserdata._id },
+        { name: edituserdata.name }
+      );
+    }
 
     if (edituserdata.edittype === "email") {
       switch (edituserdata.type) {
@@ -146,7 +185,7 @@ export async function EditUser(req: Request, res: Response) {
         default:
           break;
       }
-    } else {
+    } else if (edituserdata.edittype === "password") {
       const user = await User.findById(edituserdata._id);
       if (!edituserdata.password || !edituserdata.newpassword || !user)
         return res.status(400).json(ReturnCode(400));

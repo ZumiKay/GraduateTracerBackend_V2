@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import User, { UserType } from "../model/User.model";
+import User from "../../model/User.model";
 import {
   GenerateToken,
   getDateByMinute,
@@ -7,19 +7,22 @@ import {
   hashedPassword,
   RandomNumber,
   ReturnCode,
-} from "../utilities/helper";
-import bcrypt, { compareSync } from "bcrypt";
-import Usersession from "../model/Usersession.model";
-import HandleEmail from "../utilities/email";
+} from "../../utilities/helper";
+import bcrypt from "bcrypt";
+import Usersession from "../../model/Usersession.model";
+import HandleEmail from "../../utilities/email";
 import JWT from "jsonwebtoken";
 import {
   handleDatabaseError,
   generateOperationId,
-} from "../utilities/MongoErrorHandler";
+} from "../../utilities/MongoErrorHandler";
+import sessionCache from "../../utilities/sessionCache";
 
 interface Logindata {
   email: string;
+  name: string;
   password: string;
+  rememberMe?: boolean;
 }
 
 interface ForgotPasswordType {
@@ -32,19 +35,32 @@ interface ForgotPasswordType {
 
 class AuthenticationController {
   public Login = async (req: Request, res: Response) => {
-    const { email, password } = req.body as Logindata;
+    const { email, password, rememberMe } = req.body as Logindata;
     const operationId = generateOperationId("login");
 
     try {
-      const user = await User.findOne({ email }).select("email password role");
+      const user = await User.findOne({
+        $or: [
+          {
+            email,
+          },
+          { name: email },
+        ],
+      })
+        .select("email name password role")
+        .lean();
 
       if (!user || !bcrypt.compareSync(password, user.password)) {
         return res.status(404).json(ReturnCode(404, "Incorrect Credential"));
       }
 
-      const TokenPayload = { id: user._id, role: user.role };
+      //Login session creation
+      const TokenPayload = { sub: user._id, role: user.role };
       const AccessToken = GenerateToken(TokenPayload, "15m");
-      const RefreshToken = GenerateToken(TokenPayload, "1d");
+      const RefreshToken = GenerateToken(
+        TokenPayload,
+        rememberMe ? "7d" : "1d"
+      );
 
       //Create Login Session
       await Usersession.create({
@@ -54,9 +70,16 @@ class AuthenticationController {
         guest: null,
       });
 
+      //Set Authentication Cookie
       this.setAccessTokenCookie(res, AccessToken);
       this.setRefreshTokenCookie(res, RefreshToken);
-      return res.status(200).json({ ...ReturnCode(200), token: AccessToken });
+
+      return res.status(200).json({
+        ...ReturnCode(200),
+        data: {
+          ...user,
+        },
+      });
     } catch (error) {
       if (handleDatabaseError(error, res, "user login")) {
         return;
@@ -74,6 +97,9 @@ class AuthenticationController {
       const refresh_token =
         req.cookies?.[process.env.REFRESH_TOKEN_COOKIE ?? ""];
       if (!refresh_token) return res.status(204).json(ReturnCode(204));
+
+      // Invalidate cache for this session
+      sessionCache.invalidate(refresh_token);
 
       await Usersession.deleteOne({ session_id: refresh_token });
 
@@ -169,15 +195,43 @@ class AuthenticationController {
       return res.status(500).json(ReturnCode(500));
     }
   };
+
+  /**
+   * Check session for valid user session
+   * Optimized for frequent calls with:
+   * - In-memory caching (2-minute TTL)
+   * - Lean queries for better performance
+   * - Reduced field selection
+   * - Async cleanup (non-blocking)
+   * - Early returns to minimize processing
+   */
+
   public CheckSession = async (req: Request, res: Response) => {
     const operationId = generateOperationId("check_session");
 
     try {
       const refreshToken = req?.cookies[process.env.REFRESH_TOKEN_COOKIE ?? ""];
-      const accessToken = req?.cookies[process.env.ACCESS_TOKEN_COOKIE ?? ""];
 
+      // Early return if no refresh token
       if (!refreshToken) {
-        return res.status(401).json(ReturnCode(401, "No refresh token found"));
+        return res.status(401).json(ReturnCode(401, "No session found"));
+      }
+
+      // Check cache first
+      const cachedSession = sessionCache.get(refreshToken);
+      if (cachedSession) {
+        return res.status(200).json({
+          ...ReturnCode(200),
+          data: {
+            user: {
+              _id: cachedSession.userId,
+              email: cachedSession.email,
+              name: cachedSession.name,
+              role: cachedSession.role,
+            },
+            isAuthenticated: true,
+          },
+        });
       }
 
       const userSession = await Usersession.findOne({
@@ -185,39 +239,40 @@ class AuthenticationController {
         expireAt: { $gte: new Date() },
         respondent: null,
       })
-        .populate({ path: "user", select: "_id email role" })
-        .lean();
+        .populate({
+          path: "user",
+          select: "_id email name role", // Only fetch needed fields
+        })
+        .select("session_id expireAt createdAt user") // Only fetch needed session fields
+        .lean() // Use plain JS objects for better performance
+        .exec();
 
-      // Clean up expired sessions asynchronously
-      Usersession.deleteMany({ expireAt: { $lt: new Date() } }).exec();
+      // Clean up expired sessions asynchronously (non-blocking)
+      // Run this in background without awaiting
+      Usersession.deleteMany({
+        expireAt: { $lt: new Date() },
+      })
+        .exec()
+        .catch((err) => {
+          console.error(`[${operationId}] Background cleanup error:`, err);
+        });
 
+      // Invalid or expired session
       if (!userSession?.user) {
-        // Invalid or expired session
-        if (userSession) {
-          Usersession.deleteOne({ session_id: refreshToken }).exec();
-        }
-
         this.clearAccessTokenCookie(res);
         this.clearRefreshTokenCookie(res);
-
-        return res.status(401).json(ReturnCode(401, "Session Expired"));
+        return res.status(401).json(ReturnCode(401, "Session expired"));
       }
 
       const user = userSession.user as any;
 
-      // Verify access token
-      let tokenValid = false;
-      if (accessToken) {
-        try {
-          const decoded = JWT.verify(
-            accessToken,
-            process.env.JWT_SECRET || "secret"
-          ) as any;
-          tokenValid = decoded.id === user._id.toString();
-        } catch {
-          tokenValid = false;
-        }
-      }
+      // Cache the session data for future requests
+      sessionCache.set(refreshToken, {
+        userId: user._id.toString(),
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      });
 
       return res.status(200).json({
         ...ReturnCode(200),
@@ -225,16 +280,10 @@ class AuthenticationController {
           user: {
             _id: user._id,
             email: user.email,
+            name: user.name,
             role: user.role,
           },
-          session: {
-            sessionId: userSession.session_id,
-            expireAt: userSession.expireAt,
-            createdAt: userSession.createdAt,
-          },
-          authenticated: true,
-          tokenValid,
-          requiresRefresh: !tokenValid,
+          isAuthenticated: true,
         },
       });
     } catch (error) {
@@ -248,11 +297,17 @@ class AuthenticationController {
   };
 
   public RefreshToken = async (req: Request, res: Response) => {
+    //Generate MongoDB operation ID
+
+    if (!process.env.REFRESH_TOKEN_COOKIE) {
+      return res.status(500).json(ReturnCode(500));
+    }
+
     const operationId = generateOperationId("refresh_token");
 
     try {
       const refresh_token =
-        req.cookies?.[process.env.REFRESH_TOKEN_COOKIE ?? ""];
+        req.cookies?.[process.env.REFRESH_TOKEN_COOKIE as string];
 
       const user = await Usersession.findOne({
         session_id: refresh_token,
@@ -262,13 +317,13 @@ class AuthenticationController {
 
       if (!user || !user.user) return res.status(404).json(ReturnCode(404));
 
-      const TokenPayload = { id: user.user._id, role: user.user.role };
+      const TokenPayload = { sub: user.user._id, role: user.user.role };
 
-      const newToken = GenerateToken(TokenPayload, "1h");
+      const newToken = GenerateToken(TokenPayload, "30m");
 
       this.setAccessTokenCookie(res, newToken);
 
-      return res.status(200).json({ ...ReturnCode(200), token: newToken });
+      return res.status(200).json({ ...ReturnCode(200) });
     } catch (error) {
       if (handleDatabaseError(error, res, "token refresh")) {
         return;
@@ -284,7 +339,7 @@ class AuthenticationController {
       sameSite: "lax",
       httpOnly: true,
       secure: process.env.NODE_ENV === "PROD",
-      expires: getDateByMinute(15),
+      expires: getDateByMinute(30),
     });
   }
 
@@ -300,14 +355,16 @@ class AuthenticationController {
       }
     );
   }
-  private clearAccessTokenCookie(res: Response): void {
+
+  public clearAccessTokenCookie(res: Response): void {
     res.clearCookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", {
       sameSite: "lax",
       httpOnly: true,
       secure: process.env.NODE_ENV === "PROD",
     });
   }
-  private clearRefreshTokenCookie(res: Response): void {
+
+  public clearRefreshTokenCookie(res: Response): void {
     res.clearCookie(process.env.REFRESH_TOKEN_COOKIE || "refresh_token", {
       sameSite: "lax",
       httpOnly: true,

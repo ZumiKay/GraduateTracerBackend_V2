@@ -1,14 +1,13 @@
-import { Request, Response } from "express";
-import Form from "../model/Form.model";
-import FormResponse from "../model/Response.model";
-import Content from "../model/Content.model";
-import { CustomRequest } from "../types/customType";
-import { getResponseDisplayName } from "../utilities/respondentUtils";
-import { ReturnCode } from "../utilities/helper";
+import { Response } from "express";
+import { CustomRequest } from "../../types/customType";
 import {
-  handleDatabaseError,
   generateOperationId,
-} from "../utilities/MongoErrorHandler";
+  handleDatabaseError,
+} from "../../utilities/MongoErrorHandler";
+import Form from "../../model/Form.model";
+import { ReturnCode } from "../../utilities/helper";
+import FormResponse from "../../model/Response.model";
+import { getResponseDisplayName } from "../../utilities/respondentUtils";
 
 // Get available columns for export
 export async function getAvailableColumns(req: CustomRequest, res: Response) {
@@ -127,7 +126,7 @@ export async function createExportJob(req: CustomRequest, res: Response) {
       config: exportConfig,
       status: "pending",
       progress: 0,
-      createdBy: req.user.id,
+      createdBy: req.user.sub,
       createdAt: new Date().toISOString(),
     };
 

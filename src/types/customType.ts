@@ -4,7 +4,7 @@ import { Types } from "mongoose";
 import { JwtPayload } from "jsonwebtoken";
 
 export interface UserToken extends JwtPayload {
-  id: Types.ObjectId;
+  sub: string;
   role: ROLE;
   userDetails?: {
     _id: Types.ObjectId;

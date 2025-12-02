@@ -1,6 +1,6 @@
 import { Router } from "express";
-import NotificationController from "../controller/notification.controller";
 import UserMiddleware from "../middleware/User.middleware";
+import notificationController from "../controller/utils/notification.controller";
 
 const router = Router();
 
@@ -8,42 +8,42 @@ const router = Router();
 router.get(
   "/",
   UserMiddleware.VerifyToken as never,
-  NotificationController.GetNotifications
+  notificationController.GetNotifications
 );
 
 // Mark notification as read
 router.put(
   "/:notificationId/read",
   UserMiddleware.VerifyToken as never,
-  NotificationController.MarkAsRead
+  notificationController.MarkAsRead
 );
 
 // Mark all notifications as read
 router.put(
   "/mark-all-read",
   UserMiddleware.VerifyToken as never,
-  NotificationController.MarkAllAsRead
+  notificationController.MarkAllAsRead
 );
 
 // Delete notification
 router.delete(
   "/:notificationId",
   UserMiddleware.VerifyToken as never,
-  NotificationController.DeleteNotification
+  notificationController.DeleteNotification
 );
 
 // Get notification settings
 router.get(
   "/settings",
   UserMiddleware.VerifyToken as never,
-  NotificationController.GetNotificationSettings
+  notificationController.GetNotificationSettings
 );
 
 // Update notification settings
 router.put(
   "/settings",
   UserMiddleware.VerifyToken as never,
-  NotificationController.UpdateNotificationSettings
+  notificationController.UpdateNotificationSettings
 );
 
 export default router;

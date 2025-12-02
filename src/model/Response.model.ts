@@ -10,14 +10,15 @@ export type ResponseAnswerType =
   | Array<number>;
 
 export type ResponseAnswerReturnType = {
-  key: number;
-  val: ResponseAnswerType;
+  key: number | Array<number>;
+  val: ResponseAnswerType | Array<string>;
 };
 
 export interface ResponseSetType {
   question: ContentType | Types.ObjectId | string;
   response: ResponseAnswerType | ResponseAnswerReturnType;
   score?: number;
+  comment?: string;
   scoringMethod?: ScoringMethod;
 }
 
@@ -26,11 +27,24 @@ export enum RespondentType {
   guest = "GUEST",
 }
 
-export enum completionStatus {
+export enum ResponseCompletionStatus {
   completed = "completed",
+  noscore = "noscore",
+  notreturn = "notreturn",
+  autoscore = "autoscore",
   partial = "partial",
   abandoned = "abandoned",
-  idle = "idle",
+  submitted = "submitted",
+}
+
+export interface QuestionResponseScoreType {
+  questionId: string | Types.ObjectId;
+  score: number;
+  comment?: string;
+}
+export interface UpdateResponseScoretype {
+  responseId: string;
+  scores: Array<QuestionResponseScoreType>;
 }
 
 export interface FormResponseType {
@@ -42,7 +56,7 @@ export interface FormResponseType {
   totalScore?: number;
   isCompleted?: boolean;
   submittedAt?: Date;
-  completionStatus?: completionStatus;
+  completionStatus?: ResponseCompletionStatus;
   respondentEmail?: string;
   respondentName?: string;
   createdAt?: Date;
@@ -101,6 +115,10 @@ const ResponseSetSchema = new Schema<ResponseSetType>({
     type: Number,
     required: false,
   },
+  comment: {
+    type: String,
+    required: false,
+  },
   scoringMethod: {
     type: String,
     enum: ScoringMethod,
@@ -140,13 +158,10 @@ const ResponseSchema = new Schema<FormResponseType>(
       type: Number,
       default: 0,
     },
-    isCompleted: {
-      type: Boolean,
-      default: false,
-    },
+
     completionStatus: {
       type: String,
-      enum: completionStatus,
+      enum: ResponseCompletionStatus,
       default: "partial",
     },
     respondentEmail: {

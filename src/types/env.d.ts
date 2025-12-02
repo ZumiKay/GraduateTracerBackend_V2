@@ -24,6 +24,9 @@ declare namespace NodeJS {
     FRONTEND_URL: string;
     // Form link expiration
     FORM_LINK_EXPIRATION: string;
+    INVITE_LINK_SECRET: string;
+    RSA_PUBLIC_KEY: string;
+    RSA_PRIVATE_KEY: string;
     [key: string]: string | undefined; // Optional: For additional dynamic environment variables
   }
 }

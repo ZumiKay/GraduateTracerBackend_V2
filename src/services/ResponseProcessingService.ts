@@ -2,11 +2,12 @@ import { Types } from "mongoose";
 import FormResponse, {
   ResponseSetType,
   FormResponseType,
-  completionStatus,
-  ResponseAnswerType,
   ScoringMethod,
   RespondentType,
   SubmitionProcessionReturnType,
+  ResponseCompletionStatus,
+  ResponseAnswerType,
+  UpdateResponseScoretype,
 } from "../model/Response.model";
 import Content, { ContentType, QuestionType } from "../model/Content.model";
 import Form, { FormType, returnscore } from "../model/Form.model";
@@ -15,6 +16,7 @@ import EmailService from "./EmailService";
 import User from "../model/User.model";
 import { FingerprintService } from "../utilities/fingerprint";
 import { Request } from "express";
+import { RespondentTrackingService } from "./RespondentTrackingService";
 
 interface ValidateResultReturnType {
   errormess?: string;
@@ -69,6 +71,16 @@ export class ResponseProcessingService {
       isUser = (await User.findOne({ email: respondentEmail }))?._id;
     }
 
+    //Verify if user already responded for single response form
+    if (form.setting?.submitonce && req) {
+      const trackingResult =
+        await RespondentTrackingService.checkRespondentExists(formId, req);
+
+      if (trackingResult.hasResponded) {
+        throw new Error("Form already submitted");
+      }
+    }
+
     //Check response format
 
     const contents = await Content.find({ formId: formId }).lean();
@@ -107,7 +119,7 @@ export class ResponseProcessingService {
       formId: new Types.ObjectId(formId),
       responseset: responseSet,
       submittedAt: new Date(),
-      completionStatus: completionStatus.completed,
+      completionStatus: ResponseCompletionStatus.completed,
       respondentFingerprint: browserfingerprinting,
       respondentIP: respodnentIp,
       ...(form.setting?.email && {
@@ -135,7 +147,7 @@ export class ResponseProcessingService {
     }
 
     //Verify if user alr respond for single response form
-    if (!form.setting?.submitonce) {
+    if (form.setting?.submitonce) {
       const hasResponse = await FormResponse.findOne({
         respondentEmail,
         formId,
@@ -203,15 +215,28 @@ export class ResponseProcessingService {
     totalScore =
       SolutionValidationService.calcualteResponseTotalScore(scoredResponses);
 
+    // Determine completion status based on auto-scoring and scoring method
+    let completionStatus = ResponseCompletionStatus.submitted;
+    if (isNonScore) {
+      completionStatus = ResponseCompletionStatus.noscore;
+    } else if (isAutoScored) {
+      // Check if there are any manual scoring responses
+      const hasManualScoring = scoredResponses.some(
+        (i) => i.scoringMethod === ScoringMethod.MANUAL
+      );
+      completionStatus = hasManualScoring
+        ? ResponseCompletionStatus.partial
+        : ResponseCompletionStatus.autoscore;
+    }
+
     // Create response data
     const responseData: Partial<FormResponseType> = {
       formId: new Types.ObjectId(formId),
       responseset: scoredResponses,
       maxScore: form.totalscore,
       totalScore,
-      isCompleted: true,
       submittedAt: new Date(),
-      completionStatus: completionStatus.completed,
+      completionStatus: completionStatus,
       respondentType: user ? RespondentType.user : RespondentType.guest,
       respondentEmail: user ? user.email : respondentEmail,
       respondentName: respondentName,
@@ -356,38 +381,148 @@ export class ResponseProcessingService {
     }
   }
 
-  static async updateResponseScores(responseId: string, scores: any[]) {
-    const response = await FormResponse.findById(responseId).populate("formId");
+  static async updateResponseScores({
+    responseId,
+    scores,
+  }: UpdateResponseScoretype) {
+    // Validate input
+    if (!scores || !Array.isArray(scores) || scores.length === 0) {
+      throw new Error("Invalid scores data");
+    }
+
+    // Find response - not using lean() to maintain _id on subdocuments
+    const response = await FormResponse.findById(responseId).select(
+      "responseset totalScore maxScore formId"
+    );
+
     if (!response) {
       throw new Error("Response not found");
     }
 
-    const updatedResponseSet = response.responseset.map((responseItem) => {
-      const scoreUpdate = scores.find(
-        (s: any) => s.questionId === responseItem.question.toString()
-      );
-      if (scoreUpdate) {
-        return {
-          ...responseItem,
-          score: scoreUpdate.score,
-          isManuallyScored: true,
-        };
+    // Create a map for efficient lookup
+    const [questionScoreMap, questionCommentMap] = [
+      new Map(scores.map((s) => [s.questionId.toString(), s.score])),
+      new Map(scores.map((c) => [c.questionId.toString(), c.comment])),
+    ];
+
+    let updatedTotalScore = 0;
+    let updatedCount = 0;
+
+    // Update scores and comment in the responseset array
+    response.responseset.forEach((responseItem) => {
+      const questionId =
+        typeof responseItem.question === "string"
+          ? responseItem.question
+          : (responseItem.question as Types.ObjectId).toString();
+
+      const newScore = questionScoreMap.get(questionId);
+      const newComment = questionCommentMap.get(questionId);
+
+      if (newScore !== undefined || newComment) {
+        if (newScore !== undefined) {
+          responseItem.score = newScore;
+          responseItem.scoringMethod = ScoringMethod.MANUAL;
+        }
+        if (newComment) responseItem.comment = newComment;
+        updatedCount++;
       }
-      return responseItem;
+
+      // Calculate new total score
+      updatedTotalScore += responseItem.score || 0;
     });
 
-    const totalScore = updatedResponseSet.reduce(
+    if (updatedCount === 0) {
+      return {
+        success: true,
+        message: "No matching questions found to update",
+      };
+    }
+
+    // Update totalScore and completionStatus
+    response.totalScore = updatedTotalScore;
+    response.completionStatus = ResponseCompletionStatus.completed;
+
+    // Save all changes in a single operation with optimized write concern
+    await response.save({ validateBeforeSave: false });
+
+    return {
+      success: true,
+      updatedScores: updatedCount,
+      totalScore: updatedTotalScore,
+    };
+  }
+
+  /**
+   * Batch update scores for multiple responses
+   * More efficient when updating multiple responses at once
+   */
+  static async batchUpdateResponseScores(
+    updates: Array<{
+      responseId: string;
+      scores: Array<{ questionId: string; score: number }>;
+    }>
+  ) {
+    const results = await Promise.allSettled(
+      updates.map((update) =>
+        this.updateResponseScores({
+          responseId: update.responseId,
+          scores: update.scores,
+        })
+      )
+    );
+
+    const successful = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
+
+    return {
+      success: failed === 0,
+      total: updates.length,
+      successful,
+      failed,
+      results: results.map((r, idx) => ({
+        responseId: updates[idx].responseId,
+        status: r.status,
+        data: r.status === "fulfilled" ? r.value : undefined,
+        error: r.status === "rejected" ? r.reason?.message : undefined,
+      })),
+    };
+  }
+
+  /**
+   * Recalculate total score for a response
+   * Useful for fixing inconsistencies or after data migration
+   */
+  static async recalculateResponseTotalScore(responseId: string) {
+    const response = await FormResponse.findById(responseId).select(
+      "responseset totalScore"
+    );
+
+    if (!response) {
+      throw new Error("Response not found");
+    }
+
+    const calculatedTotal = response.responseset.reduce(
       (sum, item) => sum + (item.score || 0),
       0
     );
 
-    await FormResponse.findByIdAndUpdate(responseId, {
-      responseset: updatedResponseSet,
-      totalScore,
-      isAutoScored: false,
-    });
+    if (calculatedTotal !== response.totalScore) {
+      response.totalScore = calculatedTotal;
+      await response.save({ validateBeforeSave: false });
 
-    return { success: true };
+      return {
+        success: true,
+        previousTotal: response.totalScore,
+        newTotal: calculatedTotal,
+        corrected: true,
+      };
+    }
+
+    return {
+      success: true,
+      totalScore: calculatedTotal,
+      corrected: false,
+    };
   }
 
   private static deepEqual(a: any, b: any): boolean {
@@ -617,7 +752,7 @@ export class ResponseProcessingService {
     const totalResponses = await FormResponse.countDocuments({ formId });
     const completedResponses = await FormResponse.countDocuments({
       formId,
-      completionStatus: completionStatus.completed,
+      completionStatus: ResponseCompletionStatus.completed,
     });
 
     const responses = await FormResponse.find({ formId })

@@ -6,50 +6,14 @@ import {
   RequestHandler,
 } from "express";
 import crypto from "crypto";
+import UserMiddleware from "../middleware/User.middleware";
+import { configDotenv } from "dotenv";
+configDotenv();
 
 const encryptRoute = Router();
 
-// RSA Key Pair Generation and Management
-const generateRSAKeyPair = () => {
-  return crypto.generateKeyPairSync("rsa", {
-    modulusLength: 2048,
-    publicKeyEncoding: {
-      type: "spki",
-      format: "pem",
-    },
-    privateKeyEncoding: {
-      type: "pkcs8",
-      format: "pem",
-    },
-  });
-};
-
-// Global key pair (in production, store these securely)
-let keyPair: { publicKey: string; privateKey: string };
-
-// Initialize or load RSA keys
-const initializeKeys = () => {
-  const publicKeyEnv = process.env.RSA_PUBLIC_KEY;
-  const privateKeyEnv = process.env.RSA_PRIVATE_KEY;
-
-  if (publicKeyEnv && privateKeyEnv) {
-    // Use keys from environment variables
-    keyPair = {
-      publicKey: publicKeyEnv.replace(/\\n/g, "\n"),
-      privateKey: privateKeyEnv.replace(/\\n/g, "\n"),
-    };
-    console.log("Using RSA keys from environment variables");
-  } else {
-    // Generate new keys (for development)
-    keyPair = generateRSAKeyPair();
-    console.log("Generated new RSA key pair for development");
-    console.log("Public Key:", keyPair.publicKey);
-    console.log("Private Key:", keyPair.privateKey);
-  }
-};
-
-// Initialize keys on module load
-initializeKeys();
+// Log key initialization (remove in production)
+console.log("✅ RSA keys loaded from .env successfully");
 
 // RSA Encryption function (for backend testing)
 const encryptWithPublicKey = (data: string): string => {
@@ -57,7 +21,7 @@ const encryptWithPublicKey = (data: string): string => {
     const buffer = Buffer.from(data, "utf8");
     const encrypted = crypto.publicEncrypt(
       {
-        key: keyPair.publicKey,
+        key: process.env.RSA_PUBLIC_KEY as string,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: "sha256",
       },
@@ -87,7 +51,7 @@ const decryptWithPrivateKey = (encryptedData: string): string => {
     const buffer = Buffer.from(paddedValue, "base64");
     const decrypted = crypto.privateDecrypt(
       {
-        key: keyPair.privateKey,
+        key: process.env.RSA_PRIVATE_KEY as string,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: "sha256",
       },
@@ -115,7 +79,7 @@ const hybridEncrypt = (data: string): string => {
     // Encrypt AES key with RSA
     const encryptedKey = crypto.publicEncrypt(
       {
-        key: keyPair.publicKey,
+        key: process.env.RSA_PUBLIC_KEY as string,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: "sha256",
       },
@@ -157,7 +121,7 @@ const hybridDecrypt = (encryptedData: string): string => {
     // Decrypt AES key with RSA
     const aesKey = crypto.privateDecrypt(
       {
-        key: keyPair.privateKey,
+        key: process.env.RSA_PRIVATE_KEY as string,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: "sha256",
       },
@@ -205,26 +169,28 @@ const decryptUrlParam = (encryptedValue: string): string => {
 };
 
 // GET /public-key - Serve the public key for frontend encryption
-encryptRoute.get("/public-key", (req: Request, res: Response): void => {
-  try {
-    res.status(200).json({
-      success: true,
-      data: {
-        publicKey: keyPair.publicKey,
+encryptRoute.get(
+  "/public-key",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  (req: Request, res: Response): void => {
+    try {
+      res.status(200).json({
+        success: true,
+        publicKey: process.env.RSA_PUBLIC_KEY as string,
         keyFormat: "pem",
         algorithm: "RSA-OAEP-256",
-      },
-      message: "Public key retrieved successfully",
-    });
-  } catch (error) {
-    console.error("Public key retrieval error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to retrieve public key",
-      error: "PUBLIC_KEY_ERROR",
-    });
+        message: "Public key retrieved successfully",
+      });
+    } catch (error) {
+      console.error("Public key retrieval error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to retrieve public key",
+        error: "PUBLIC_KEY_ERROR",
+      });
+    }
   }
-});
+);
 
 // POST /encrypt - Encrypt a value
 encryptRoute.post("/encrypt", (req: Request, res: Response): void => {

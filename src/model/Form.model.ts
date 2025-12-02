@@ -2,6 +2,7 @@ import { Schema, model, Types } from "mongoose";
 import z from "zod";
 import { ContentType } from "./Content.model";
 import FormResponse, { FormResponseType } from "./Response.model";
+import { UserType } from "./User.model";
 
 export enum SubmitType {
   Once = "ONCE",
@@ -45,6 +46,13 @@ interface FromSettingType {
   acceptGuest?: boolean;
 }
 
+export interface PendingCollarboratorsType {
+  _id: Types.ObjectId;
+  expireIn: number;
+  user: Types.ObjectId | UserType;
+  code: string;
+}
+
 export interface FormType {
   _id: Types.ObjectId;
   title: string;
@@ -63,6 +71,8 @@ export interface FormType {
   responses?: Array<FormResponseType>;
   createdAt?: Date;
   updatedAt?: Date;
+  inviteCodes?: Array<string>;
+  pendingCollarborators: Array<PendingCollarboratorsType>;
 }
 
 const FormSettingSchema = new Schema<FromSettingType>({
@@ -108,6 +118,27 @@ const FormSettingSchema = new Schema<FromSettingType>({
   },
 });
 
+const FormCollarboratorPendingSchema = new Schema<PendingCollarboratorsType>({
+  code: {
+    type: "String",
+    required: true,
+    unique: true,
+    validate: {
+      validator: (code) => code.lenth > 0,
+      message: "Code is required",
+    },
+  },
+  expireIn: {
+    type: "Number",
+    required: true,
+  },
+  user: {
+    type: Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+});
+
 const FormSchema = new Schema<FormType>(
   {
     title: {
@@ -140,6 +171,10 @@ const FormSchema = new Schema<FormType>(
       type: [Schema.Types.ObjectId],
       ref: "User",
       default: null,
+      required: false,
+    },
+    pendingCollarborators: {
+      type: [FormCollarboratorPendingSchema],
       required: false,
     },
     totalpage: {

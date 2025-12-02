@@ -13,34 +13,39 @@ import {
   GetFormCollaborators,
   ChangePrimaryOwner,
   ManageFormCollaborator,
-} from "../controller/form.controller";
+  GetFormDetails,
+  ResendPendingInvitation,
+  DeletePendingCollaborator,
+} from "../controller/form/form.controller";
 import {
   AddFormContent,
   ContentValidate,
   EditFormContent,
   ValidateFormContent,
-} from "../controller/content.controller";
+} from "../controller/form/content.controller";
 import { createFormValidate } from "../model/Form.model";
 import { validate } from "../middleware/Validatetor";
-import authenicationController from "../controller/authenication.controller";
+import authenicationController from "../controller/auth/authenication.controller";
 import UserMiddleware from "../middleware/User.middleware";
 import {
   DeleteUser,
   EditUser,
-  GetRespondentProfile,
+  GetUserProfile,
   RegisterUser,
   UserValidate,
-} from "../controller/user.controller";
-import form_responseController from "../controller/form_response.controller";
-import VerifyRecaptcha from "../controller/recaptcha.controller";
-import questionController from "../controller/question.controller";
+} from "../controller/auth/user.controller";
+import form_responseController from "../controller/response/form_response.controller";
+import questionController from "../controller/form/question.controller";
+import VerifyRecaptcha from "../controller/utils/recaptcha.controller";
+import { ConfirmAddCollaborator } from "../controller/form/form.collaborator.controller";
 
 const UserRoute = Router();
 
 //Get User Profile
 UserRoute.get(
   "/user/profile",
-  GetRespondentProfile as unknown as RequestHandler
+  UserMiddleware.VerifyToken,
+  GetUserProfile as unknown as RequestHandler
 );
 
 //RegisterUser
@@ -50,15 +55,15 @@ UserRoute.post(
   validate(UserValidate) as unknown as RequestHandler,
   RegisterUser as unknown as RequestHandler
 );
-//User Management - Enhanced Security for Profile Operations
+//User Management
 UserRoute.put(
   "/edituser",
-  UserMiddleware.VerifyTokenAndSession as unknown as RequestHandler,
+  UserMiddleware.VerifyToken,
   EditUser as unknown as RequestHandler
 );
 UserRoute.delete(
   "/deleteuser",
-  UserMiddleware.VerifyTokenAndSession as unknown as RequestHandler,
+  UserMiddleware.VerifyToken,
   DeleteUser as unknown as RequestHandler
 );
 
@@ -71,8 +76,6 @@ UserRoute.post(
 );
 UserRoute.get(
   "/checksession",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  UserMiddleware.VerifyRefreshToken as unknown as RequestHandler,
   authenicationController.CheckSession as unknown as RequestHandler
 );
 UserRoute.delete(
@@ -100,19 +103,19 @@ UserRoute.post(
 UserRoute.post(
   "/createform",
   [
-    UserMiddleware.VerifyTokenAndSession as unknown as RequestHandler,
+    UserMiddleware.VerifyToken as unknown as RequestHandler,
     validate(createFormValidate) as unknown as RequestHandler,
   ],
   CreateForm as unknown as RequestHandler
 );
 UserRoute.put(
   "/editform",
-  UserMiddleware.VerifyTokenAndSession as unknown as RequestHandler,
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
   EditForm as unknown as RequestHandler
 );
 UserRoute.delete(
   "/deleteform",
-  UserMiddleware.VerifyTokenAndSession as unknown as RequestHandler,
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
   DeleteForm as unknown as RequestHandler
 );
 UserRoute.get(
@@ -137,6 +140,13 @@ UserRoute.get(
   form_responseController.GetPublicFormData as unknown as RequestHandler
 );
 
+// Get Form Details with Access Verification (for ViewResponsePage)
+UserRoute.get(
+  "/form/details/:formId",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  GetFormDetails as unknown as RequestHandler
+);
+
 //Form Owner Management Routes
 UserRoute.post(
   "/addformowner",
@@ -148,13 +158,18 @@ UserRoute.delete(
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   ManageFormCollaborator as unknown as RequestHandler
 );
+UserRoute.post(
+  "/collaborator/confirm",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  ConfirmAddCollaborator as unknown as RequestHandler
+);
 UserRoute.get(
   "/getformowners/:formId",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   GetFormCollaborators as unknown as RequestHandler
 );
 UserRoute.delete(
-  "/removeselfform",
+  "/removeselfform/:formId",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   RemoveSelfFromForm as unknown as RequestHandler
 );
@@ -163,6 +178,18 @@ UserRoute.put(
   "/transferuser",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   ChangePrimaryOwner as unknown as RequestHandler
+);
+
+// Pending collaborator management
+UserRoute.post(
+  "/resendpending",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  ResendPendingInvitation as unknown as RequestHandler
+);
+UserRoute.delete(
+  "/deletepending",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  DeletePendingCollaborator as unknown as RequestHandler
 );
 
 //Form Validation Routes

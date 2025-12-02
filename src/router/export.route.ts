@@ -1,49 +1,49 @@
 import express from "express";
+import UserMiddleware from "../middleware/User.middleware";
 import {
-  getAvailableColumns,
-  getExportJobs,
   createExportJob,
-  getExportJob,
   deleteExportJob,
   downloadExportFile,
+  getAvailableColumns,
+  getExportJob,
+  getExportJobs,
   quickExport,
-} from "../controller/export.controller";
-import UserMiddleware from "../middleware/User.middleware";
+} from "../controller/utils/export.controller";
 
 const router = express.Router();
 
 // Get available columns for export - Enhanced Security
 router.get(
   "/forms/:formId/columns",
-  UserMiddleware.VerifyTokenAndSession as never,
+  UserMiddleware.VerifyToken as never,
   getAvailableColumns
 );
 
 // Get export jobs for a form - Enhanced Security
 router.get(
   "/forms/:formId/exports",
-  UserMiddleware.VerifyTokenAndSession as never,
+  UserMiddleware.VerifyToken as never,
   getExportJobs
 );
 
 // Create new export job - Enhanced Security
 router.post(
   "/forms/:formId/exports",
-  UserMiddleware.VerifyTokenAndSession as never,
+  UserMiddleware.VerifyToken as never,
   createExportJob
 );
 
 // Get export job by ID - Enhanced Security
 router.get(
   "/forms/:formId/exports/:jobId",
-  UserMiddleware.VerifyTokenAndSession as never,
+  UserMiddleware.VerifyToken as never,
   getExportJob
 );
 
 // Delete export job - Enhanced Security
 router.delete(
   "/forms/:formId/exports/:jobId",
-  UserMiddleware.VerifyTokenAndSession as never,
+  UserMiddleware.VerifyToken as never,
   deleteExportJob
 );
 
@@ -53,7 +53,7 @@ router.get("/download/:filename", downloadExportFile);
 // Quick export - Enhanced Security
 router.get(
   "/forms/:formId/quick",
-  UserMiddleware.VerifyTokenAndSession as never,
+  UserMiddleware.VerifyToken as never,
   quickExport
 );
 

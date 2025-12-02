@@ -1,12 +1,9 @@
 import { Response } from "express";
-import { CustomRequest } from "../types/customType";
-import { ReturnCode } from "../utilities/helper";
 import { Types } from "mongoose";
-import Notification from "../model/Notification.model";
-import {
-  handleDatabaseError,
-  generateOperationId,
-} from "../utilities/MongoErrorHandler";
+import { generateOperationId } from "../../utilities/MongoErrorHandler";
+import Notification from "../../model/Notification.model";
+import { CustomRequest } from "../../types/customType";
+import { ReturnCode } from "../../utilities/helper";
 
 export interface NotificationData {
   userId: string;
@@ -362,4 +359,3 @@ class NotificationController {
 }
 
 export default new NotificationController();
-export { NotificationController };

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import { ReturnCode } from "../utilities/helper";
-import { generateOperationId } from "../utilities/MongoErrorHandler";
+import { generateOperationId } from "../../utilities/MongoErrorHandler";
+import { ReturnCode } from "../../utilities/helper";
 
 export default async function VerifyRecaptcha(req: Request, res: Response) {
   const { token } = req.body;

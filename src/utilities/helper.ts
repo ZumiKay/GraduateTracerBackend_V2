@@ -52,6 +52,121 @@ export function ReturnCode(
   return returnValue(code, custommess ?? message);
 }
 
+/**
+ * Formats a date to dd-mm-yyyy format
+ *
+ * @param date - Date object, string, or timestamp
+ * @returns Formatted date string in dd-mm-yyyy format
+ */
+export const formatDateToDDMMYYYY = (date: Date | string | number): string => {
+  if (!date) return "";
+
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return String(date);
+
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+
+  return `${day}-${month}-${year}`;
+};
+
+/**
+ * Converts a ContentTitle object or string to a plain string
+ * Extracts text from ContentTitle structure recursively
+ *
+ * @param title - ContentTitle object or string
+ * @param fallback - Fallback text if title is empty (default: "Question")
+ * @returns Plain string representation of the title
+ */
+export const convertTitleToString = (
+  title: ContentTitle | string | undefined | null,
+  fallback: string = "Question"
+): string => {
+  if (!title) return fallback;
+
+  if (typeof title === "string") return title;
+
+  // If title has a text property directly
+  if (title.text) return title.text;
+
+  // If title has content array, extract text from it
+  if (title.content && Array.isArray(title.content)) {
+    const texts: string[] = [];
+
+    const extractText = (items: ContentTitle[]): void => {
+      for (const item of items) {
+        if (item.text) {
+          texts.push(item.text);
+        }
+        if (item.content && Array.isArray(item.content)) {
+          extractText(item.content);
+        }
+      }
+    };
+
+    extractText(title.content);
+    const result = texts.join(" ").trim();
+    return result || fallback;
+  }
+
+  return fallback;
+};
+
+/**
+ * Converts response value to string, handling object types
+ *
+ * @param value - Response value (can be string, number, object, etc.)
+ * @returns String representation of the value
+ */
+export const convertResponseToString = (value: any): string => {
+  if (value === null || value === undefined || value === "") {
+    return "No Response";
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+
+  if (typeof value === "object") {
+    // Handle arrays
+    if (Array.isArray(value)) {
+      return value.map((v) => convertResponseToString(v)).join(", ");
+    }
+
+    // Handle objects with key/val structure (like CheckBox)
+    if (value.key && value.val) {
+      if (Array.isArray(value.key) && Array.isArray(value.val)) {
+        return value.key
+          .map((k: any, i: number) => `${k}: ${value.val[i]}`)
+          .join(", ");
+      }
+      return `${value.key}: ${value.val}`;
+    }
+
+    // Handle range objects
+    if (value.start !== undefined && value.end !== undefined) {
+      return `${value.start} to ${value.end}`;
+    }
+
+    if (value.val !== undefined) {
+      return String(value.val);
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+
+  return String(value);
+};
+
 export const ValidatePassword = (pass: string) => {
   const hasNumber = /\d/.test(pass);
   const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
@@ -316,6 +431,138 @@ export const groupContentByParent = (data: Array<ContentType>) => {
   }
 
   return result;
+};
+
+/**
+ * Adds hierarchical question numbering to questions
+ * Main questions: 1, 2, 3
+ * Conditional questions: 3.1, 3.2
+ * Sub-conditional questions: 3.1.1, 3.1.2
+ *
+ * @param questions - Array of questions
+ * @returns Array of questions with (questionId)
+ */
+export const AddQuestionNumbering = ({
+  questions,
+  lastIdx,
+}: {
+  questions: Array<ContentType>;
+  lastIdx?: number;
+}): Array<ContentType> => {
+  if (!questions || questions.length === 0) {
+    return [];
+  }
+
+  const questionIdMap = new Map<string, string>();
+
+  // Pre-build index map for O(1) lookups instead of indexOf
+  const questionIndexMap = new Map<ContentType, number>();
+  questions.forEach((q, idx) => {
+    questionIndexMap.set(q, idx);
+  });
+
+  // Pre-build parent-to-children mapping for efficient sibling lookups
+  const parentChildrenMap = new Map<
+    string,
+    Array<{ question: ContentType; index: number }>
+  >();
+
+  questions.forEach((question, index) => {
+    if (question.parentcontent) {
+      const parentId = question.parentcontent.qId;
+      if (!parentChildrenMap.has(parentId)) {
+        parentChildrenMap.set(parentId, []);
+      }
+      parentChildrenMap.get(parentId)!.push({ question, index });
+    }
+  });
+
+  // Sort sibling groups once upfront by qIdx and original index
+  parentChildrenMap.forEach((siblings) => {
+    siblings.sort((a, b) => {
+      const qIdxDiff = (a.question.qIdx || 0) - (b.question.qIdx || 0);
+      return qIdxDiff !== 0 ? qIdxDiff : a.index - b.index;
+    });
+  });
+
+  // Helper function to build hierarchical number
+  const buildQuestionNumber = (
+    question: ContentType,
+    index: number,
+    lastIndexWihoutParentCount?: number
+  ): string => {
+    //QuestionId for non conditional question
+    if (!question.parentcontent) {
+      return `${
+        lastIndexWihoutParentCount
+          ? Math.abs(lastIndexWihoutParentCount - index) + 1
+          : index + 1
+      }`;
+    }
+
+    // Find parent question number
+    const parentId = question.parentcontent.qId;
+    let parentNumber = questionIdMap.get(parentId);
+
+    if (!parentNumber) {
+      const parentQuestion = questions.find(
+        (q) => q._id?.toString() === parentId
+      );
+      if (parentQuestion) {
+        parentNumber = parentQuestion.questionId || `${index + 1}`;
+      } else {
+        parentNumber = `${index + 1}`;
+      }
+    }
+
+    const siblings = parentChildrenMap.get(parentId);
+    let position = 1;
+
+    if (siblings) {
+      for (const sibling of siblings) {
+        if (sibling.question._id?.toString() === question._id?.toString()) {
+          break;
+        }
+        position++;
+      }
+    }
+
+    return `${parentNumber}.${position}`;
+  };
+
+  let lastIndexWihoutParentCount = 0;
+  // Process questions and assign questionId
+  const result = questions.map((question, index) => {
+    const questionId = buildQuestionNumber(
+      question,
+      (lastIdx ? lastIdx : 0) + index,
+      lastIdx ? undefined : lastIndexWihoutParentCount
+    );
+
+    // Store in map for reference by child questions
+    if (question._id) {
+      questionIdMap.set(question._id.toString(), questionId);
+    }
+
+    // Update parentcontent with parent's questionId if it exists
+    let updatedParentContent = question.parentcontent;
+    if (question.parentcontent) {
+      const parentQuestionId = questionIdMap.get(question.parentcontent.qId);
+      updatedParentContent = {
+        ...question.parentcontent,
+        questionId: parentQuestionId || undefined,
+      };
+      lastIndexWihoutParentCount += 1;
+    }
+
+    return {
+      ...question,
+      questionId,
+      parentcontent: updatedParentContent,
+    };
+  });
+
+  return groupContentByParent(result);
 };
 
 //Extract Answer Key Value

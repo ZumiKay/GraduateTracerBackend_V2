@@ -1,10 +1,10 @@
 import { z } from "zod";
-import Content, { ContentType, QuestionType } from "../model/Content.model";
+import Content, { ContentType, QuestionType } from "../../model/Content.model";
 import { Request, Response } from "express";
-import { ReturnCode } from "../utilities/helper";
-import { MongoErrorHandler } from "../utilities/MongoErrorHandler";
-import Form from "../model/Form.model";
-import SolutionValidationService from "../services/SolutionValidationService";
+import { ReturnCode } from "../../utilities/helper";
+import { MongoErrorHandler } from "../../utilities/MongoErrorHandler";
+import Form from "../../model/Form.model";
+import SolutionValidationService from "../../services/SolutionValidationService";
 
 export const ContentValidate = z.object({
   body: z.object({

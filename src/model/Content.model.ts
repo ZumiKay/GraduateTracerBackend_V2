@@ -34,6 +34,7 @@ export interface ConditionalType {
 
 export interface ParentContentType {
   _id?: string;
+  questionId?: string;
   qId: string;
   qIdx?: number;
   optIdx: Number;
@@ -51,6 +52,7 @@ export interface ContentType {
   type: QuestionType;
   qIdx: number;
   formId: Types.ObjectId;
+  questionId?: string; //For question numbering
   multiple?: Array<ChoiceQuestionType>;
   text?: string;
   checkbox?: Array<ChoiceQuestionType>;
@@ -290,7 +292,3 @@ ContentSchema.index({ idx: 1 });
 const Content = model("Content", ContentSchema);
 
 export default Content;
-
-//helper function
-
-const GetQuestionContentAsString = () => {};
