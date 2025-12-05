@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { FormType, CollaboratorType } from "../model/Form.model";
+import Content from "../model/Content.model";
 
 // Helper function to validate ObjectId format
 export function isValidObjectIdString(id: string): boolean {
@@ -77,7 +78,7 @@ export function validateAccess(form: any, userId: Types.ObjectId) {
 export const projections = {
   basic: "title type createdAt updatedAt user owners",
   detail:
-    "title type createdAt updatedAt totalpage setting contentIds user owners editors",
+    "title type createdAt updatedAt totalpage totalscore setting contentIds user owners editors",
   minimal: "_id title type user owners editors",
   total: "totalpage totalscore contentIds user owners editors",
   setting: "_id title type setting user owners editors",
@@ -98,4 +99,28 @@ export function validateFormRequest(formId: string, userId?: string) {
   }
 
   return { isValid: true };
+}
+
+/**
+ * Get the cumulative question count from previous pages
+ * Counts only parent questions (non-conditional) from pages before the current page
+ * Used for proper question numbering across paginated forms
+ *
+ * @param formId - The form ID (string or ObjectId)
+ * @param page - Current page number
+ * @returns The count of questions from previous pages
+ */
+export async function getLastQuestionIdx(
+  formId: string | Types.ObjectId,
+  page: number
+): Promise<number> {
+  if (!page || page <= 1) {
+    return 0;
+  }
+
+  return Content.countDocuments({
+    formId,
+    page: { $lt: page },
+    $or: [{ parentcontent: { $exists: false } }, { parentcontent: null }],
+  });
 }

@@ -37,7 +37,11 @@ import {
 import form_responseController from "../controller/response/form_response.controller";
 import questionController from "../controller/form/question.controller";
 import VerifyRecaptcha from "../controller/utils/recaptcha.controller";
-import { ConfirmAddCollaborator } from "../controller/form/form.collaborator.controller";
+import {
+  ConfirmAddCollaborator,
+  ConfirmOwnershipTransfer,
+  CancelOwnershipTransfer,
+} from "../controller/form/form.collaborator.controller";
 
 const UserRoute = Router();
 
@@ -178,6 +182,18 @@ UserRoute.put(
   "/transferuser",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   ChangePrimaryOwner as unknown as RequestHandler
+);
+
+// Ownership transfer confirmation and cancellation
+UserRoute.post(
+  "/ownership/confirm",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  ConfirmOwnershipTransfer as unknown as RequestHandler
+);
+UserRoute.delete(
+  "/ownership/cancel",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  CancelOwnershipTransfer as unknown as RequestHandler
 );
 
 // Pending collaborator management

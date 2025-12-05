@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { ReturnCode } from "../../utilities/helper";
+import { AddQuestionNumbering, ReturnCode } from "../../utilities/helper";
+import { getLastQuestionIdx } from "../../utilities/formHelpers";
 import Content, {
   AnswerKey,
   ConditionalType,
@@ -8,258 +9,482 @@ import Content, {
 import Form from "../../model/Form.model";
 import mongoose, { Types } from "mongoose";
 
+interface SaveQuestionPayload {
+  data: Array<ContentType>;
+  formId: string;
+  page?: number;
+}
+
+interface DeleteOperationResult {
+  operations: Promise<any>[];
+  deletedIds: Types.ObjectId[];
+}
+
 class QuestionController {
   private comparisonCache = new Map<string, boolean>();
   private readonly CACHE_SIZE_LIMIT = 1000;
 
+  /**
+   * Save Question Handler
+   *
+   * Features:
+   * - Question creation and update
+   * - Conditional question processing
+   * - Score calculation
+   * - Automatic cleanup of deleted questions
+   */
   public SaveQuestion = async (req: Request, res: Response) => {
     try {
-      let { data, formId, page } = req.body as {
-        data: Array<ContentType>;
-        formId: string;
-        page?: number;
-      };
+      const payload = req.body as SaveQuestionPayload;
 
-      if (!Array.isArray(data) || !formId || page === undefined) {
-        return res.status(400).json(ReturnCode(400, "Invalid request payload"));
+      // Step 1: Validate request
+      const validationError = this.validateSaveQuestionPayload(payload);
+      if (validationError) {
+        return res.status(400).json(ReturnCode(400, validationError));
       }
 
-      //Orgainize Date
-      if (data.some((i) => i.date || i.rangedate)) {
-        data = data.map((i) => {
-          const date = i.date
-            ? this.convertStringToDate(String(i.date))
-            : undefined;
+      const { formId, page } = payload;
+      let { data } = payload;
 
-          let rangedate;
-          if (i.rangedate) {
-            const start = this.convertStringToDate(String(i.rangedate.start));
-            const end = this.convertStringToDate(String(i.rangedate.end));
+      // Step 2: Normalize date fields
+      data = this.normalizeDateFields(data);
 
-            if (start && end) {
-              rangedate = { start: start as Date, end: end as Date };
-            }
-          }
-
-          return { ...i, date, rangedate };
-        });
-      }
-
-      //Extract Content Not To Delete
-      const idsToKeep = data
-        .map((item) => item._id)
-        .filter((id) => id && id.toString().length > 0);
-
-      const existingContent = await Content.find({ formId, page }, null, {
-        lean: true,
-        maxTimeMS: 5000,
-      });
+      // Step 3: Fetch existing content and check for changes
+      const existingContent = await this.fetchExistingContent(formId, page!);
 
       if (this.efficientChangeDetection(existingContent, data)) {
-        if (process.env.NODE_ENV === "DEV") {
-          console.log("⚡ No changes detected - skipping database operations");
-        }
+        this.logDev("⚡ No changes detected - skipping database operations");
         return res.status(200).json(ReturnCode(200, "No changes detected"));
       }
 
-      const bulkOps = [];
-      const newIds: Array<Types.ObjectId | string> = [];
+      // Step 4: Generate IDs for new questions
+      const { questionIdMap, newIds } = this.generateNewQuestionIds(data);
 
-      const questionIdMap = new Map<number, Types.ObjectId>();
-
-      // Generate IDs for questions that don't have
-      data.forEach((item, index) => {
-        if (!item._id) {
-          const newId = new Types.ObjectId();
-          questionIdMap.set(index, newId);
-          newIds.push(newId);
-        }
-      });
-
-      //Update qIdx and conditoned questions
-      for (let i = 0; i < data.length; i++) {
-        const { _id, ...rest } = data[i];
-
-        //Validate Child Question Score
-        if (rest.parentcontent && rest.score) {
-          const parent = existingContent.find(
-            (par) =>
-              (par._id.toString() || par.qIdx) ===
-              (rest.parentcontent?.qId || rest.parentcontent?.qIdx)
-          );
-
-          if (parent?.score && rest.score > parent.score) {
-            return res
-              .status(400)
-              .json(
-                ReturnCode(400, `Condition of ${parent.qIdx} has wrong score`)
-              );
-          }
-        }
-
-        const documentId = _id || questionIdMap.get(i);
-
-        //Assign correct contentIdx responsible to qIdx
-        let processedConditional: ConditionalType[] | undefined;
-        if (rest.conditional) {
-          processedConditional = rest.conditional
-            .map((cond) => {
-              if (!cond.contentId && cond.contentIdx !== undefined) {
-                const referencedId =
-                  data[cond.contentIdx]?._id ||
-                  questionIdMap.get(cond.contentIdx);
-                if (referencedId) {
-                  return {
-                    ...cond,
-                    contentId: referencedId,
-                  };
-                }
-
-                return cond;
-              }
-              return cond;
-            })
-            .filter(
-              (cond) => cond.contentId || cond.contentIdx !== undefined
-            ) as ConditionalType[];
-        }
-
-        bulkOps.push({
-          updateOne: {
-            filter: { _id: documentId },
-            update: {
-              $set: {
-                ...rest,
-                conditional: processedConditional,
-                formId,
-                page,
-                updatedAt: new Date(),
-              },
-            },
-            upsert: true,
-            setDefaultsOnInsert: true,
-          },
-        });
+      // Step 5: Validate child question scores
+      const scoreValidationError = this.validateChildQuestionScores(
+        data,
+        existingContent
+      );
+      if (scoreValidationError) {
+        return res.status(400).json(ReturnCode(400, scoreValidationError));
       }
 
-      const operations = [];
+      // Step 6: Build bulk operations for upsert
+      const bulkOps = this.buildBulkOperations(
+        data,
+        questionIdMap,
+        formId,
+        page!
+      );
 
-      // Delete content
-      if (idsToKeep.length >= 0) {
-        const toBeDeleted = await Content.find(
-          { formId, page, _id: { $nin: idsToKeep } },
-          { _id: 1, score: 1, conditional: 1 },
-          { lean: true }
-        );
+      // Step 7: Handle deletions
+      const idsToKeep = this.extractIdsToKeep(data);
+      const deleteResult = await this.handleDeletions(
+        formId,
+        page!,
+        idsToKeep,
+        existingContent
+      );
 
-        if (toBeDeleted.length) {
-          const deleteIds = toBeDeleted.map(({ _id }) => _id);
-          const deletedScore = toBeDeleted
-            .filter((i) => !i.parentcontent)
-            .reduce((sum, { score = 0 }) => sum + score, 0);
+      // Step 8: Execute all database operations
+      await this.executeOperations(
+        bulkOps,
+        newIds,
+        formId,
+        deleteResult.operations
+      );
 
-          // Get all conditional content IDs that need to be deleted
-          const conditionalIds = toBeDeleted
-            .flatMap(
-              (item) => item.conditional?.map((con) => con.contentId) || []
-            )
-            .filter(Boolean);
-
-          const allDeleteIds = [...deleteIds, ...conditionalIds];
-
-          const deletedIdx = toBeDeleted
-            .map((i) => i.qIdx || 0)
-            .sort((a, b) => a - b);
-
-          operations.push(
-            Content.deleteMany({ _id: { $in: allDeleteIds } }),
-            Form.updateOne(
-              { _id: formId },
-              {
-                $pull: { contentIds: { $in: allDeleteIds } },
-                ...(deletedScore && { $inc: { totalscore: -deletedScore } }),
-              }
-            ),
-
-            Content.updateMany(
-              { "conditional.contentId": { $in: allDeleteIds } },
-              { $pull: { conditional: { contentId: { $in: allDeleteIds } } } }
-            )
-          );
-
-          const remainingQuestions = existingContent.filter((item) =>
-            idsToKeep.includes(item._id)
-          );
-
-          //Mutation the remainQuestion for saving
-          for (let i = 0; i < remainingQuestions.length; i++) {
-            const item = remainingQuestions[i];
-            const currentIdx = item.qIdx || 0;
-            const deletedBeforeCurrent = deletedIdx.filter(
-              (delIdx) => delIdx < currentIdx
-            ).length;
-
-            //Update question qidx after delete question
-            if (deletedBeforeCurrent > 0) {
-              const newIdx = currentIdx - deletedBeforeCurrent;
-              operations.push(
-                Content.updateOne({ _id: item._id }, { $set: { qIdx: newIdx } })
-              );
-            }
-          }
-        }
-      }
-
-      if (bulkOps.length > 0) {
-        operations.push(Content.bulkWrite(bulkOps, { ordered: false }));
-      }
-
-      if (newIds.length > 0) {
-        operations.push(
-          Form.updateOne(
-            { _id: formId },
-            {
-              $addToSet: { contentIds: { $each: newIds } },
-              $set: { updatedAt: new Date() },
-            }
-          )
-        );
-      }
-
-      await Promise.all(operations);
-
-      const newScore = this.isScoreHasChange(data, existingContent);
-      if (newScore !== null) {
+      // Step 9: Initialize totalscore
+      const form = await Form.findById(formId).select("totalscore");
+      if (!form?.totalscore) {
+        // Calculate total score of all questions
+        const computedTotalScore = await this.calculateFormTotalScore(formId);
         await Form.updateOne(
           { _id: formId },
-          { $set: { totalscore: newScore } }
+          { totalscore: computedTotalScore }
         );
+      } else {
+        // Update total score based on changes in current page
+        await this.updateTotalScoreIfChanged(data, existingContent, formId);
       }
 
-      const updatedContent = await Content.find({ formId, page }, null, {
-        lean: true,
-        sort: {
-          qIdx: 1,
-        },
-      });
+      // Step 10: Return updated content
+      const updatedContent = await this.fetchUpdatedContent(formId, page!);
+
+      // Get cumulative question count from previous pages for proper numbering
+      const lastQuestionIdx = await getLastQuestionIdx(formId, page!);
 
       return res.status(200).json({
         ...ReturnCode(200, "Saved successfully"),
-        data: updatedContent,
+        data: AddQuestionNumbering({
+          questions: updatedContent,
+          lastIdx: lastQuestionIdx,
+        }),
       });
     } catch (error) {
-      console.error("SaveQuestion Error:", error);
-
-      if (error instanceof mongoose.Error.ValidationError) {
-        return res.status(400).json(ReturnCode(400, "Validation Error"));
-      }
-      if (error instanceof mongoose.Error.CastError) {
-        return res.status(400).json(ReturnCode(400, "Invalid ID Format"));
-      }
-
-      return res.status(500).json(ReturnCode(500, "Internal Server Error"));
+      return this.handleSaveQuestionError(error, res);
     }
   };
+
+  // ==================== Helper Methods for SaveQuestion ====================
+
+  /**
+   * Validates the request payload for SaveQuestion
+   */
+  private validateSaveQuestionPayload(
+    payload: SaveQuestionPayload
+  ): string | null {
+    const { data, formId, page } = payload;
+
+    if (!Array.isArray(data) || !formId || page === undefined) {
+      return "Invalid request payload";
+    }
+
+    return null;
+  }
+
+  /**
+   * Normalizes date and rangedate fields in the data array
+   */
+  private normalizeDateFields(data: ContentType[]): ContentType[] {
+    if (!data.some((i) => i.date || i.rangedate)) {
+      return data;
+    }
+
+    return data.map((item) => {
+      const date = item.date
+        ? this.convertStringToDate(String(item.date))
+        : undefined;
+
+      let rangedate;
+      if (item.rangedate) {
+        const start = this.convertStringToDate(String(item.rangedate.start));
+        const end = this.convertStringToDate(String(item.rangedate.end));
+
+        if (start && end) {
+          rangedate = { start, end };
+        }
+      }
+
+      return { ...item, date, rangedate };
+    });
+  }
+
+  /**
+   * Fetches existing content from the database
+   */
+  private async fetchExistingContent(
+    formId: string,
+    page: number
+  ): Promise<ContentType[]> {
+    return Content.find({ formId, page }, null, {
+      lean: true,
+      maxTimeMS: 5000,
+    });
+  }
+
+  /**
+   * Generates new ObjectIds for questions that don't have one
+   */
+  private generateNewQuestionIds(data: ContentType[]): {
+    questionIdMap: Map<number, Types.ObjectId>;
+    newIds: Types.ObjectId[];
+  } {
+    const questionIdMap = new Map<number, Types.ObjectId>();
+    const newIds: Types.ObjectId[] = [];
+
+    data.forEach((item, index) => {
+      if (!item._id) {
+        const newId = new Types.ObjectId();
+        questionIdMap.set(index, newId);
+        newIds.push(newId);
+      }
+    });
+
+    return { questionIdMap, newIds };
+  }
+
+  /**
+   * Validates that child question scores don't exceed parent scores
+   */
+  private validateChildQuestionScores(
+    data: ContentType[],
+    existingContent: ContentType[]
+  ): string | null {
+    for (const item of data) {
+      if (!item.parentcontent || !item.score) continue;
+
+      const parent = existingContent.find(
+        (par) =>
+          (par._id?.toString() || par.qIdx) ===
+          (item.parentcontent?.qId || item.parentcontent?.qIdx)
+      );
+
+      if (parent?.score && item.score > parent.score) {
+        return `Condition of ${parent.qIdx} has wrong score`;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Processes conditional references to resolve contentIdx to contentId
+   */
+  private processConditionals(
+    conditional: ConditionalType[] | undefined,
+    data: ContentType[],
+    questionIdMap: Map<number, Types.ObjectId>
+  ): ConditionalType[] | undefined {
+    if (!conditional) return undefined;
+
+    return conditional
+      .map((cond) => {
+        if (!cond.contentId && cond.contentIdx !== undefined) {
+          const referencedId =
+            data[cond.contentIdx]?._id || questionIdMap.get(cond.contentIdx);
+
+          if (referencedId) {
+            return { ...cond, contentId: referencedId };
+          }
+        }
+        return cond;
+      })
+      .filter(
+        (cond) => cond.contentId || cond.contentIdx !== undefined
+      ) as ConditionalType[];
+  }
+
+  /**
+   * Builds bulk write operations for upserting questions
+   */
+  private buildBulkOperations(
+    data: ContentType[],
+    questionIdMap: Map<number, Types.ObjectId>,
+    formId: string,
+    page: number
+  ): any[] {
+    return data.map((item, index) => {
+      const { _id, ...rest } = item;
+      const documentId = _id || questionIdMap.get(index);
+      const processedConditional = this.processConditionals(
+        rest.conditional,
+        data,
+        questionIdMap
+      );
+
+      return {
+        updateOne: {
+          filter: { _id: documentId },
+          update: {
+            $set: {
+              ...rest,
+              conditional: processedConditional,
+              formId,
+              page,
+              updatedAt: new Date(),
+            },
+          },
+          upsert: true,
+          setDefaultsOnInsert: true,
+        },
+      };
+    });
+  }
+
+  /**
+   * Extracts IDs of questions to keep (not delete)
+   */
+  private extractIdsToKeep(data: ContentType[]): (Types.ObjectId | string)[] {
+    return data
+      .map((item) => item._id)
+      .filter((id) => id && id.toString().length > 0) as (
+      | Types.ObjectId
+      | string
+    )[];
+  }
+
+  /**
+   * Handles deletion of questions that are no longer in the data
+   */
+  private async handleDeletions(
+    formId: string,
+    page: number,
+    idsToKeep: (Types.ObjectId | string)[],
+    existingContent: ContentType[]
+  ): Promise<DeleteOperationResult> {
+    const operations: Promise<any>[] = [];
+    const deletedIds: Types.ObjectId[] = [];
+
+    const toBeDeleted = await Content.find(
+      { formId, page, _id: { $nin: idsToKeep } },
+      { _id: 1, score: 1, conditional: 1, qIdx: 1, parentcontent: 1 },
+      { lean: true }
+    );
+
+    if (toBeDeleted.length === 0) {
+      return { operations, deletedIds };
+    }
+
+    // Collect all IDs to delete (including conditional children)
+    const deleteIds = toBeDeleted.map(({ _id }) => _id);
+    const conditionalIds = toBeDeleted
+      .flatMap((item) => item.conditional?.map((con) => con.contentId) || [])
+      .filter(Boolean);
+    const allDeleteIds = [...deleteIds, ...conditionalIds];
+
+    // Calculate deleted score
+    const deletedScore = toBeDeleted
+      .filter((i) => !i.parentcontent)
+      .reduce((sum, { score = 0 }) => sum + score, 0);
+
+    // Add delete operations
+    operations.push(
+      Content.deleteMany({ _id: { $in: allDeleteIds } }),
+      Form.updateOne(
+        { _id: formId },
+        {
+          $pull: { contentIds: { $in: allDeleteIds } },
+          ...(deletedScore && { $inc: { totalscore: -deletedScore } }),
+        }
+      ),
+      Content.updateMany(
+        { "conditional.contentId": { $in: allDeleteIds } },
+        { $pull: { conditional: { contentId: { $in: allDeleteIds } } } }
+      )
+    );
+
+    // Update qIdx for remaining questions
+    const deletedIdx = toBeDeleted
+      .map((i) => i.qIdx || 0)
+      .sort((a, b) => a - b);
+    const qIdxUpdateOps = this.buildQIdxUpdateOperations(
+      existingContent,
+      idsToKeep,
+      deletedIdx
+    );
+    operations.push(...qIdxUpdateOps);
+
+    return { operations, deletedIds: allDeleteIds as Types.ObjectId[] };
+  }
+
+  /**
+   * Builds operations to update qIdx after deletions
+   */
+  private buildQIdxUpdateOperations(
+    existingContent: ContentType[],
+    idsToKeep: (Types.ObjectId | string)[],
+    deletedIdx: number[]
+  ): Promise<any>[] {
+    const operations: Promise<any>[] = [];
+
+    const remainingQuestions = existingContent.filter(
+      (item) => item._id && idsToKeep.includes(item._id)
+    );
+
+    for (const item of remainingQuestions) {
+      const currentIdx = item.qIdx || 0;
+      const deletedBeforeCurrent = deletedIdx.filter(
+        (delIdx) => delIdx < currentIdx
+      ).length;
+
+      if (deletedBeforeCurrent > 0) {
+        const newIdx = currentIdx - deletedBeforeCurrent;
+        operations.push(
+          Content.updateOne({ _id: item._id }, { $set: { qIdx: newIdx } })
+        );
+      }
+    }
+
+    return operations;
+  }
+
+  /**
+   * Executes all database operations in parallel
+   */
+  private async executeOperations(
+    bulkOps: any[],
+    newIds: Types.ObjectId[],
+    formId: string,
+    deleteOperations: Promise<any>[]
+  ): Promise<void> {
+    const operations = [...deleteOperations];
+
+    if (bulkOps.length > 0) {
+      operations.push(Content.bulkWrite(bulkOps, { ordered: false }));
+    }
+
+    if (newIds.length > 0) {
+      operations.push(
+        Form.updateOne(
+          { _id: formId },
+          {
+            $addToSet: { contentIds: { $each: newIds } },
+            $set: { updatedAt: new Date() },
+          }
+        )
+      );
+    }
+
+    await Promise.all(operations);
+  }
+
+  /**
+   * Updates total score if it has changed
+   * Calculates the score difference for current page and applies it to form's totalscore
+   */
+  private async updateTotalScoreIfChanged(
+    data: ContentType[],
+    existingContent: ContentType[],
+    formId: string
+  ): Promise<void> {
+    const scoreDiff = this.calculateScoreDifference(data, existingContent);
+
+    if (scoreDiff !== 0) {
+      await Form.updateOne(
+        { _id: formId },
+        { $inc: { totalscore: scoreDiff } }
+      );
+    }
+  }
+
+  /**
+   * Fetches the updated content after save
+   */
+  private async fetchUpdatedContent(
+    formId: string,
+    page: number
+  ): Promise<ContentType[]> {
+    return Content.find({ formId, page }, null, {
+      lean: true,
+      sort: { qIdx: 1 },
+    });
+  }
+
+  /**
+   * Handles errors from SaveQuestion
+   */
+  private handleSaveQuestionError(error: unknown, res: Response) {
+    console.error("SaveQuestion Error:", error);
+
+    if (error instanceof mongoose.Error.ValidationError) {
+      return res.status(400).json(ReturnCode(400, "Validation Error"));
+    }
+    if (error instanceof mongoose.Error.CastError) {
+      return res.status(400).json(ReturnCode(400, "Invalid ID Format"));
+    }
+
+    return res.status(500).json(ReturnCode(500, "Internal Server Error"));
+  }
+
+  /**
+   * Logs message only in development environment
+   */
+  private logDev(message: string): void {
+    if (process.env.NODE_ENV === "DEV") {
+      console.log(message);
+    }
+  }
 
   public async DeleteQuestion(req: Request, res: Response) {
     try {
@@ -583,25 +808,62 @@ class QuestionController {
     return true;
   }
 
+  /**
+   * Calculate the total score for a set of questions
+   * Excludes conditional/child questions (parentcontent) to avoid double counting
+   */
+  private calculateTotalScore(items: Array<ContentType>): number {
+    const seen = new Set<string>();
+    return items
+      .filter((item) => {
+        const key = item._id?.toString() || "";
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .filter((ques) => !ques.parentcontent)
+      .reduce((total, { score = 0 }) => total + score, 0);
+  }
+
+  /**
+   * Calculate the total score for all questions in a form
+   * Fetches all content from the database and calculates total
+   * Excludes conditional/child questions to avoid double counting
+   */
+  private async calculateFormTotalScore(formId: string): Promise<number> {
+    const allContent = await Content.find(
+      { formId, parentcontent: { $exists: false } },
+      { score: 1 },
+      { lean: true }
+    );
+
+    return allContent.reduce((total, { score = 0 }) => total + score, 0);
+  }
+
+  /**
+   * Calculate the difference in score between incoming and existing content
+   * @Returns the difference (positive if score increased, negative if decreased)
+   */
+  private calculateScoreDifference(
+    incoming: ContentType[],
+    prevContent: ContentType[]
+  ): number {
+    const incomingTotal = this.calculateTotalScore(incoming);
+    const prevTotal = this.calculateTotalScore(prevContent);
+
+    return incomingTotal - prevTotal;
+  }
+
+  /**
+   * @deprecated Use calculateScoreDifference instead
+   * Kept for backward compatibility
+   */
   private isScoreHasChange(
     incoming: ContentType[],
     prevContent: ContentType[]
   ): number | null {
-    const calculateTotal = (items: Array<ContentType>) => {
-      const seen = new Set<string>();
-      return items
-        .filter((item) => {
-          const key = item._id?.toString() || "";
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .filter((ques) => !ques.parentcontent)
-        .reduce((total, { score = 0 }) => total + score, 0);
-    };
-
-    const incomingTotal = calculateTotal(incoming);
-    const prevTotal = calculateTotal(prevContent);
+    const incomingTotal = this.calculateTotalScore(incoming);
+    const prevTotal = this.calculateTotalScore(prevContent);
 
     return incomingTotal !== prevTotal ? incomingTotal : null;
   }

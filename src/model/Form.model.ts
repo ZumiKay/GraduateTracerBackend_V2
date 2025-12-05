@@ -53,6 +53,14 @@ export interface PendingCollarboratorsType {
   code: string;
 }
 
+export interface PendingOwnershipTransferType {
+  _id: Types.ObjectId;
+  expireIn: number;
+  fromUser: Types.ObjectId | UserType; // Current owner initiating the transfer
+  toUser: Types.ObjectId | UserType; // New owner to receive ownership
+  code: string;
+}
+
 export interface FormType {
   _id: Types.ObjectId;
   title: string;
@@ -73,6 +81,7 @@ export interface FormType {
   updatedAt?: Date;
   inviteCodes?: Array<string>;
   pendingCollarborators: Array<PendingCollarboratorsType>;
+  pendingOwnershipTransfer?: PendingOwnershipTransferType;
 }
 
 const FormSettingSchema = new Schema<FromSettingType>({
@@ -139,6 +148,29 @@ const FormCollarboratorPendingSchema = new Schema<PendingCollarboratorsType>({
   },
 });
 
+const PendingOwnershipTransferSchema = new Schema<PendingOwnershipTransferType>(
+  {
+    code: {
+      type: "String",
+      required: true,
+    },
+    expireIn: {
+      type: "Number",
+      required: true,
+    },
+    fromUser: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    toUser: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+  }
+);
+
 const FormSchema = new Schema<FormType>(
   {
     title: {
@@ -176,6 +208,11 @@ const FormSchema = new Schema<FormType>(
     pendingCollarborators: {
       type: [FormCollarboratorPendingSchema],
       required: false,
+    },
+    pendingOwnershipTransfer: {
+      type: PendingOwnershipTransferSchema,
+      required: false,
+      default: null,
     },
     totalpage: {
       type: Number,

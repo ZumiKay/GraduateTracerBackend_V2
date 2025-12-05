@@ -265,14 +265,8 @@ export class FormResponseQueryController {
 
   public DeleteResponse = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
-        req,
-        res,
-        requireFormId: true,
-      });
-      if (!validation.isValid || !validation.user?.sub) return;
-
       const { responseId } = req.params;
+      if (!req.user) return res.status(401).json(ReturnCode(401));
       if (!responseId) {
         return res.status(400).json(ReturnCode(400, "Response ID is required"));
       }
@@ -280,7 +274,7 @@ export class FormResponseQueryController {
       const { response, form } =
         await ResponseValidationService.validateResponseAccess(
           responseId,
-          validation.user.sub,
+          req.user?.sub,
           res
         );
       if (!response || !form) return;
@@ -295,13 +289,6 @@ export class FormResponseQueryController {
 
   public BulkDeleteResponses = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
-        req,
-        res,
-        requireFormId: false,
-      });
-      if (!validation.isValid || !validation.user?.sub) return;
-
       const { responseIds, formId } = req.body;
       if (
         !responseIds ||
@@ -317,20 +304,20 @@ export class FormResponseQueryController {
         return res.status(400).json(ReturnCode(400, "Form ID is required"));
       }
 
-      const invalidIds = responseIds.filter((id) => isValidObjectIdString(id));
-      if (invalidIds.length > 0) {
+      const isValidIds = responseIds.filter((id) => isValidObjectIdString(id));
+      if (isValidIds.length === 0) {
         return res.status(400).json(ReturnCode(400, "Invalid Data"));
       }
 
       const form = await ResponseValidationService.validateFormAccess(
         formId,
-        validation.user.sub,
+        req.user?.sub as never,
         res
       );
       if (!form) return;
 
       const result = await ResponseQueryService.bulkDeleteResponses(
-        responseIds,
+        isValidIds,
         formId
       );
       res.status(200).json({

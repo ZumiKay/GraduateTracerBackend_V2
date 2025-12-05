@@ -17,6 +17,7 @@ import {
   validateAccess,
   projections,
   validateFormRequest,
+  getLastQuestionIdx,
 } from "../../utilities/formHelpers";
 import FormResponse from "../../model/Response.model";
 
@@ -81,6 +82,8 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
     }
 
     const user = req.user;
+
+    if (!user) return res.status(401).json(ReturnCode(401));
 
     // Handle different query types with optimized logic
     switch (ty) {
@@ -230,19 +233,17 @@ async function handleDetailQuery(
     .sort({ qIdx: 1 })
     .lean()
     .exec();
-  let lastQuestionIdx = 0;
-  if (page && page > 1) {
-    lastQuestionIdx = await Content.countDocuments({
-      formId: q,
-      page: { $lt: page },
-      $or: [{ parentcontent: { $exists: false } }, { parentcontent: null }],
-    });
-  }
+
+  // Get cumulative question count from previous pages for proper numbering
+  const lastQuestionIdx = await getLastQuestionIdx(q, p);
 
   return res.status(200).json({
     ...ReturnCode(200),
     data: {
       ...detailForm,
+      owners: undefined,
+      editors: undefined,
+      user: undefined,
       contents: AddQuestionNumbering({
         questions: resultContent,
         lastIdx: lastQuestionIdx,
@@ -258,7 +259,13 @@ async function handleDetailQuery(
   });
 }
 
-async function handleTotalQuery(res: Response, q: string, user: any) {
+/**
+ * Fetch Summary of Form
+ * - Total Question
+ * - Total Score
+ * - Total Page
+ */
+async function handleTotalQuery(res: Response, q: string, user: UserToken) {
   if (!user) return res.status(401).json(ReturnCode(401));
   if (!isValidObjectIdString(q))
     return res.status(400).json(ReturnCode(400, "Invalid form ID"));
@@ -547,6 +554,10 @@ function buildSortOptions(filter?: {
   return sortOptions;
 }
 
+/**
+ *
+ * Validate Form Content handler
+ */
 export async function ValidateFormBeforeAction(
   req: CustomRequest,
   res: Response

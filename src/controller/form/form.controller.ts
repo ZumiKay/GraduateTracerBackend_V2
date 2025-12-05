@@ -15,6 +15,8 @@ export {
   GetFormCollaborators,
   RemoveSelfFromForm,
   ChangePrimaryOwner,
+  ConfirmOwnershipTransfer,
+  CancelOwnershipTransfer,
   ResendPendingInvitation,
   DeletePendingCollaborator,
 } from "./form.collaborator.controller";

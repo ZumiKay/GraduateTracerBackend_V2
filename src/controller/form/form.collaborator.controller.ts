@@ -14,6 +14,11 @@ import {
 } from "../../utilities/formHelpers";
 import FormLinkService from "../../services/FormLinkService";
 import EmailService from "../../services/EmailService";
+import {
+  generateCollaboratorInviteEmail,
+  generateOwnershipTransferEmail,
+  generateCollaboratorReminderEmail,
+} from "../../utilities/EmailTemplate/CollarboratorEmail";
 
 interface CollaboratorRequest {
   formId: string;
@@ -189,70 +194,13 @@ export const ManageFormCollaborator = async (
         const emailSent = await emailService.sendEmail({
           to: [email],
           subject: `Invitation to Collaborate on Form: ${form.title}`,
-          html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background-color: #4f46e5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-                .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-                .button { 
-                  display: inline-block;  
-                  color: blue; 
-                  padding: 12px 24px; 
-                  text-decoration: none; 
-                  border-radius: 6px; 
-                  margin: 20px 0; 
-                  font-weight: bold;
-                }
-                .role-badge {
-                  display: inline-block;
-                  background-color: ${
-                    role === CollaboratorType.owner ? "#059669" : "#3b82f6"
-                  };
-                  color: white;
-                  padding: 4px 12px;
-                  border-radius: 4px;
-                  font-size: 14px;
-                  font-weight: bold;
-                }
-                .footer { margin-top: 30px; font-size: 12px; color: #666; text-align: center; }
-                .warning { background-color: #fef3c7; border: 1px solid #f59e0b; padding: 12px; border-radius: 6px; margin-top: 20px; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <h1>🤝 Collaboration Invitation</h1>
-                </div>
-                <div class="content">
-                  <h2>You've Been Invited!</h2>
-                  <p>Hello!</p>
-                  <p><strong>${inviterEmail}</strong> has invited you to collaborate on the form:</p>
-                  <h3 style="color: #4f46e5;">${form.title}</h3>
-                  <p>Your role: <span class="role-badge">${role}</span></p>
-                  <p>Click the button below to accept the invitation:</p>
-                  <a href="${
-                    generatedInviteLink.url
-                  }" class="button">Accept Invitation</a>
-                  <p>Or copy and paste this link into your browser:</p>
-                  <p style="word-break: break-all;"><a href="${
-                    generatedInviteLink.url
-                  }">${generatedInviteLink.url}</a></p>
-                  <div class="warning">
-                    <strong>⏰ This invitation expires in ${expiresInHours} hours.</strong>
-                  </div>
-                </div>
-                <div class="footer">
-                  <p>This email was sent from Graduate Tracer System</p>
-                  <p>If you didn't expect this invitation, you can safely ignore this email.</p>
-                </div>
-              </div>
-            </body>
-            </html>
-          `,
+          html: generateCollaboratorInviteEmail({
+            inviterEmail,
+            formTitle: form.title,
+            role,
+            inviteUrl: generatedInviteLink.url,
+            expiresInHours,
+          }),
         });
 
         if (!emailSent) {
@@ -437,6 +385,8 @@ export async function GetFormCollaborators(req: CustomRequest, res: Response) {
     const form = await Form.findById(formId)
       .populate("user owners editors", "email")
       .populate("pendingCollarborators.user", "email")
+      .populate("pendingOwnershipTransfer.fromUser", "email")
+      .populate("pendingOwnershipTransfer.toUser", "email")
       .lean();
     if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
 
@@ -491,6 +441,33 @@ export async function GetFormCollaborators(req: CustomRequest, res: Response) {
         };
       }) || [];
 
+    // Get pending ownership transfer info if exists
+    let pendingOwnershipTransfer = null;
+    if (form.pendingOwnershipTransfer) {
+      const fromUser = form.pendingOwnershipTransfer
+        .fromUser as unknown as UserType;
+      const toUser = form.pendingOwnershipTransfer
+        .toUser as unknown as UserType;
+      const isExpired = Date.now() > form.pendingOwnershipTransfer.expireIn;
+      pendingOwnershipTransfer = {
+        _id: form.pendingOwnershipTransfer._id.toString(),
+        fromUser: {
+          _id:
+            fromUser._id?.toString() ||
+            form.pendingOwnershipTransfer.fromUser.toString(),
+          email: fromUser?.email || "Unknown",
+        },
+        toUser: {
+          _id:
+            toUser._id?.toString() ||
+            form.pendingOwnershipTransfer.toUser.toString(),
+          email: toUser?.email || "Unknown",
+        },
+        expireIn: form.pendingOwnershipTransfer.expireIn,
+        isExpired,
+      };
+    }
+
     return res.status(200).json({
       ...ReturnCode(200, "Form collaborators retrieved successfully"),
       data: {
@@ -498,6 +475,7 @@ export async function GetFormCollaborators(req: CustomRequest, res: Response) {
         allOwners,
         allEditors,
         pendingCollaborators,
+        pendingOwnershipTransfer,
         totalCollaborators:
           (allOwners?.length ?? 0) + (allEditors?.length ?? 0),
       },
@@ -569,6 +547,7 @@ export async function ChangePrimaryOwner(req: CustomRequest, res: Response) {
   const { formId, userId } = req.body as CollaboratorRequest;
   const currentUser = req.user;
 
+  //Verify user session
   if (!currentUser) return res.status(403).json(ReturnCode(403));
 
   const validation = validateFormRequest(formId, userId);
@@ -577,7 +556,7 @@ export async function ChangePrimaryOwner(req: CustomRequest, res: Response) {
   }
 
   try {
-    const form = await Form.findById(formId).lean();
+    const form = await Form.findById(formId).populate("user", "email").lean();
     if (!form) {
       return res.status(404).json(ReturnCode(404, "Form not found"));
     }
@@ -588,11 +567,282 @@ export async function ChangePrimaryOwner(req: CustomRequest, res: Response) {
         .json(ReturnCode(403, "Only primary owner can transfer ownership"));
     }
 
-    await Form.updateOne({ _id: formId }, { user: new Types.ObjectId(userId) });
-    return res.status(200).json(ReturnCode(200, "Transfer completed"));
+    // Get the target user
+    const targetUser = await User.findById(userId).lean();
+    if (!targetUser) {
+      return res.status(404).json(ReturnCode(404, "User not found"));
+    }
+
+    // Cannot transfer to yourself
+    if (targetUser._id.toString() === currentUser.sub) {
+      return res
+        .status(400)
+        .json(ReturnCode(400, "Cannot transfer ownership to yourself"));
+    }
+
+    // Generate invite code and link
+    const FormService = new FormLinkService();
+    const inviteCode = FormService.generateInviteCode();
+    const expiresInHours = 24;
+    const expireIn = Date.now() + expiresInHours * 60 * 60 * 1000;
+
+    const generatedInviteLink = FormService.generateInviteLink(
+      {
+        inviteCode,
+        formId,
+        type: "ownership_transfer",
+      },
+      `/ownership/confirm`,
+      expiresInHours
+    );
+
+    // Save pending ownership transfer
+    await Form.findByIdAndUpdate(formId, {
+      pendingOwnershipTransfer: {
+        _id: new Types.ObjectId(),
+        code: inviteCode,
+        expireIn,
+        fromUser: new Types.ObjectId(currentUser.sub),
+        toUser: new Types.ObjectId(userId),
+      },
+    });
+
+    // Get current owner's email for the email content
+    const currentOwner = await User.findById(currentUser.sub).lean();
+    const currentOwnerEmail = currentOwner?.email || "The current owner";
+
+    // Send invite email to the new owner
+    const emailService = new EmailService();
+    const emailSent = await emailService.sendEmail({
+      to: [targetUser.email],
+      subject: `Ownership Transfer Request for Form: ${form.title}`,
+      html: generateOwnershipTransferEmail({
+        currentOwnerEmail,
+        formTitle: form.title,
+        inviteUrl: generatedInviteLink.url,
+        expiresInHours,
+      }),
+    });
+
+    if (!emailSent) {
+      // Rollback pending ownership transfer if email fails
+      await Form.findByIdAndUpdate(formId, {
+        $unset: { pendingOwnershipTransfer: 1 },
+      });
+      return res
+        .status(500)
+        .json(ReturnCode(500, "Failed to send ownership transfer email"));
+    }
+
+    return res
+      .status(200)
+      .json(
+        ReturnCode(
+          200,
+          `Ownership transfer invitation sent to ${targetUser.email}. They must confirm to complete the transfer.`
+        )
+      );
   } catch (error) {
     console.error("Transfer Owner Error:", error);
     return res.status(500).json(ReturnCode(500));
+  }
+}
+
+// Confirm ownership transfer
+export async function ConfirmOwnershipTransfer(
+  req: CustomRequest,
+  res: Response
+) {
+  const { invite }: { invite: string } = req.body;
+  const currentUser = req.user;
+
+  if (!currentUser) {
+    return res.status(401).json(ReturnCode(401, "Unauthorized"));
+  }
+
+  if (!invite) {
+    return res.status(400).json(ReturnCode(400, "Missing invite code"));
+  }
+
+  try {
+    // Decrypt and validate the invite link
+    const formLinkService = new FormLinkService();
+    const validation = formLinkService.validateInviteLink(invite);
+
+    if (!validation.valid || !validation.data) {
+      return res
+        .status(400)
+        .json(ReturnCode(400, validation.error || "Invalid invite link"));
+    }
+
+    const { inviteCode, formId, type } = validation.data as {
+      inviteCode: string;
+      formId: string;
+      type: string;
+    };
+
+    // Validate this is an ownership transfer link
+    if (type !== "ownership_transfer") {
+      return res.status(400).json(ReturnCode(400, "Invalid invite type"));
+    }
+
+    // Validate required fields from decrypted data
+    if (!inviteCode || !formId) {
+      return res.status(400).json(ReturnCode(400, "Invalid invite data"));
+    }
+
+    if (!isValidObjectIdString(formId)) {
+      return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+    }
+
+    // Find the form and verify pending ownership transfer
+    const form = await Form.findById(formId)
+      .populate("pendingOwnershipTransfer.fromUser", "email")
+      .populate("pendingOwnershipTransfer.toUser", "email")
+      .lean();
+
+    if (!form) {
+      return res.status(404).json(ReturnCode(404, "Form not found"));
+    }
+
+    // Check if there's a pending ownership transfer
+    if (!form.pendingOwnershipTransfer) {
+      return res
+        .status(400)
+        .json(
+          ReturnCode(
+            400,
+            "No pending ownership transfer found or it has already been completed"
+          )
+        );
+    }
+
+    const pendingTransfer = form.pendingOwnershipTransfer;
+
+    // Verify the invite code matches
+    if (pendingTransfer.code !== inviteCode) {
+      return res.status(400).json(ReturnCode(400, "Invalid invite code"));
+    }
+
+    // Check if invitation has expired
+    if (Date.now() > pendingTransfer.expireIn) {
+      // Remove expired invitation
+      await Form.findByIdAndUpdate(formId, {
+        $unset: { pendingOwnershipTransfer: 1 },
+      });
+      return res
+        .status(400)
+        .json(ReturnCode(400, "Ownership transfer invitation has expired"));
+    }
+
+    // Verify the current user is the intended recipient (toUser)
+    const toUserId = pendingTransfer.toUser._id
+      ? pendingTransfer.toUser._id.toString()
+      : pendingTransfer.toUser.toString();
+
+    if (toUserId !== currentUser.sub) {
+      return res
+        .status(403)
+        .json(
+          ReturnCode(403, "This ownership transfer invitation is not for you")
+        );
+    }
+
+    // Get the fromUser ID (current owner)
+    const fromUserId = pendingTransfer.fromUser._id
+      ? pendingTransfer.fromUser._id.toString()
+      : pendingTransfer.fromUser.toString();
+
+    await Form.findByIdAndUpdate(formId, {
+      $set: { user: new Types.ObjectId(currentUser.sub) },
+      $addToSet: { owners: new Types.ObjectId(fromUserId) },
+      $unset: { pendingOwnershipTransfer: 1 },
+    });
+
+    // Remove new owner from owners/editors list if they were there
+    await Form.findByIdAndUpdate(formId, {
+      $pull: {
+        owners: new Types.ObjectId(currentUser.sub),
+        editors: new Types.ObjectId(currentUser.sub),
+      },
+    });
+
+    return res.status(200).json({
+      ...ReturnCode(
+        200,
+        "Ownership transfer completed successfully. You are now the primary owner of this form."
+      ),
+      data: {
+        formId,
+        formTitle: form.title,
+        role: "CREATOR",
+      },
+    });
+  } catch (error) {
+    console.error("Confirm Ownership Transfer Error:", error);
+    return res
+      .status(500)
+      .json(ReturnCode(500, "Failed to confirm ownership transfer"));
+  }
+}
+
+// Cancel pending ownership transfer
+export async function CancelOwnershipTransfer(
+  req: CustomRequest,
+  res: Response
+) {
+  const { formId } = req.body;
+  const currentUser = req.user;
+
+  if (!currentUser) {
+    return res.status(401).json(ReturnCode(401, "Unauthorized"));
+  }
+
+  if (!formId) {
+    return res.status(400).json(ReturnCode(400, "Missing form ID"));
+  }
+
+  if (!isValidObjectIdString(formId)) {
+    return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+  }
+
+  try {
+    const form = await Form.findById(formId).lean();
+
+    if (!form) {
+      return res.status(404).json(ReturnCode(404, "Form not found"));
+    }
+
+    // Only the current primary owner can cancel the transfer
+    if (!isPrimaryOwner(form, currentUser.sub)) {
+      return res
+        .status(403)
+        .json(
+          ReturnCode(
+            403,
+            "Only the primary owner can cancel the ownership transfer"
+          )
+        );
+    }
+
+    if (!form.pendingOwnershipTransfer) {
+      return res
+        .status(400)
+        .json(ReturnCode(400, "No pending ownership transfer to cancel"));
+    }
+
+    await Form.findByIdAndUpdate(formId, {
+      $unset: { pendingOwnershipTransfer: 1 },
+    });
+
+    return res
+      .status(200)
+      .json(ReturnCode(200, "Ownership transfer cancelled successfully"));
+  } catch (error) {
+    console.error("Cancel Ownership Transfer Error:", error);
+    return res
+      .status(500)
+      .json(ReturnCode(500, "Failed to cancel ownership transfer"));
   }
 }
 
@@ -697,69 +947,13 @@ export async function ResendPendingInvitation(
     const emailSent = await emailService.sendEmail({
       to: [pendingUser.email],
       subject: `Reminder: Invitation to Collaborate on Form: ${form.title}`,
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #4f46e5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-            .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-            .button { 
-              display: inline-block; 
-              background-color: #4f46e5; 
-              color: white; 
-              padding: 12px 24px; 
-              text-decoration: none; 
-              border-radius: 6px; 
-              margin: 20px 0; 
-              font-weight: bold;
-            }
-            .role-badge {
-              display: inline-block;
-              background-color: #059669;
-              color: white;
-              padding: 4px 12px;
-              border-radius: 4px;
-              font-size: 14px;
-              font-weight: bold;
-            }
-            .footer { margin-top: 30px; font-size: 12px; color: #666; text-align: center; }
-            .warning { background-color: #fef3c7; border: 1px solid #f59e0b; padding: 12px; border-radius: 6px; margin-top: 20px; }
-            .reminder { background-color: #dbeafe; border: 1px solid #3b82f6; padding: 12px; border-radius: 6px; margin-bottom: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>🔔 Invitation Reminder</h1>
-            </div>
-            <div class="content">
-              <div class="reminder">
-                <strong>This is a reminder!</strong> You have a pending invitation to collaborate.
-              </div>
-              <h2>You've Been Invited!</h2>
-              <p>Hello!</p>
-              <p><strong>${inviterEmail}</strong> is reminding you about the invitation to collaborate on the form:</p>
-              <h3 style="color: #4f46e5;">${form.title}</h3>
-              <p>Your role: <span class="role-badge">${role}</span></p>
-              <p>Click the button below to accept the invitation:</p>
-              <a href="${generatedInviteLink.url}" class="button">Accept Invitation</a>
-              <p>Or copy and paste this link into your browser:</p>
-              <p style="word-break: break-all;"><a href="${generatedInviteLink.url}">${generatedInviteLink.url}</a></p>
-              <div class="warning">
-                <strong>⏰ This invitation expires in ${expiresInHours} hours.</strong>
-              </div>
-            </div>
-            <div class="footer">
-              <p>This email was sent from Graduate Tracer System</p>
-              <p>If you didn't expect this invitation, you can safely ignore this email.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
+      html: generateCollaboratorReminderEmail({
+        inviterEmail,
+        formTitle: form.title,
+        role,
+        inviteUrl: generatedInviteLink.url,
+        expiresInHours,
+      }),
     });
 
     if (!emailSent) {

@@ -20,6 +20,8 @@ import {
   contentTitleToString,
   ReturnCode,
 } from "../utilities/helper";
+import { getLastQuestionIdx } from "../utilities/formHelpers";
+import {} from "../utilities/helper";
 
 export interface GroupResponseListItemType {
   respondentEmail?: string;
@@ -430,16 +432,8 @@ export class ResponseQueryService {
       answer: undefined,
     }));
 
-    // Compute cumulative question count from previous pages
-    // Count only parent questions (non-conditional) from pages before current page
-    let lastQuestionIdx = 0;
-    if (page > 1) {
-      lastQuestionIdx = await Content.countDocuments({
-        formId: formObjectId,
-        page: { $lt: page },
-        $or: [{ parentcontent: { $exists: false } }, { parentcontent: null }],
-      });
-    }
+    // Get cumulative question count from previous pages for proper numbering
+    const lastQuestionIdx = await getLastQuestionIdx(formObjectId, page);
 
     return {
       ...form,
@@ -524,7 +518,7 @@ export class ResponseQueryService {
     const invalidIds: string[] = [];
 
     for (const id of ids) {
-      if (Types.ObjectId.isValid(id)) {
+      if (isValidObjectId(id)) {
         validObjectIds.push(new Types.ObjectId(id));
       } else {
         invalidIds.push(id);

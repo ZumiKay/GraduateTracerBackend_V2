@@ -6,7 +6,7 @@ import Content, {
 import Form, { TypeForm, returnscore } from "../model/Form.model";
 import { Types } from "mongoose";
 import { ResponseAnswerType, ResponseSetType } from "../model/Response.model";
-import { isRangeValueValid } from "../utilities/helper";
+import { AddQuestionNumbering, isRangeValueValid } from "../utilities/helper";
 
 export interface ValidationResult {
   isValid: boolean;
@@ -14,6 +14,15 @@ export interface ValidationResult {
   warnings: string[];
   missingAnswers: string[];
   missingScores: string[];
+  wrongScores: string[];
+}
+
+export interface CombinedValidationResults {
+  errors: string[];
+  warnings: string[];
+  missingAnswers: string[];
+  missingScores: string[];
+  wrongScores: string[];
 }
 
 export interface FormValidationSummary {
@@ -21,11 +30,24 @@ export interface FormValidationSummary {
   totalValidQuestions: number;
   totalInvalidQuestions: number;
   totalScore: number;
-  validationResults: ValidationResult[];
+  validationResults: CombinedValidationResults;
 }
 
 export class SolutionValidationService {
   //Check the valid of question answers and scores
+
+  /**
+   * @params
+   * - content: Contenttype (questionId is required)
+   * - parentScore: number
+   *
+   * @returns
+   * - errors
+   * - warnings
+   * - missingAnswers
+   * - missingScores
+   * - wrongScores
+   */
   static validateContent(
     content: ContentType,
     parentScore?: number
@@ -34,9 +56,9 @@ export class SolutionValidationService {
     const warnings: string[] = [];
     const missingAnswers: string[] = [];
     const missingScores: string[] = [];
-    const questionTitle = content.qIdx
-      ? `Question ${content.qIdx}`
-      : `Condition of Question ${content.parentcontent?.qIdx}`;
+    const wrongScores: string[] = [];
+
+    const questionTitle = `Question ${content.questionId}`;
 
     if (content.type === QuestionType.Text) {
       return {
@@ -45,16 +67,19 @@ export class SolutionValidationService {
         warnings: [],
         missingAnswers: [],
         missingScores: [],
+        wrongScores: [],
       };
     }
 
     // Check if content has answer
     if (
-      !content.answer ||
-      content.answer.answer === null ||
-      content.answer.answer === undefined
+      (!content.answer ||
+        content.answer.answer === null ||
+        content.answer.answer === undefined) &&
+      content.type !== QuestionType.ShortAnswer &&
+      content.type !== QuestionType.Paragraph
     ) {
-      missingAnswers.push(`Question "${content.title}" has no answer key`);
+      missingAnswers.push(questionTitle);
     }
 
     // Check if content has score
@@ -63,19 +88,24 @@ export class SolutionValidationService {
       content.score === undefined ||
       content.score === 0
     ) {
-      missingScores.push(`${questionTitle} has no score assigned`);
+      missingScores.push(questionTitle);
     }
 
-    //validate conditioned question score
+    //validate child conditioned question score
     if (content.score && content.parentcontent && parentScore) {
       const isValid = content.score > parentScore;
-      if (!isValid) {
-        missingScores.push(`${questionTitle} has wrong score`);
+      if (isValid) {
+        wrongScores.push(questionTitle);
       }
     }
 
     // Validate answer format based on question type
-    if (content.answer && content.answer.answer) {
+    if (
+      content.answer &&
+      content.answer.answer &&
+      content.type !== QuestionType.ShortAnswer &&
+      content.type !== QuestionType.Paragraph
+    ) {
       const answerValidation = this.validateAnswerFormat(
         content.type,
         content.answer.answer,
@@ -88,13 +118,25 @@ export class SolutionValidationService {
 
     // Check if required question has proper setup
     if (content.require && (!content.answer || !content.score)) {
-      errors.push(`Required ${questionTitle} must have both answer and score`);
+      //Required Score only for short answer and paragraph question type
+      if (
+        content.type === QuestionType.ShortAnswer ||
+        content.type === QuestionType.Paragraph
+      ) {
+        if (!content.score)
+          errors.push(`Required ${questionTitle} must have scores`);
+      } else {
+        errors.push(
+          `Required ${questionTitle} must have both answer and score`
+        );
+      }
     }
 
     const isValid =
       errors.length === 0 &&
       missingAnswers.length === 0 &&
-      missingScores.length === 0;
+      missingScores.length === 0 &&
+      wrongScores.length === 0;
 
     return {
       isValid,
@@ -102,6 +144,7 @@ export class SolutionValidationService {
       warnings,
       missingAnswers,
       missingScores,
+      wrongScores,
     };
   }
 
@@ -249,11 +292,12 @@ export class SolutionValidationService {
   /**
    * Validates entire form for quiz requirements
    * @param formId type string
-   * @returns canReturnScoreAutomatically,
-      totalValidQuestions,
-      totalInvalidQuestions,
-      totalScore,
-      validationResults, 
+   * @returns 
+   *  - canReturnScoreAutomatically,
+      - totalValidQuestions
+      - totalInvalidQuestions
+      - totalScore
+      - validationResults, 
    */
   static async validateForm(formId: string): Promise<FormValidationSummary> {
     const form = await Form.findById(formId);
@@ -269,13 +313,15 @@ export class SolutionValidationService {
     let totalInvalidQuestions = 0;
     let totalScore = 0;
 
-    for (const content of contents) {
+    for (const content of AddQuestionNumbering({ questions: contents })) {
       if (content.type === QuestionType.Text) {
+        //Validate Text Display Only question
         const result = this.validateContent(content);
         validationResults.push(result);
         continue;
       }
 
+      //Validate question with condition
       const parentScore = contents.find(
         (ques) => ques._id.toString() === content.parentcontent?.qId
       )?.score;
@@ -301,12 +347,21 @@ export class SolutionValidationService {
       scorableQuestions.length > 0 &&
       form.setting?.returnscore === returnscore.partial;
 
+    // Combine all validation results into aggregated arrays
+    const combinedResults: CombinedValidationResults = {
+      errors: validationResults.flatMap((r) => r.errors),
+      warnings: validationResults.flatMap((r) => r.warnings),
+      missingAnswers: validationResults.flatMap((r) => r.missingAnswers),
+      missingScores: validationResults.flatMap((r) => r.missingScores),
+      wrongScores: validationResults.flatMap((r) => r.wrongScores),
+    };
+
     return {
       canReturnScoreAutomatically,
       totalValidQuestions,
       totalInvalidQuestions,
       totalScore,
-      validationResults,
+      validationResults: combinedResults,
     };
   }
 
@@ -320,19 +375,14 @@ export class SolutionValidationService {
       );
     }
 
-    const allMissingAnswers = summary.validationResults.flatMap(
-      (r) => r.missingAnswers
-    );
-    const allMissingScores = summary.validationResults.flatMap(
-      (r) => r.missingScores
-    );
+    const { missingAnswers, missingScores } = summary.validationResults;
 
-    if (allMissingAnswers.length > 0) {
-      errors.push(`Missing answers: ${allMissingAnswers.length} question(s)`);
+    if (missingAnswers.length > 0) {
+      errors.push(`Missing answers: ${missingAnswers.length} question(s)`);
     }
 
-    if (allMissingScores.length > 0) {
-      errors.push(`Missing scores: ${allMissingScores.length} question(s)`);
+    if (missingScores.length > 0) {
+      errors.push(`Missing scores: ${missingScores.length} question(s)`);
     }
 
     return errors;
