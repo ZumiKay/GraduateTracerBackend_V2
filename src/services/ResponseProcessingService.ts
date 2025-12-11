@@ -174,7 +174,6 @@ export class ResponseProcessingService {
     // Auto-score
     if (form.setting?.returnscore === returnscore.partial) {
       const addscore = await this.addScore(responseSet);
-
       isAutoScored = true;
       // Check if all questions have no score
       isNonScore = addscore.isNonScore || false;
@@ -309,7 +308,7 @@ export class ResponseProcessingService {
       }
 
       let result: Array<ResponseSetType> = [];
-      let isNonScore = false;
+      let hasAnyScore = false;
 
       //Scoring process
       for (let i = 0; i < content.length; i++) {
@@ -342,7 +341,6 @@ export class ResponseProcessingService {
         );
 
         if (!isVerify.isValid) {
-          console.log({ question, userresponse });
           throw new Error(isVerify.errors.join("||"));
         }
 
@@ -350,9 +348,10 @@ export class ResponseProcessingService {
 
         // Track if any question has a score
         if (maxScore > 0) {
-          isNonScore = true;
+          hasAnyScore = true;
         }
 
+        //Automically Score All Scoreable Questions
         if (question.answer && question.answer?.answer) {
           const partialScored =
             SolutionValidationService.calculateResponseScore(
@@ -367,13 +366,17 @@ export class ResponseProcessingService {
             score: partialScored,
             scoringMethod: ScoringMethod.AUTO,
           });
-        } else
+        }
+        //If unscoreable mark to score manually
+        else
           result.push({
             ...userresponse,
             scoringMethod: ScoringMethod.MANUAL,
           });
       }
 
+      // isNonScore is true when NO questions have scores (all maxScore = 0)
+      const isNonScore = !hasAnyScore;
       return { response: result, isNonScore };
     } catch (error) {
       console.error("AddScore Error:", error);

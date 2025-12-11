@@ -464,6 +464,7 @@ export class SolutionValidationService {
     correctAnswer: number[],
     maxScore: number
   ): number {
+    //Verify answer format
     if (!Array.isArray(userAnswer) || !Array.isArray(correctAnswer)) return 0;
 
     const userSet = new Set(userAnswer);

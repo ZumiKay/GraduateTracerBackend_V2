@@ -455,21 +455,50 @@ export const AddQuestionNumbering = ({
 
   const questionIdMap = new Map<string, string>();
 
-  // Pre-build index map for O(1) lookups instead of indexOf
   const questionIndexMap = new Map<ContentType, number>();
-  questions.forEach((q, idx) => {
-    questionIndexMap.set(q, idx);
+  questions.forEach((q, index) => {
+    questionIndexMap.set(q, index);
   });
 
-  // Pre-build parent-to-children mapping for efficient sibling lookups
+  // Helper to get parent identifier (qId or fallback to qIdx-based temp id)
+  const getParentIdentifier = (question: ContentType): string | null => {
+    if (!question.parentcontent) return null;
+
+    // If qId exists, use it
+    if (question.parentcontent.qId) {
+      return question.parentcontent.qId;
+    }
+
+    // Fallback to qIdx-based identifier for unsaved data
+    if (question.parentcontent.qIdx !== undefined) {
+      return `temp_${question.parentcontent.qIdx}`;
+    }
+
+    return null;
+  };
+
+  // Helper to get question identifier
+  const getQuestionIdentifier = (question: ContentType): string => {
+    if (question._id) return question._id.toString();
+    return `temp_${question.qIdx}`;
+  };
+
+  // Check if question is top-level (no parent)
+  const isTopLevelQuestion = (question: ContentType): boolean => {
+    return (
+      !question.parentcontent ||
+      (question.parentcontent.qIdx === undefined && !question.parentcontent.qId)
+    );
+  };
+
   const parentChildrenMap = new Map<
     string,
     Array<{ question: ContentType; index: number }>
   >();
 
   questions.forEach((question, index) => {
-    if (question.parentcontent) {
-      const parentId = question.parentcontent.qId;
+    const parentId = getParentIdentifier(question);
+    if (parentId) {
       if (!parentChildrenMap.has(parentId)) {
         parentChildrenMap.set(parentId, []);
       }
@@ -491,23 +520,40 @@ export const AddQuestionNumbering = ({
     index: number,
     lastIndexWihoutParentCount?: number
   ): string => {
-    //QuestionId for non conditional question
-    if (!question.parentcontent) {
-      return `${
-        lastIndexWihoutParentCount
-          ? Math.abs(lastIndexWihoutParentCount - index) + 1
-          : index + 1
-      }`;
+    //QuestionId for non conditional question (top-level)
+    if (isTopLevelQuestion(question)) {
+      // Count how many top-level questions come before this one (inclusive)
+      let topLevelCount = 0;
+      for (let i = 0; i <= index; i++) {
+        if (isTopLevelQuestion(questions[i])) {
+          topLevelCount++;
+        }
+      }
+      // Add lastIdx to account for questions from previous pages
+      const offset = lastIdx ?? 0;
+      return `${topLevelCount + offset}`;
     }
 
     // Find parent question number
-    const parentId = question.parentcontent.qId;
+    const parentId = getParentIdentifier(question);
+    if (!parentId) {
+      return `${index + 1}`;
+    }
+
     let parentNumber = questionIdMap.get(parentId);
 
     if (!parentNumber) {
-      const parentQuestion = questions.find(
+      // Try to find parent by _id first
+      let parentQuestion = questions.find(
         (q) => q._id?.toString() === parentId
       );
+
+      // If not found, try by temp identifier (qIdx-based)
+      if (!parentQuestion && parentId.startsWith("temp_")) {
+        const parentQIdx = parseInt(parentId.replace("temp_", ""), 10);
+        parentQuestion = questions.find((q) => q.qIdx === parentQIdx);
+      }
+
       if (parentQuestion) {
         parentNumber = parentQuestion.questionId || `${index + 1}`;
       } else {
@@ -520,7 +566,9 @@ export const AddQuestionNumbering = ({
 
     if (siblings) {
       for (const sibling of siblings) {
-        if (sibling.question._id?.toString() === question._id?.toString()) {
+        const siblingId = getQuestionIdentifier(sibling.question);
+        const currentId = getQuestionIdentifier(question);
+        if (siblingId === currentId) {
           break;
         }
         position++;
@@ -535,19 +583,21 @@ export const AddQuestionNumbering = ({
   const result = questions.map((question, index) => {
     const questionId = buildQuestionNumber(
       question,
-      (lastIdx ? lastIdx : 0) + index,
+      index, // Use array index, not offset
       lastIdx ? undefined : lastIndexWihoutParentCount
     );
 
-    // Store in map for reference by child questions
-    if (question._id) {
-      questionIdMap.set(question._id.toString(), questionId);
-    }
+    // Store in map for reference by child questions using identifier
+    const qIdentifier = getQuestionIdentifier(question);
+    questionIdMap.set(qIdentifier, questionId);
 
     // Update parentcontent with parent's questionId if it exists
     let updatedParentContent = question.parentcontent;
     if (question.parentcontent) {
-      const parentQuestionId = questionIdMap.get(question.parentcontent.qId);
+      const parentId = getParentIdentifier(question);
+      const parentQuestionId = parentId
+        ? questionIdMap.get(parentId)
+        : undefined;
       updatedParentContent = {
         ...question.parentcontent,
         questionId: parentQuestionId || undefined,
@@ -562,7 +612,7 @@ export const AddQuestionNumbering = ({
     };
   });
 
-  return groupContentByParent(result);
+  return result;
 };
 
 //Extract Answer Key Value

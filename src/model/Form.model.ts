@@ -89,7 +89,6 @@ const FormSettingSchema = new Schema<FromSettingType>({
     type: String,
     default: "#000000",
   },
-
   bg: {
     type: String,
     default: "#fff",
@@ -131,11 +130,6 @@ const FormCollarboratorPendingSchema = new Schema<PendingCollarboratorsType>({
   code: {
     type: "String",
     required: true,
-    unique: true,
-    validate: {
-      validator: (code) => code.lenth > 0,
-      message: "Code is required",
-    },
   },
   expireIn: {
     type: "Number",
@@ -202,7 +196,7 @@ const FormSchema = new Schema<FormType>(
     editors: {
       type: [Schema.Types.ObjectId],
       ref: "User",
-      default: null,
+      default: [],
       required: false,
     },
     pendingCollarborators: {

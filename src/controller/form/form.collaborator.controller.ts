@@ -753,19 +753,28 @@ export async function ConfirmOwnershipTransfer(
       ? pendingTransfer.fromUser._id.toString()
       : pendingTransfer.fromUser.toString();
 
-    await Form.findByIdAndUpdate(formId, {
+    // Build the update operations
+    const updateOps: Record<string, unknown> = {
       $set: { user: new Types.ObjectId(currentUser.sub) },
       $addToSet: { owners: new Types.ObjectId(fromUserId) },
       $unset: { pendingOwnershipTransfer: 1 },
-    });
+    };
+
+    await Form.findByIdAndUpdate(formId, updateOps);
 
     // Remove new owner from owners/editors list if they were there
-    await Form.findByIdAndUpdate(formId, {
-      $pull: {
-        owners: new Types.ObjectId(currentUser.sub),
-        editors: new Types.ObjectId(currentUser.sub),
-      },
-    });
+    // Only pull from arrays that exist
+    const pullOps: Record<string, unknown> = {};
+    if (Array.isArray(form.owners)) {
+      pullOps.owners = new Types.ObjectId(currentUser.sub);
+    }
+    if (Array.isArray(form.editors)) {
+      pullOps.editors = new Types.ObjectId(currentUser.sub);
+    }
+
+    if (Object.keys(pullOps).length > 0) {
+      await Form.findByIdAndUpdate(formId, { $pull: pullOps });
+    }
 
     return res.status(200).json({
       ...ReturnCode(

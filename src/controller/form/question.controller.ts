@@ -256,6 +256,44 @@ class QuestionController {
   }
 
   /**
+   * Processes parentcontent to resolve qIdx to qId (parent's _id)
+   * This ensures child questions have a reference to the parent's actual database ID
+   */
+  private processParentContent(
+    parentcontent: ContentType["parentcontent"],
+    data: ContentType[],
+    questionIdMap: Map<number, Types.ObjectId>
+  ): ContentType["parentcontent"] {
+    if (!parentcontent) return undefined;
+
+    // If qId already exists and is valid, return as-is
+    if (parentcontent.qId && parentcontent.qId.length > 0) {
+      return parentcontent;
+    }
+
+    // If qIdx exists, resolve it to the parent's _id
+    if (parentcontent.qIdx !== undefined) {
+      // Find the parent question by qIdx
+      const parentIndex = data.findIndex((q) => q.qIdx === parentcontent.qIdx);
+
+      if (parentIndex !== -1) {
+        const parentQuestion = data[parentIndex];
+        // Get parent's _id (either existing or newly generated)
+        const parentId = parentQuestion._id || questionIdMap.get(parentIndex);
+
+        if (parentId) {
+          return {
+            ...parentcontent,
+            qId: parentId.toString(),
+          };
+        }
+      }
+    }
+
+    return parentcontent;
+  }
+
+  /**
    * Builds bulk write operations for upserting questions
    */
   private buildBulkOperations(
@@ -272,6 +310,11 @@ class QuestionController {
         data,
         questionIdMap
       );
+      const processedParentContent = this.processParentContent(
+        rest.parentcontent,
+        data,
+        questionIdMap
+      );
 
       return {
         updateOne: {
@@ -280,6 +323,7 @@ class QuestionController {
             $set: {
               ...rest,
               conditional: processedConditional,
+              parentcontent: processedParentContent,
               formId,
               page,
               updatedAt: new Date(),
@@ -852,20 +896,6 @@ class QuestionController {
     const prevTotal = this.calculateTotalScore(prevContent);
 
     return incomingTotal - prevTotal;
-  }
-
-  /**
-   * @deprecated Use calculateScoreDifference instead
-   * Kept for backward compatibility
-   */
-  private isScoreHasChange(
-    incoming: ContentType[],
-    prevContent: ContentType[]
-  ): number | null {
-    const incomingTotal = this.calculateTotalScore(incoming);
-    const prevTotal = this.calculateTotalScore(prevContent);
-
-    return incomingTotal !== prevTotal ? incomingTotal : null;
   }
 }
 
