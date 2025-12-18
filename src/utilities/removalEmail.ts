@@ -216,7 +216,7 @@ export const sendRemovalLinkEmail = async (
       <div class="email-container">
         <div class="header">
           <h1>🗑️ Remove Your Response</h1>
-          <p>Form Response Removal Request</p>
+          <p>Session Removal Request</p>
         </div>
         
         <div class="content">
@@ -225,7 +225,7 @@ export const sendRemovalLinkEmail = async (
           </div>
           
           <div class="message">
-            You have requested to remove your response from our system. This action will permanently delete your submitted form data.
+            You have requested to remove your session. This action will permanently delete your active session.
           </div>
           
           ${
@@ -241,13 +241,13 @@ export const sendRemovalLinkEmail = async (
           <div class="warning-box">
             <div class="warning-icon">⚠️</div>
             <div class="warning-text">
-              <strong>Important:</strong> This action cannot be undone. Once you click the button below, your response will be permanently removed from our system.
+              <strong>Important:</strong> This action cannot be undone.
             </div>
           </div>
           
           <div class="button-container">
             <a href="${removalUrl}" class="removal-button">
-              Remove My Response
+              Remove my session
             </a>
           </div>
           

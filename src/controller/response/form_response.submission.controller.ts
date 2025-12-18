@@ -17,6 +17,7 @@ import {
   GetPublicFormDataTyEnum,
 } from "../../middleware/User.middleware";
 import { CustomRequest } from "../../types/customType";
+import { NotificationController } from "../utils/notification.controller";
 
 interface SubmitResponseBodyType {
   responseSet?: Array<ResponseSetType>;
@@ -62,7 +63,7 @@ export class FormResponseSubmissionController {
       const { formId } = req.params as { formId: string };
 
       const form = await Form.findById(formId)
-        .select("setting type title")
+        .select("setting type title totalscore")
         .lean();
 
       if (!form) {
@@ -87,12 +88,15 @@ export class FormResponseSubmissionController {
 
       let result: Partial<SubmitionProcessionReturnType | undefined>;
       try {
+        //Quiz type process
         if (form.type === TypeForm.Quiz) {
           result = await ResponseProcessingService.processFormSubmission(
             submissionDataWithTracking,
             form
           );
-        } else {
+        }
+        //Normal type process
+        else {
           result = await ResponseProcessingService.processNormalFormSubmission(
             submissionDataWithTracking
           );
@@ -127,6 +131,18 @@ export class FormResponseSubmissionController {
         res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
         res.clearCookie(process.env.RESPONDENT_COOKIE as string);
         await Formsession.deleteOne({ session_id: req.formsession.sub });
+      }
+
+      //Create Notification for formOwner
+      if (result.responseId) {
+        await NotificationController.NotifyNewResponse(
+          formId,
+          result.responseId,
+          {
+            name: respondentName,
+            email: respondentEmail,
+          }
+        );
       }
 
       return res.status(200).json({

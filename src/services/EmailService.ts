@@ -36,6 +36,36 @@ export interface ResponseEmailData {
   submittedAt?: Date;
 }
 
+export interface ResponseCardEmailData {
+  to: string;
+  formTitle: string | ContentTitle;
+  formDescription?: string;
+  totalScore: number;
+  maxScore: number;
+  scorePercentage: number;
+  correctCount: number;
+  incorrectCount: number;
+  totalQuestions: number;
+  responseId: string;
+  isQuizForm: boolean;
+  includeAnswerKey: boolean;
+  questions: Array<{
+    title: string;
+    type: string;
+    qIdx: number;
+    answer: any;
+    userResponse: any;
+    score: number;
+    maxScore: number;
+    isCorrect?: boolean;
+    choices?: Array<{ content: string; idx: number; isCorrect?: boolean }>;
+  }>;
+  respondentName?: string;
+  respondentEmail?: string;
+  submittedAt?: Date;
+  completionStatus?: string;
+}
+
 class EmailService {
   private transporter: nodemailer.Transporter;
 
@@ -130,9 +160,10 @@ class EmailService {
 
   // Send response results to respondent
   async sendResponseResults(data: ResponseEmailData): Promise<boolean> {
-    const scorePercentage = ((data.totalScore / data.maxScore) * 100).toFixed(
-      1
-    );
+    const scorePercentage =
+      data.totalScore === 0
+        ? 0
+        : ((data.totalScore / data.maxScore) * 100).toFixed(1);
     const submittedDate = data.submittedAt
       ? new Date(data.submittedAt).toLocaleDateString()
       : new Date().toLocaleDateString();
@@ -453,6 +484,452 @@ class EmailService {
     return await this.sendEmail({
       to: [data.to],
       subject: `🎯 Results for: ${this.convertTitleToString(data.formTitle)}`,
+      html,
+    });
+  }
+
+  // Enhanced Response Card Email with modern design
+  async sendResponseCardEmail(data: ResponseCardEmailData): Promise<boolean> {
+    const submittedDate = data.submittedAt
+      ? new Date(data.submittedAt).toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : new Date().toLocaleDateString();
+
+    const getScoreGrade = (
+      percentage: number
+    ): { grade: string; color: string; bgColor: string; emoji: string } => {
+      if (percentage >= 90)
+        return {
+          grade: "Excellent",
+          color: "#059669",
+          bgColor: "#d1fae5",
+          emoji: "🏆",
+        };
+      if (percentage >= 80)
+        return {
+          grade: "Very Good",
+          color: "#0891b2",
+          bgColor: "#cffafe",
+          emoji: "🌟",
+        };
+      if (percentage >= 70)
+        return {
+          grade: "Good",
+          color: "#2563eb",
+          bgColor: "#dbeafe",
+          emoji: "👍",
+        };
+      if (percentage >= 60)
+        return {
+          grade: "Satisfactory",
+          color: "#ca8a04",
+          bgColor: "#fef9c3",
+          emoji: "📝",
+        };
+      if (percentage >= 50)
+        return {
+          grade: "Pass",
+          color: "#d97706",
+          bgColor: "#ffedd5",
+          emoji: "✓",
+        };
+      return {
+        grade: "Needs Improvement",
+        color: "#dc2626",
+        bgColor: "#fee2e2",
+        emoji: "📚",
+      };
+    };
+
+    const gradeInfo = getScoreGrade(data.scorePercentage);
+
+    const formatUserResponse = (
+      question: (typeof data.questions)[0]
+    ): string => {
+      const response = question.userResponse;
+
+      if (response === null || response === undefined || response === "") {
+        return '<span style="color: #9ca3af; font-style: italic;">No answer provided</span>';
+      }
+
+      // For choice questions, show selected option(s) with their content
+      if (question.choices && question.choices.length > 0) {
+        if (typeof response === "number") {
+          const selected = question.choices.find((c) => c.idx === response);
+          return selected
+            ? this.escapeHtml(selected.content)
+            : String(response);
+        }
+        if (Array.isArray(response)) {
+          const selectedChoices = question.choices
+            .filter((c) => (response as number[]).includes(c.idx))
+            .map((c) => this.escapeHtml(c.content));
+          return selectedChoices.length > 0
+            ? selectedChoices.map((s) => `• ${s}`).join("<br>")
+            : '<span style="color: #9ca3af; font-style: italic;">No selections made</span>';
+        }
+        // Handle object with key/val format
+        if (typeof response === "object" && "val" in response) {
+          const val = (response as any).val;
+          if (Array.isArray(val)) {
+            return val
+              .map((v: string) => `• ${this.escapeHtml(v)}`)
+              .join("<br>");
+          }
+          return this.escapeHtml(String(val));
+        }
+      }
+
+      // For other question types
+      if (typeof response === "object") {
+        if ("start" in response && "end" in response) {
+          return `${response.start} → ${response.end}`;
+        }
+        return this.escapeHtml(JSON.stringify(response));
+      }
+
+      return this.escapeHtml(String(response));
+    };
+
+    const formatCorrectAnswer = (
+      question: (typeof data.questions)[0]
+    ): string => {
+      if (!question.answer) return "";
+
+      if (question.choices && question.choices.length > 0) {
+        const correctChoices = question.choices.filter((c) => c.isCorrect);
+        if (correctChoices.length > 0) {
+          return correctChoices
+            .map((c) => `✓ ${this.escapeHtml(c.content)}`)
+            .join("<br>");
+        }
+      }
+
+      if (Array.isArray(question.answer)) {
+        return question.answer
+          .map((a: any) => `✓ ${this.escapeHtml(String(a))}`)
+          .join("<br>");
+      }
+
+      if (typeof question.answer === "object" && "start" in question.answer) {
+        return `${question.answer.start} → ${question.answer.end}`;
+      }
+
+      return this.escapeHtml(String(question.answer));
+    };
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Response Results - ${this.escapeHtml(
+          this.convertTitleToString(data.formTitle)
+        )}</title>
+        <!--[if mso]>
+        <style type="text/css">
+          table { border-collapse: collapse; }
+          .score-circle { width: 140px !important; }
+        </style>
+        <![endif]-->
+        <style>
+          /* Reset and base styles */
+          body, table, td, p, a, li { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+          table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+          img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+          body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+          
+          /* Responsive wrapper */
+          .email-wrapper { width: 100% !important; max-width: 700px !important; }
+          
+          /* Mobile styles */
+          @media screen and (max-width: 600px) {
+            .email-wrapper { width: 100% !important; }
+            .hero { padding: 24px 16px !important; }
+            .hero h1 { font-size: 20px !important; }
+            .score-card { margin: -20px 12px 0 !important; padding: 20px !important; }
+            .score-circle { width: 110px !important; height: 110px !important; padding-top: 25px !important; }
+            .score-value { font-size: 24px !important; }
+            .score-total { font-size: 12px !important; }
+            .stats-table { width: 100% !important; }
+            .stat-cell { display: block !important; width: 100% !important; padding: 8px 0 !important; }
+            .info-table { width: 100% !important; }
+            .info-cell { display: block !important; width: 100% !important; margin-bottom: 8px !important; }
+            .question-header { padding: 12px 16px !important; }
+            .question-body { padding: 16px !important; }
+            .question-footer-table { width: 100% !important; }
+            .footer-cell { display: block !important; width: 100% !important; text-align: center !important; padding: 4px 0 !important; }
+            .thank-you-banner { margin: 0 12px 16px !important; padding: 16px !important; }
+            .questions-section { padding: 16px !important; }
+            .info-section { padding: 16px !important; }
+          }
+        </style>
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f3f4f6;">
+          <tr>
+            <td align="center" style="padding: 20px 0;">
+              <table role="presentation" class="email-wrapper" cellpadding="0" cellspacing="0" width="700" style="max-width: 700px; background: #ffffff; border-radius: 8px; overflow: hidden;">
+                
+                <!-- Hero Section -->
+                <tr>
+                  <td class="hero" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 24px; text-align: center;">
+                    <div style="width: 70px; height: 70px; background: rgba(255,255,255,0.2); border-radius: 50%; display: inline-block; text-align: center; line-height: 70px; font-size: 36px; margin-bottom: 16px;">${
+                      gradeInfo.emoji
+                    }</div>
+                    <h1 style="color: white; font-size: 24px; font-weight: 700; margin: 0 0 8px 0;">${this.escapeHtml(
+                      this.convertTitleToString(data.formTitle)
+                    )}</h1>
+                    <p style="color: rgba(255,255,255,0.9); font-size: 15px; margin: 0;">Your Response Results Are Ready</p>
+                  </td>
+                </tr>
+                
+                <!-- Score Card -->
+                <tr>
+                  <td style="padding: 0 20px;">
+                    <table role="presentation" class="score-card" cellpadding="0" cellspacing="0" width="100%" style="background: #ffffff; margin-top: -24px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); position: relative;">
+                      <tr>
+                        <td style="padding: 28px 20px; text-align: center; border-bottom: 2px dashed #e5e7eb;">
+                          <div class="score-circle" style="width: 130px; height: 130px; border-radius: 50%; background: ${
+                            gradeInfo.bgColor
+                          }; border: 5px solid ${
+      gradeInfo.color
+    }; display: inline-block; text-align: center; padding-top: 32px; box-sizing: border-box; margin-bottom: 12px;">
+                            <span class="score-value" style="display: block; font-size: 32px; font-weight: 800; color: ${
+                              gradeInfo.color
+                            };">${data.scorePercentage.toFixed(0)}%</span>
+                            <span class="score-total" style="display: block; font-size: 13px; color: #6b7280;">${
+                              data.totalScore
+                            }/${data.maxScore}</span>
+                          </div>
+                          <div style="display: inline-block; background: ${
+                            gradeInfo.bgColor
+                          }; color: ${
+      gradeInfo.color
+    }; padding: 8px 18px; border-radius: 20px; font-weight: 600; font-size: 15px;">${
+      gradeInfo.emoji
+    } ${gradeInfo.grade}</div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 20px;">
+                          <table role="presentation" class="stats-table" cellpadding="0" cellspacing="0" width="100%">
+                            <tr>
+                              <td class="stat-cell" style="text-align: center; padding: 0 8px; width: 33.33%;">
+                                <div style="font-size: 26px; font-weight: 700; color: #1f2937;">${
+                                  data.totalQuestions
+                                }</div>
+                                <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">Total Questions</div>
+                              </td>
+                              <td class="stat-cell" style="text-align: center; padding: 0 8px; width: 33.33%;">
+                                <div style="font-size: 26px; font-weight: 700; color: #059669;">${
+                                  data.correctCount
+                                }</div>
+                                <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">Correct</div>
+                              </td>
+                              <td class="stat-cell" style="text-align: center; padding: 0 8px; width: 33.33%;">
+                                <div style="font-size: 26px; font-weight: 700; color: #dc2626;">${
+                                  data.incorrectCount
+                                }</div>
+                                <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">Incorrect</div>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                
+                <!-- Info Section -->
+                <tr>
+                  <td class="info-section" style="padding: 20px; background: #f8fafc;">
+                    <table role="presentation" class="info-table" cellpadding="0" cellspacing="8" width="100%">
+                      <tr>
+                        <td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;">
+                          <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">👤 Respondent</div>
+                          <div style="font-size: 14px; font-weight: 600; color: #1f2937; word-break: break-word;">${this.escapeHtml(
+                            data.respondentName || "Anonymous"
+                          )}</div>
+                        </td>
+                        <td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;">
+                          <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">📅 Submitted</div>
+                          <div style="font-size: 14px; font-weight: 600; color: #1f2937;">${submittedDate}</div>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;">
+                          <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">${
+                            data.respondentEmail ? "✉️ Email" : "📊 Status"
+                          }</div>
+                          <div style="font-size: 14px; font-weight: 600; color: #1f2937; word-break: break-word;">${
+                            data.respondentEmail
+                              ? this.escapeHtml(data.respondentEmail)
+                              : data.completionStatus || "Completed"
+                          }</div>
+                        </td>
+                        <td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;">
+                          <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">🔖 Response ID</div>
+                          <div style="font-size: 12px; font-weight: 600; color: #1f2937; word-break: break-all;">${
+                            data.responseId
+                          }</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                
+                <!-- Questions Section -->
+                ${
+                  data.questions.length > 0
+                    ? `
+                <tr>
+                  <td class="questions-section" style="padding: 20px;">
+                    <h2 style="font-size: 18px; font-weight: 700; color: #1f2937; margin: 0 0 16px 0;">📋 Detailed Results</h2>
+                    
+                    ${data.questions
+                      .map((question, index) => {
+                        const isCorrect = question.isCorrect;
+                        const isNoScore = question.maxScore === 0;
+                        const isPartial =
+                          question.score > 0 &&
+                          question.score < question.maxScore;
+                        const statusBgColor = isNoScore
+                          ? ""
+                          : isCorrect
+                          ? "#d1fae5"
+                          : isPartial
+                          ? "#fef3c7"
+                          : "#fee2e2";
+                        const statusTextColor = isNoScore
+                          ? ""
+                          : isCorrect
+                          ? "#065f46"
+                          : isPartial
+                          ? "#92400e"
+                          : "#991b1b";
+                        const statusText = isNoScore
+                          ? ""
+                          : isCorrect
+                          ? "✓ Correct"
+                          : isPartial
+                          ? "~ Partial"
+                          : "✗ Incorrect";
+
+                        return `
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 12px; overflow: hidden;">
+                      <tr>
+                        <td class="question-header" style="padding: 14px 16px; background: #f8fafc; border-bottom: 1px solid #e5e7eb;">
+                          <span style="background: #667eea; color: white; width: 28px; height: 28px; border-radius: 6px; display: inline-block; text-align: center; line-height: 28px; font-weight: 700; font-size: 13px; vertical-align: middle; margin-right: 10px;">${
+                            index + 1
+                          }</span>
+                          <span style="font-size: 15px; font-weight: 600; color: #1f2937; vertical-align: middle;">${this.escapeHtml(
+                            question.title
+                          )}</span>
+                          <span style="float: right; font-size: 10px; padding: 3px 8px; background: #e5e7eb; color: #4b5563; border-radius: 10px; text-transform: uppercase; font-weight: 500;">${
+                            question.type
+                          }</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td class="question-body" style="padding: 16px;">
+                          <div style="padding: 14px; border-radius: 8px; margin-bottom: 10px; background: #f0f9ff; border-left: 4px solid #3b82f6;">
+                            <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; color: #1d4ed8;">👤 Your Answer</div>
+                            <div style="font-size: 14px; line-height: 1.5; color: #1f2937;">${formatUserResponse(
+                              question
+                            )}</div>
+                          </div>
+                          
+                          ${
+                            data.includeAnswerKey && question.answer !== null
+                              ? `
+                          <div style="padding: 14px; border-radius: 8px; background: #ecfdf5; border-left: 4px solid #10b981;">
+                            <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; color: #059669;">✓ Correct Answer</div>
+                            <div style="font-size: 14px; line-height: 1.5; color: #1f2937;">${formatCorrectAnswer(
+                              question
+                            )}</div>
+                          </div>
+                          `
+                              : ""
+                          }
+                        </td>
+                      </tr>
+                      ${
+                        !isNoScore
+                          ? `
+                      <tr>
+                        <td style="padding: 10px 16px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
+                          <table role="presentation" class="question-footer-table" cellpadding="0" cellspacing="0" width="100%">
+                            <tr>
+                              <td class="footer-cell" style="text-align: left; vertical-align: middle;">
+                                <span style="padding: 5px 12px; border-radius: 16px; font-size: 12px; font-weight: 600; background: ${statusBgColor}; color: ${statusTextColor};">${statusText}</span>
+                              </td>
+                              <td class="footer-cell" style="text-align: right; vertical-align: middle;">
+                                <span style="font-size: 14px; font-weight: 600; color: #374151;">${question.score}/${question.maxScore} points</span>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>`
+                          : ""
+                      }
+                    </table>
+                    `;
+                      })
+                      .join("")}
+                  </td>
+                </tr>
+                `
+                    : ""
+                }
+                
+                <!-- Thank You Banner -->
+                <tr>
+                  <td style="padding: 0 20px 20px;">
+                    <table role="presentation" class="thank-you-banner" cellpadding="0" cellspacing="0" width="100%" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 10px;">
+                      <tr>
+                        <td style="padding: 20px; text-align: center;">
+                          <p style="color: #92400e; font-size: 14px; margin: 0;">
+                            <strong style="display: block; font-size: 16px; margin-bottom: 4px;">🙏 Thank you for your participation!</strong>
+                            If you have any questions about your results, please contact the form administrator.
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                
+                <!-- Footer -->
+                <tr>
+                  <td style="background: #1f2937; padding: 24px 20px; text-align: center;">
+                    <div style="font-size: 16px; font-weight: 700; color: white; margin-bottom: 6px;">📚 Graduate Tracer System</div>
+                    <p style="color: #9ca3af; font-size: 12px; margin: 0; line-height: 1.5;">
+                      This email was automatically generated.<br>
+                      Please do not reply directly to this email.
+                    </p>
+                  </td>
+                </tr>
+                
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    return await this.sendEmail({
+      to: [data.to],
+      subject: `${gradeInfo.emoji} Your Results: ${this.convertTitleToString(
+        data.formTitle
+      )} (${data.scorePercentage.toFixed(0)}%)`,
       html,
     });
   }

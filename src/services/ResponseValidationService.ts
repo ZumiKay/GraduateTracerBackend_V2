@@ -296,11 +296,13 @@ export class ResponseValidationService {
     res,
     requireFormId = true,
     requireUserInfo,
+    noToken,
   }: {
     req: CustomRequest;
     res: Response;
     requireFormId?: boolean;
     requireUserInfo?: boolean;
+    noToken?: boolean;
   }): Promise<{
     user: UserToken | null;
     formId?: string;
@@ -312,7 +314,7 @@ export class ResponseValidationService {
   }> {
     const user = req.user;
 
-    if (!user) {
+    if (!user && !noToken) {
       res.status(401).json(ReturnCode(401, "Unauthorized"));
       return { user: null, isValid: false };
     }
@@ -323,13 +325,13 @@ export class ResponseValidationService {
         (req.params.formId as string) ||
         req.body.formId;
 
-      if (!formId) {
+      if (!formId && user) {
         res.status(400).json(ReturnCode(400, "Form ID is required"));
         return { user, isValid: false };
       }
 
       return {
-        user,
+        user: user ?? null,
         formId,
         page: Number(req.query.page || req.query.p) || 1,
         limit: Number(req.query.limit || req.query.lt) || 10,
@@ -340,14 +342,14 @@ export class ResponseValidationService {
     }
 
     if (requireUserInfo) {
-      if (!req.query.uid) {
+      if (!req.query.uid && user) {
         res.status(400).json(ReturnCode(400));
         return { user, isValid: false };
       }
     }
 
     return {
-      user,
+      user: user ?? null,
       page: Number(req.query.page || req.query.p) || 1,
       limit: Number(req.query.limit || req.query.lt) || 10,
       uid: (req.query.uid as string) ?? undefined,

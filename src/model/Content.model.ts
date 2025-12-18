@@ -1,6 +1,8 @@
 import { model, Schema, Types } from "mongoose";
 import { ResponseAnswerType } from "./Response.model";
 
+export const DetailContentSelection =
+  "_id qIdx title type text multiple checkbox selection rangedate rangenumber date require page conditional parentcontent";
 export enum QuestionType {
   MultipleChoice = "multiple",
   CheckBox = "checkbox",
@@ -57,7 +59,6 @@ export interface ContentType {
   text?: string;
   checkbox?: Array<ChoiceQuestionType>;
   range?: RangeType<string>;
-  numrange?: RangeType<number>;
   rangedate?: RangeType<Date>;
   rangenumber?: RangeType<number>;
   date?: Date;
@@ -180,14 +181,8 @@ const ContentSchema = new Schema<ContentType>(
     multiple: {
       type: [ChoiceQuestionSchema],
     },
-    range: {
-      type: RangeSchema,
-    },
     selection: {
       type: [ChoiceQuestionSchema],
-    },
-    numrange: {
-      type: RangeSchema,
     },
     rangedate: {
       type: RangeSchema,

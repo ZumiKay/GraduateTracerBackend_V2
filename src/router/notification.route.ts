@@ -1,8 +1,16 @@
 import { Router } from "express";
 import UserMiddleware from "../middleware/User.middleware";
-import notificationController from "../controller/utils/notification.controller";
+import { NotificationController } from "../controller/utils/notification.controller";
 
 const router = Router();
+const notificationController = new NotificationController();
+
+// SSE endpoint for real-time notifications (must be before other routes)
+router.get(
+  "/stream",
+  UserMiddleware.VerifyToken as never,
+  notificationController.SubscribeToNotifications
+);
 
 // Get user notifications
 router.get(

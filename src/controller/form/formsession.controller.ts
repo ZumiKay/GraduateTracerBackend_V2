@@ -37,6 +37,7 @@ export default class FormsessionService {
     formId: z.string().min(1),
     email: z.string().email().optional(),
     rememberMe: z.boolean().optional(),
+    name: z.string().optional(),
     password: z.string().optional(),
     isGuest: z.boolean().optional(),
     existed: z.string().optional(),
@@ -328,7 +329,7 @@ export default class FormsessionService {
   }
 
   /**
-   * Handles respondent login for form access with optimized performance
+   * Handles respondent login for form access
    *
    * Features:
    * - Early validation and fail-fast strategy
@@ -337,8 +338,6 @@ export default class FormsessionService {
    * - Support for guest and authenticated users
    * - Session reactivation for existing users
    *
-   * @param req - Custom request with respondent login data
-   * @param res - Express response object
    */
   public static RespondentLogin = async (req: CustomRequest, res: Response) => {
     if (
@@ -350,7 +349,6 @@ export default class FormsessionService {
         success: false,
         status: 500,
         message: "Server configuration error",
-        error: "MISSING_ENV_VARIABLES",
       });
     }
 
@@ -360,7 +358,6 @@ export default class FormsessionService {
         success: false,
         status: 400,
         message: "Validation failed",
-        error: "VALIDATION_ERROR",
         errors: validationResult.error.errors,
       });
     }
@@ -388,7 +385,6 @@ export default class FormsessionService {
           success: false,
           status: 400,
           message: "Form not found",
-          error: "FORM_NOT_FOUND",
         });
       }
 
@@ -397,7 +393,6 @@ export default class FormsessionService {
           success: false,
           status: 403,
           message: "Form is closed",
-          error: "FORM_CLOSED",
         });
       }
 
@@ -416,7 +411,6 @@ export default class FormsessionService {
           success: false,
           status: 403,
           message: "Form does not accept guest",
-          error: "GUEST_NOT_ALLOWED",
         });
       }
 
@@ -426,7 +420,6 @@ export default class FormsessionService {
             success: false,
             status: 400,
             message: "Password required",
-            error: "PASSWORD_REQUIRED",
           });
         }
 
@@ -435,7 +428,6 @@ export default class FormsessionService {
             success: false,
             status: 401,
             message: "User not found",
-            error: "USER_NOT_FOUND",
           });
         }
 
@@ -444,8 +436,7 @@ export default class FormsessionService {
           return res.status(401).json({
             success: false,
             status: 401,
-            message: "Invalid password",
-            error: "INVALID_PASSWORD",
+            message: "Incorrect Credential",
           });
         }
       }
@@ -796,7 +787,8 @@ export default class FormsessionService {
 
     //If no logged in session no content
     if (!respondentCookie) {
-      return res.status(204).json(ReturnCode(204));
+      console.log("Error session");
+      return res.status(401).json({ ...ReturnCode(401) });
     }
 
     try {

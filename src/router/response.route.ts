@@ -143,7 +143,6 @@ ResponseRouter.delete(
 // Send response as card email
 ResponseRouter.post(
   "/send-card-email",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
   FormResponseController.SendResponseCardEmail as unknown as RequestHandler
 );
 

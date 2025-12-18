@@ -7,7 +7,10 @@ import Form, {
 } from "../../model/Form.model";
 import { CustomRequest, UserToken } from "../../types/customType";
 import { RootFilterQuery, Types } from "mongoose";
-import Content, { QuestionType } from "../../model/Content.model";
+import Content, {
+  DetailContentSelection,
+  QuestionType,
+} from "../../model/Content.model";
 import SolutionValidationService from "../../services/SolutionValidationService";
 import User from "../../model/User.model";
 import {
@@ -214,8 +217,8 @@ async function handleDetailQuery(
 
   const contentProjection =
     ty === "solution"
-      ? "_id qIdx title type text multiple checkbox selection rangedate rangenumber date require page conditional parentcontent answer score hasAnswer isValidated"
-      : "_id qIdx title type text multiple checkbox selection rangedate rangenumber date require page conditional parentcontent";
+      ? `${DetailContentSelection} answer score hasAnswer isValidated`
+      : DetailContentSelection;
 
   let validationSummary = null;
   if (ty === "solution") {

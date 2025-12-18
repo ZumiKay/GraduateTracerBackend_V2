@@ -7,6 +7,7 @@ import Form, { TypeForm, returnscore } from "../model/Form.model";
 import { Types } from "mongoose";
 import { ResponseAnswerType, ResponseSetType } from "../model/Response.model";
 import { AddQuestionNumbering, isRangeValueValid } from "../utilities/helper";
+import { getFormScoringAnalysis } from "../utilities/scoreHelper";
 
 export interface ValidationResult {
   isValid: boolean;
@@ -25,12 +26,23 @@ export interface CombinedValidationResults {
   wrongScores: string[];
 }
 
+export interface ScoringAnalysis {
+  isAutoScoreable: boolean;
+  totalQuestions: number;
+  scoredQuestions: number;
+  autoScorableQuestions: number;
+  manualGradingQuestions: number;
+  missingAnswerKeys: Array<{ qIdx: number; title: string; type: QuestionType }>;
+  unsupportedTypes: Array<{ qIdx: number; title: string; type: QuestionType }>;
+}
+
 export interface FormValidationSummary {
   canReturnScoreAutomatically: boolean;
   totalValidQuestions: number;
   totalInvalidQuestions: number;
   totalScore: number;
   validationResults: CombinedValidationResults;
+  scoringAnalysis?: ScoringAnalysis;
 }
 
 export class SolutionValidationService {
@@ -356,12 +368,16 @@ export class SolutionValidationService {
       wrongScores: validationResults.flatMap((r) => r.wrongScores),
     };
 
+    // Get detailed scoring analysis
+    const scoringAnalysis = getFormScoringAnalysis({ questions: contents });
+
     return {
       canReturnScoreAutomatically,
       totalValidQuestions,
       totalInvalidQuestions,
       totalScore,
       validationResults: combinedResults,
+      scoringAnalysis,
     };
   }
 

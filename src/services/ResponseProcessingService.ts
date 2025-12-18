@@ -272,6 +272,7 @@ export class ResponseProcessingService {
       isNonScore,
       totalScore,
       respondentEmail,
+      responseId: savedResponse._id.toString(),
       maxScore: form.totalscore || 0,
       message: !isAutoScored
         ? "Score will be return by form owner"
@@ -282,10 +283,11 @@ export class ResponseProcessingService {
   }
 
   /**
-   *Add Score Method //
-   *Verify answer format //
-   *If all question have no score return isNonScore //
-   *Only avaliable if form returntype is PARTIAL
+   *Add Score Method
+   *@Feature
+   * - Verify answer format
+   * - If all question have no score return isNonScore
+   * - Only avaliable if form returntype is PARTIAL
    */
   static async addScore(
     response: Array<ResponseSetType>
@@ -321,7 +323,7 @@ export class ResponseProcessingService {
           throw new Error("Question not found");
         }
 
-        //verify requried question
+        //Verify requried question
         if (question.require) {
           if (
             !userresponse ||

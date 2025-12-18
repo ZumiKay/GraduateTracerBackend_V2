@@ -231,7 +231,7 @@ export class FormResponseQueryController {
 
       return res.status(200).json({ ...ReturnCode(200), data: result });
     } catch (error) {
-      console.log("Get Response By ID");
+      console.log("Get Response By ID", error);
       res.status(500).json(ReturnCode(500, "Error Occured"));
     }
   };

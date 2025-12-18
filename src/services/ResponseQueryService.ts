@@ -8,8 +8,11 @@ import FormResponse, {
 } from "../model/Response.model";
 import Form from "../model/Form.model";
 import Content, {
+  AnswerKey,
   ChoiceQuestionType,
   ContentType,
+  DetailContentSelection,
+  QuestionType,
 } from "../model/Content.model";
 import { ResponseValidationService } from "./ResponseValidationService";
 import { FingerprintService } from "../utilities/fingerprint";
@@ -18,9 +21,14 @@ import { CustomRequest } from "../types/customType";
 import {
   AddQuestionNumbering,
   contentTitleToString,
+  formatDateToDDMMYYYY,
+  FormatToGeneralDate,
   ReturnCode,
 } from "../utilities/helper";
-import { getLastQuestionIdx } from "../utilities/formHelpers";
+import {
+  formatResponseValue,
+  getLastQuestionIdx,
+} from "../utilities/formHelpers";
 import {} from "../utilities/helper";
 
 export interface GroupResponseListItemType {
@@ -110,7 +118,7 @@ export class ResponseQueryService {
    * @returns Responses with responseCount field added
    */
   private static async addResponseCountByEmail(
-    responses: any[],
+    responses: FormResponseType[],
     formId?: Types.ObjectId | string
   ) {
     if (!responses || responses.length === 0) {
@@ -415,7 +423,10 @@ export class ResponseQueryService {
           isResponsed: {
             message: "You already submitted response",
             ...existingResponse,
+
+            _id: undefined,
             formId: undefined,
+            responseId: existingResponse._id,
             maxScore: form.totalscore,
           },
         };
@@ -538,9 +549,7 @@ export class ResponseQueryService {
     const contents = await Content.find({
       formId,
     })
-      .select(
-        "_id title type require qIdx conditional parentcontent checkbox multiple selection score"
-      )
+      .select("-rangedate -date -rangenumber")
       .sort({ qIdx: 1 })
       .lean();
 
@@ -553,7 +562,7 @@ export class ResponseQueryService {
       });
     }
 
-    //Require must have an score
+    //All require question must have an max score
     const isScoreable = !contents.some(
       (question) => question.require && !question.score
     );
@@ -584,96 +593,178 @@ export class ResponseQueryService {
     responseset: Array<ResponseSetType>,
     options?: { filterHidden?: boolean }
   ) {
-    if (questions.some((i) => !i._id)) {
+    // Early validation with fast path
+    const invalidQuestion = questions.find((q) => !q._id);
+    if (invalidQuestion) {
       throw new Error("Invalid Question");
     }
 
-    const responseMap = new Map(
-      responseset.map((r) => [r.question.toString(), r])
-    );
-    const result: Array<ResponseSetType> = [];
-
-    // Build a map of parent responses for conditional question checking
-    const parentResponseMap = new Map<
-      string,
-      ResponseAnswerType | ResponseAnswerReturnType
-    >();
-    if (options?.filterHidden) {
-      for (const resp of responseset) {
-        parentResponseMap.set(resp.question.toString(), resp.response);
-      }
+    // Build response map once - O(n) instead of O(n*m) lookups
+    const responseMap = new Map<string, ResponseSetType>();
+    for (let i = 0; i < responseset.length; i++) {
+      const r = responseset[i];
+      responseMap.set(r.question.toString(), r);
     }
 
-    for (const question of questions) {
-      if (!question._id) continue;
+    const filterHidden = options?.filterHidden ?? false;
+    const questionsLength = questions.length;
+    const result: Array<ResponseSetType> = [];
 
-      const isResponse = responseMap.get(question._id.toString());
+    // Pre-allocate estimated capacity
+    result.length = 0;
 
-      // Check if this is a conditional question that should be hidden
-      if (options?.filterHidden && question.parentcontent) {
-        const parentResponse = parentResponseMap.get(
+    for (let i = 0; i < questionsLength; i++) {
+      const question = questions[i];
+      const questionId = question._id!.toString();
+      const existingResponse = responseMap.get(questionId);
+
+      // Handle conditional question filtering
+      if (filterHidden && question.parentcontent) {
+        const parentResponse = responseMap.get(
           question.parentcontent.qId
-        );
+        )?.response;
 
-        // Skip this question if parent response doesn't match the required option
-        // AND there's no response (meaning it was hidden from the user)
         if (parentResponse !== undefined) {
           const shouldShow = this.shouldShowConditionalQuestion(
             parentResponse,
             question.parentcontent.optIdx
           );
-
-          if (!shouldShow && !isResponse) {
-            continue; // Skip this hidden question that has no response
-          }
-        } else if (!isResponse) {
-          // If no parent response exists and no response for this question, skip it
+          if (!shouldShow && !existingResponse) continue;
+        } else if (!existingResponse) {
           continue;
         }
       }
 
-      // Add question to response even if no response exists
-      if (!isResponse) {
+      // Cache title conversion - used in both branches
+      const convertedTitle = contentTitleToString(question.title);
+
+      // Handle questions without responses
+      if (!existingResponse) {
         result.push({
           question: {
             ...question,
-            title: contentTitleToString(question.title) as never,
+            title: convertedTitle as never,
           },
-          response: "" as ResponseAnswerType, // Empty string instead of undefined
+          response: "" as ResponseAnswerType,
         });
         continue;
       }
 
-      const isChoiceQuestion = question[
-        question.type as keyof ContentType
-      ] as ChoiceQuestionType[];
-      const response = isResponse.response;
+      // Process response with question context
+      const processedResponse = this.processResponseValue(
+        question,
+        existingResponse.response
+      );
 
-      //Result mutation
+      // Process answer key for date types
+      const processedAnswer = this.processAnswerKey(question);
+
       result.push({
-        ...isResponse,
-        response: (isChoiceQuestion && response !== undefined
-          ? typeof response === "number"
-            ? {
-                key: response,
-                val: (isChoiceQuestion as ChoiceQuestionType[]).find(
-                  (i) => i.idx === response
-                )?.content,
-              }
-            : {
-                key: response,
-                val: isChoiceQuestion
-                  .filter((i) => (response as number[]).includes(i.idx))
-                  .map((i) => i.content),
-              }
-          : response) as never,
+        ...existingResponse,
+        response: processedResponse as never,
         question: {
           ...question,
-          title: contentTitleToString(question.title) as never,
+          answer: processedAnswer,
+          title: convertedTitle as never,
         },
       });
     }
+
     return result;
+  }
+
+  /**
+   * Process response value based on question type
+   *
+   */
+  private static processResponseValue(
+    question: ContentType,
+    response: ResponseAnswerType | ResponseAnswerReturnType
+  ):
+    | ResponseAnswerType
+    | ResponseAnswerReturnType
+    | { key: number | number[]; val: string | string[] | undefined } {
+    // Get choice options if this is a choice-based question
+    const choiceOptions = question[question.type as keyof ContentType] as
+      | ChoiceQuestionType[]
+      | undefined;
+
+    // Handle choice questions
+    if (Array.isArray(choiceOptions) && response !== undefined) {
+      if (typeof response === "number") {
+        const selectedOption = choiceOptions.find(
+          (opt) => opt.idx === response
+        );
+        return {
+          key: response,
+          val: selectedOption?.content,
+        };
+      }
+
+      if (Array.isArray(response)) {
+        const responseSet = new Set(response as number[]);
+        const selectedContents = choiceOptions
+          .filter((opt) => responseSet.has(opt.idx))
+          .map((opt) => opt.content);
+
+        return {
+          key: response,
+          val: selectedContents,
+        };
+      }
+
+      // Pass through other response types
+      return response;
+    }
+
+    // Format non-choice responses
+    return formatResponseValue({
+      response: response as ResponseAnswerType,
+      questionType: question.type,
+    });
+  }
+
+  /**
+   * Process answer key for date-type questions
+   * Returns formatted answer object or original answer
+   */
+  private static processAnswerKey(
+    question: ContentType
+  ): typeof question.answer {
+    const questionType = question.type;
+    const answer = question.answer;
+
+    if (!answer) {
+      return answer;
+    }
+
+    // Handle date questions
+    if (questionType === QuestionType.Date) {
+      return {
+        ...answer,
+        answer: formatDateToDDMMYYYY(
+          answer.answer as unknown as string
+        ) as unknown as never,
+      };
+    }
+
+    // Handle range date questions
+    if (questionType === QuestionType.RangeDate) {
+      const rangeAnswer = answer.answer as unknown as {
+        start: string;
+        end: string;
+      };
+      return {
+        ...answer,
+        answer: {
+          start: formatDateToDDMMYYYY(rangeAnswer?.start),
+          end: formatDateToDDMMYYYY(rangeAnswer?.end),
+        } as unknown as never,
+      };
+    }
+
+    // Return original answer for other types
+    return answer;
   }
 
   /**

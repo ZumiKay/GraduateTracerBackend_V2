@@ -1,6 +1,8 @@
 import { Types } from "mongoose";
 import { FormType, CollaboratorType } from "../model/Form.model";
-import Content from "../model/Content.model";
+import Content, { QuestionType, RangeType } from "../model/Content.model";
+import { ResponseAnswerType, ResponseSetType } from "../model/Response.model";
+import { formatDateToDDMMYYYY } from "./helper";
 
 // Helper function to validate ObjectId format
 export function isValidObjectIdString(id: string): boolean {
@@ -123,4 +125,43 @@ export async function getLastQuestionIdx(
     page: { $lt: page },
     $or: [{ parentcontent: { $exists: false } }, { parentcontent: null }],
   });
+}
+
+/**
+ * Convert ISO date string to day-month-year format
+ * @param isoString - ISO date string (e.g., "2024-01-15T10:30:00.000Z")
+ * @returns Formatted date string in "DD-MM-YYYY" format
+ */
+export function formatISOToDateString(isoString: string): string {
+  const date = new Date(isoString);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+export function formatResponseValue({
+  response,
+  questionType,
+}: {
+  response: ResponseAnswerType;
+  questionType: QuestionType;
+}) {
+  switch (questionType) {
+    case QuestionType.Date: {
+      return formatDateToDDMMYYYY(response as string);
+    }
+
+    case QuestionType.RangeDate: {
+      const resp = response as RangeType<string>;
+      const formattedRange: RangeType<string> = {
+        start: formatDateToDDMMYYYY(resp.start),
+        end: formatDateToDDMMYYYY(resp.end),
+      };
+      return formattedRange;
+    }
+
+    default:
+      return response;
+  }
 }
