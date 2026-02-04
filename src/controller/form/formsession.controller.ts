@@ -12,7 +12,7 @@ import JWT, { JwtPayload } from "jsonwebtoken";
 import Formsession, {
   Formsessiondatatype,
 } from "../../model/Formsession.model";
-import { Model } from "mongoose";
+import { Model, Types } from "mongoose";
 import { sendRemovalLinkEmail } from "../../utilities/removalEmail";
 import Form, { FormType, TypeForm } from "../../model/Form.model";
 import User from "../../model/User.model";
@@ -780,18 +780,37 @@ export default class FormsessionService {
     ) {
       return res.status(500).json(ReturnCode(500));
     }
-    const respondentCookie =
-      req.cookies[process.env.RESPONDENT_COOKIE as string];
-    const accessRespondentCookie =
-      req.cookies[process.env.ACCESS_RESPONDENT_COOKIE as string];
-
-    //If no logged in session no content
-    if (!respondentCookie) {
-      console.log("Error session");
-      return res.status(401).json({ ...ReturnCode(401) });
-    }
-
     try {
+      const { formId } = req.params;
+
+      const isForm = await Form.findOne({
+        _id: new Types.ObjectId(formId),
+      })
+        .select("_id type setting.email")
+        .lean();
+
+      if (!isForm) {
+        return res.status(400).json(ReturnCode(400));
+      }
+
+      if (isForm.type === TypeForm.Normal && !isForm.setting?.email)
+        return res.status(200).json({
+          data: {
+            isNormalForm: true,
+          },
+        });
+
+      const respondentCookie =
+        req.cookies[process.env.RESPONDENT_COOKIE as string];
+      const accessRespondentCookie =
+        req.cookies[process.env.ACCESS_RESPONDENT_COOKIE as string];
+
+      //If no logged in session no content
+      if (!respondentCookie) {
+        console.log("Error session");
+        return res.status(401).json({ ...ReturnCode(401) });
+      }
+
       const session = await Formsession.findOne({
         session_id: respondentCookie,
       }).lean();

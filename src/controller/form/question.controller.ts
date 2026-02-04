@@ -96,18 +96,17 @@ class QuestionController {
 
       // Step 9: Initialize totalscore
       const form = await Form.findById(formId).select("totalscore");
-      if (!form?.totalscore) {
-        // Calculate total score of all questions
+      const isScoreChange = data.some(
+        (i) => i.score !== existingContent.find((j) => j._id === i._id)?.score
+      );
+
+      if (isScoreChange || !form?.totalscore) {
         const computedTotalScore = await this.calculateFormTotalScore(formId);
         await Form.updateOne(
           { _id: formId },
           { totalscore: computedTotalScore }
         );
-      } else {
-        // Update total score based on changes in current page
-        await this.updateTotalScoreIfChanged(data, existingContent, formId);
       }
-
       // Step 10: Return updated content
       const updatedContent = await this.fetchUpdatedContent(formId, page!);
 
@@ -175,11 +174,11 @@ class QuestionController {
    */
   private async fetchExistingContent(
     formId: string,
-    page: number
+    page?: number
   ): Promise<ContentType[]> {
-    return Content.find({ formId, page }, null, {
+    return Content.find({ formId, ...(page ? { page } : {}) }, null, {
       lean: true,
-      maxTimeMS: 5000,
+      maxTimeMS: 5000, //Max timeout (MS)
     });
   }
 
@@ -857,14 +856,7 @@ class QuestionController {
    * Excludes conditional/child questions (parentcontent) to avoid double counting
    */
   private calculateTotalScore(items: Array<ContentType>): number {
-    const seen = new Set<string>();
     return items
-      .filter((item) => {
-        const key = item._id?.toString() || "";
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
       .filter((ques) => !ques.parentcontent)
       .reduce((total, { score = 0 }) => total + score, 0);
   }

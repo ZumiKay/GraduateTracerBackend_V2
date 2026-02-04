@@ -23,6 +23,7 @@ import {
   contentTitleToString,
   formatDateToDDMMYYYY,
   FormatToGeneralDate,
+  hashedPassword,
   ReturnCode,
 } from "../utilities/helper";
 import {
@@ -30,6 +31,7 @@ import {
   getLastQuestionIdx,
 } from "../utilities/formHelpers";
 import {} from "../utilities/helper";
+import { compareSync } from "bcrypt";
 
 export interface GroupResponseListItemType {
   respondentEmail?: string;
@@ -456,27 +458,107 @@ export class ResponseQueryService {
     };
   }
 
+  /**
+   * Calculate IP match score based on multiple factors
+   * Returns a score from 0-100 indicating confidence level
+   */
+  private static calculateIPMatchScore(
+    currentIP: string,
+    storedHashedIP: string,
+    deviceInfo: any,
+    storedDeviceInfo: any
+  ): number {
+    let score = 0;
+
+    // IP exact match (80 points) - Primary indicator, if IP matches it's very likely the same user
+    const isIPMatch = compareSync(currentIP, storedHashedIP);
+    if (isIPMatch) {
+      score += 80;
+    }
+
+    // Platform match (10 points) - Secondary verification
+    if (
+      deviceInfo?.platform &&
+      storedDeviceInfo?.platform &&
+      deviceInfo.platform === storedDeviceInfo.platform
+    ) {
+      score += 10;
+    }
+
+    // Timezone match (10 points) - Secondary verification
+    if (
+      deviceInfo?.timezone &&
+      storedDeviceInfo?.timezone &&
+      deviceInfo.timezone === storedDeviceInfo.timezone
+    ) {
+      score += 10;
+    }
+
+    return score;
+  }
+
   private static async checkExistingResponse(
     formId: string,
     requireEmail: boolean,
     req: CustomRequest
   ) {
-    const query: RootFilterQuery<FormResponseType> = {
+    const baseQuery: RootFilterQuery<FormResponseType> = {
       formId: new Types.ObjectId(formId),
-      respondentEmail: req.formsession?.data?.email,
     };
 
-    if (!requireEmail) {
-      query.respondentFingerprint =
-        FingerprintService.extractFingerprintFromRequest(req);
-      query.respondentIP = FingerprintService.getClientIP(req);
+    // Define select fields based on requireEmail
+    const selectFields = requireEmail
+      ? "_id totalScore isCompleted submittedAt respondentEmail respondentName"
+      : "_id totalScore completionStatus submittedAt respondentEmail responseName respondentIP deviceInfo";
+
+    if (requireEmail) {
+      // Email-based lookup (simpler path)
+      const email = req?.body?.respondentEmail;
+      if (!email) return null;
+
+      return FormResponse.findOne({
+        ...baseQuery,
+        respondentEmail: email,
+      })
+        .select(selectFields)
+        .lean();
     }
 
-    return FormResponse.findOne(query)
-      .select(
-        "_id totalScore isCompleted submittedAt respondentEmail respondentName"
-      )
+    // Query all responses and calculate match scores for best match
+    const deviceInfo = FingerprintService.extractFingerprintFromRequest(req);
+    const respondentIP = FingerprintService.getClientIP(req);
+
+    // Fetch all responses for this form
+    const allResponses = await FormResponse.find(baseQuery)
+      .select(selectFields)
       .lean();
+
+    if (!allResponses || allResponses.length === 0) {
+      return null;
+    }
+
+    // Calculate match score for each response and find the best match
+    let bestMatch: FormResponseType | null = null;
+    let highestScore = 0;
+
+    for (const response of allResponses) {
+      if (response.respondentIP) {
+        const matchScore = this.calculateIPMatchScore(
+          respondentIP,
+          response.respondentIP,
+          deviceInfo,
+          response.deviceInfo
+        );
+
+        if (matchScore > highestScore) {
+          highestScore = matchScore;
+          bestMatch = response;
+        }
+      }
+    }
+
+    // Return best match if score is above 70% (IP match alone = 80%, so it will pass)
+    return highestScore >= 70 ? bestMatch : null;
   }
 
   static async deleteResponse(responseId: string) {

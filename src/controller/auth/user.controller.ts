@@ -18,7 +18,7 @@ export const UserValidate = z.object({
     name: z.string().optional(),
     password: z
       .string()
-      .refine((pass) => ValidatePassword(pass), "Invalid Password"),
+      .refine((pass) => ValidatePassword(pass), "Some Data Has Invalid Format"),
     role: z.nativeEnum(ROLE).optional(),
   }),
 });

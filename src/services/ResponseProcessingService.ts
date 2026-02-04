@@ -17,20 +17,12 @@ import User from "../model/User.model";
 import { FingerprintService } from "../utilities/fingerprint";
 import { Request } from "express";
 import { RespondentTrackingService } from "./RespondentTrackingService";
+import { hashedPassword } from "../utilities/helper";
+import { CustomRequest } from "../types/customType";
 
 interface ValidateResultReturnType {
   errormess?: string;
   content?: string;
-}
-
-interface submissionDataType {
-  formId: string;
-  responseSet: ResponseSetType[];
-  respondentEmail?: string;
-  respondentName?: string;
-  userId?: string;
-  req?: Request;
-  returnResponse?: boolean;
 }
 
 interface AddScoreReturnType {
@@ -38,33 +30,23 @@ interface AddScoreReturnType {
   isNonScore?: boolean;
 }
 
+export interface ProcessNormalFormSubmissionType extends FormResponseType {
+  req: CustomRequest;
+}
+
 export class ResponseProcessingService {
-  static async processNormalFormSubmission({
-    formId,
-    responseSet,
-    respondentEmail,
-    respondentName,
-    req,
-  }: submissionDataType) {
-    const form = await Form.findById(formId).select("_id setting");
+  static async processNormalFormSubmission(
+    responseData: ProcessNormalFormSubmissionType
+  ) {
+    const { formId, responseset, respondentEmail, respondentName } =
+      responseData;
+    const form = await Form.findById(formId).select("_id setting").lean();
 
     if (!form) throw new Error("Form not found");
-
-    let browserfingerprinting: string | undefined = undefined;
-    let respodnentIp: string | undefined = undefined;
-
-    //Save anonoymus fingerprinting for form that doesn't require email
-    if (!form.setting?.email && req) {
-      const anoynomusTrackingData =
-        FingerprintService.generateTrackingData(req);
-      browserfingerprinting = anoynomusTrackingData.fingerprint;
-      respodnentIp = anoynomusTrackingData.ip;
-    }
 
     if (form.setting?.email && !respondentEmail) {
       throw new Error("Email is required for this form");
     }
-
     let isUser: Types.ObjectId | undefined = undefined;
 
     if (respondentEmail) {
@@ -72,9 +54,9 @@ export class ResponseProcessingService {
     }
 
     //Verify if user already responded for single response form
-    if (form.setting?.submitonce && req) {
+    if (form.setting?.submitonce) {
       const trackingResult =
-        await RespondentTrackingService.checkRespondentExists(formId, req);
+        await RespondentTrackingService.checkRespondentExists(responseData);
 
       if (trackingResult.hasResponded) {
         throw new Error("Form already submitted");
@@ -86,7 +68,7 @@ export class ResponseProcessingService {
     const contents = await Content.find({ formId: formId }).lean();
 
     contents.forEach((question) => {
-      const response = responseSet.find(
+      const response = responseset.find(
         (i) => i.question === question._id.toString()
       );
 
@@ -117,11 +99,13 @@ export class ResponseProcessingService {
 
     await FormResponse.create({
       formId: new Types.ObjectId(formId),
-      responseset: responseSet,
+      responseset,
       submittedAt: new Date(),
       completionStatus: ResponseCompletionStatus.completed,
-      respondentFingerprint: browserfingerprinting,
-      respondentIP: respodnentIp,
+      respondentFingerprint: responseData.respondentFingerprint,
+      deviceInfo: responseData.deviceInfo,
+      respondentIP: responseData.respondentIP,
+      fingerprintStrength: responseData.fingerprintStrength,
       ...(form.setting?.email && {
         respondentEmail,
         respondentName,
@@ -136,11 +120,15 @@ export class ResponseProcessingService {
   }
 
   static async processFormSubmission(
-    submissionData: submissionDataType,
+    submissionData: Partial<FormResponseType>,
     form: FormType
   ): Promise<SubmitionProcessionReturnType> {
-    const { formId, responseSet, respondentEmail, respondentName } =
+    const { formId, responseset, respondentEmail, respondentName } =
       submissionData;
+
+    if (!responseset || responseset.length === 0) {
+      throw new Error("Invalid Response Data");
+    }
 
     if (form.setting?.email && !respondentEmail) {
       throw new Error("Email is required for this form");
@@ -173,7 +161,7 @@ export class ResponseProcessingService {
 
     // Auto-score
     if (form.setting?.returnscore === returnscore.partial) {
-      const addscore = await this.addScore(responseSet);
+      const addscore = await this.addScore(responseset);
       isAutoScored = true;
       // Check if all questions have no score
       isNonScore = addscore.isNonScore || false;
@@ -182,8 +170,8 @@ export class ResponseProcessingService {
       const contents = await Content.find({ formId: formId }).lean();
 
       contents.forEach((question) => {
-        const response = responseSet.find(
-          (i) => i.question === question._id.toString()
+        const response = responseset?.find((i) =>
+          question._id.equals(i.question as never)
         );
 
         //Verify required question
@@ -301,9 +289,7 @@ export class ResponseProcessingService {
         _id: {
           $in: response.map((i) => new Types.ObjectId(i.question as string)),
         },
-      })
-        .lean()
-        .exec();
+      }).lean();
 
       if (content.length === 0) {
         return { response };
@@ -316,7 +302,7 @@ export class ResponseProcessingService {
       for (let i = 0; i < content.length; i++) {
         const question = content[i];
         const userresponse = response.find((resp) =>
-          question._id.equals(new Types.ObjectId(resp.question.toString()))
+          question._id.equals(resp.question as string)
         );
 
         if (!userresponse) {

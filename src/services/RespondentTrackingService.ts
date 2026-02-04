@@ -1,6 +1,13 @@
 import { Request } from "express";
 import { FingerprintService } from "../utilities/fingerprint";
-import FormResponse from "../model/Response.model";
+import FormResponse, {
+  FormResponseType,
+  ResponseSetType,
+} from "../model/Response.model";
+import { hashedPassword } from "../utilities/helper";
+import { Types } from "mongoose";
+import { ProcessNormalFormSubmissionType } from "./ResponseProcessingService";
+import { compare } from "bcrypt";
 
 export interface RespondentTrackingResult {
   hasResponded: boolean;
@@ -29,57 +36,63 @@ export interface TrackingData {
 
 export class RespondentTrackingService {
   static async checkRespondentExists(
-    formId: string,
-    req: Request,
-    respondentEmail?: string
+    respondentData: Partial<ProcessNormalFormSubmissionType>
   ): Promise<RespondentTrackingResult> {
-    const trackingData = this.generateTrackingData(req);
-
-    // Check by fingerprint first (most reliable for unique identification)
-
-    const existingResponseByFingerprint = await FormResponse.findOne({
+    const {
       formId,
-      respondentFingerprint: trackingData.fingerprint,
-    }).lean();
-
-    if (existingResponseByFingerprint) {
-      return {
-        hasResponded: true,
-        trackingMethod: "fingerprint",
-        responseId: existingResponseByFingerprint._id.toString(),
-        fingerprint: trackingData.fingerprint,
-        ipAddress: trackingData.ip,
-        fingerprintStrength: trackingData.fingerprintStrength,
-        respondentEmail,
-      };
-    }
-
-    // Fallback to IP address (less reliable but better than nothing)
-
-    const existingResponseByIP = await FormResponse.findOne({
-      formId,
-      respondentIP: trackingData.ip,
+      respondentFingerprint,
+      respondentIP,
       respondentEmail,
-    }).lean();
+      fingerprintStrength,
+    } = respondentData;
 
-    if (existingResponseByIP) {
-      return {
-        hasResponded: true,
-        trackingMethod: "ip",
-        responseId: existingResponseByIP._id.toString(),
-        fingerprint: trackingData.fingerprint,
-        ipAddress: trackingData.ip,
-        fingerprintStrength: trackingData.fingerprintStrength,
-        respondentEmail,
-      };
+    // Build common base result to avoid repetition
+    const baseResult = {
+      fingerprint: respondentFingerprint,
+      ipAddress: respondentIP,
+      fingerprintStrength,
+      respondentEmail,
+    };
+
+    // Attempt fingerprint lookup first (most reliable)
+    if (respondentFingerprint) {
+      const existingResponse = await FormResponse.findOne(
+        { formId, respondentFingerprint },
+        { _id: 1 }
+      ).lean();
+
+      if (existingResponse) {
+        return {
+          hasResponded: true,
+          trackingMethod: "fingerprint",
+          responseId: existingResponse._id.toString(),
+          ...baseResult,
+        };
+      }
     }
 
+    // Fallback to IP + email lookup (requires both for reliability)
+    if (respondentIP && respondentEmail) {
+      const existingResponse = await FormResponse.findOne(
+        { formId, respondentIP, respondentEmail },
+        { _id: 1 }
+      ).lean();
+
+      if (existingResponse) {
+        return {
+          hasResponded: true,
+          trackingMethod: "ip",
+          responseId: existingResponse._id.toString(),
+          ...baseResult,
+        };
+      }
+    }
+
+    // No existing response found
     return {
       hasResponded: false,
       trackingMethod: "none",
-      fingerprint: trackingData.fingerprint,
-      ipAddress: trackingData.ip,
-      fingerprintStrength: trackingData.fingerprintStrength,
+      ...baseResult,
     };
   }
 
@@ -131,13 +144,17 @@ export class RespondentTrackingService {
     }
   }
 
-  static createSubmissionWithTracking(baseData: any, req: Request): any {
+  static createSubmissionWithTracking(
+    baseData: Partial<FormResponseType>,
+    req: Request
+  ): any {
     const trackingData = this.generateTrackingData(req);
+    const hashedIP = hashedPassword(trackingData.ip);
 
     return {
       ...baseData,
       respondentFingerprint: trackingData.fingerprint,
-      respondentIP: trackingData.ip,
+      respondentIP: hashedIP,
       deviceInfo: trackingData.deviceInfo,
       respondentSessionId: trackingData.sessionId,
       fingerprintStrength: trackingData.fingerprintStrength,

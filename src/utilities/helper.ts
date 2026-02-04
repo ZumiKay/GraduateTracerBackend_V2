@@ -4,7 +4,6 @@ import {
   ChoiceQuestionType,
   ContentTitle,
   ContentType,
-  ParentContentType,
   QuestionType,
   RangeType,
 } from "../model/Content.model";
@@ -293,70 +292,6 @@ export const getDateByMinute = (min: number) => {
 export const FormatToGeneralDate = (date: Date) => {
   const d = new Date(date);
   return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
-};
-
-export const hasArrayChange = (arr1: Array<object>, arr2: Array<object>) => {
-  function deepEqual<t>(a: t, b: t): boolean {
-    if (a === b) return true;
-
-    if (a == null || b == null) return false;
-
-    if (typeof a !== typeof b) return false;
-
-    if (a instanceof Date && b instanceof Date)
-      return a.getTime() === b.getTime();
-
-    // Handle Array comparison
-    if (Array.isArray(a) && Array.isArray(b)) {
-      if (a.length !== b.length) return false;
-      return a.every((item, index) => deepEqual(item, b[index]));
-    }
-
-    // Handle Object comparison
-    if (typeof a === "object") {
-      const aKeys = Object.keys(a);
-      const bKeys = Object.keys(b);
-
-      if (aKeys.length !== bKeys.length) return false;
-      if (!aKeys.every((key) => bKeys.includes(key))) return false;
-
-      return aKeys.every((key) => deepEqual(a[key as never], b[key as never]));
-    }
-
-    return false;
-  }
-
-  if (arr1.length !== arr2.length) return false;
-
-  // Element-wise deep comparison
-  return arr1.every((item, index) => deepEqual(item, arr2[index]));
-};
-
-export const CheckCondition = (
-  allcontent: Array<ContentType>,
-  qId: string,
-  qIdx?: number
-): ParentContentType | null => {
-  console.log(qId, qIdx);
-
-  const isConditional = allcontent.find((question) =>
-    question.conditional?.some((cond) =>
-      qIdx ? cond.contentIdx === qIdx : cond.contentId === (qId as never)
-    )
-  );
-
-  if (!isConditional) {
-    return null;
-  }
-
-  return {
-    qId: isConditional._id?.toString() ?? qId,
-    qIdx: undefined,
-    optIdx:
-      isConditional.conditional?.find(
-        (cond) => cond.contentId === (qId as never)
-      )?.key ?? 0,
-  };
 };
 
 export const groupContentByParent = (data: Array<ContentType>) => {
@@ -679,16 +614,6 @@ export const GetAnswerKeyForQuestion = (content: ContentType) => {
   )?.[0];
 };
 
-export const isObject = (value: any) => {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    !(value instanceof Date) &&
-    !(value instanceof RegExp)
-  );
-};
-
 /**
  *Convert TipTab JSON Content to string  */
 export const contentTitleToString = (
@@ -788,8 +713,6 @@ const processContentTitleInternal = (contentTitle: ContentTitle): string => {
       return "";
   }
 };
-
-export const stringToBoolean = (str: string) => str.toLowerCase() === "true";
 
 /**
  * Converts ISO date string to Unix timestamp (milliseconds)

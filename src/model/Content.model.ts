@@ -89,11 +89,11 @@ const ChoiceQuestionSchema = new Schema<ChoiceQuestionType>({
 
 const RangeSchema = new Schema<RangeType<Date> | RangeType<number>>({
   start: {
-    type: Schema.Types.Mixed, // Can handle Date or Number
+    type: Schema.Types.Mixed,
     required: true,
   },
   end: {
-    type: Schema.Types.Mixed, // Can handle Date or Number
+    type: Schema.Types.Mixed,
     required: true,
   },
 });

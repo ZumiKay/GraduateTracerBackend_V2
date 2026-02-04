@@ -87,6 +87,7 @@ export async function DeleteForm(req: CustomRequest, res: Response) {
   try {
     const forms = await Form.find({ _id: { $in: ids } });
 
+    // Verify if form access
     for (const form of forms) {
       if (!hasFormAccess(form, new Types.ObjectId(user.sub)))
         return res
@@ -94,10 +95,9 @@ export async function DeleteForm(req: CustomRequest, res: Response) {
           .json(ReturnCode(403, "Access denied to one or more forms"));
     }
 
-    // Use Form.deleteMany for efficiency
+    //Delete Process
     await Form.deleteMany({
-      _id: { $in: ids },
-      user: new Types.ObjectId(user.sub),
+      _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
     });
 
     return res.status(200).json(ReturnCode(200, "Forms deleted successfully"));

@@ -11,7 +11,6 @@ import {
 import bcrypt from "bcrypt";
 import Usersession from "../../model/Usersession.model";
 import HandleEmail from "../../utilities/email";
-import JWT from "jsonwebtoken";
 import {
   handleDatabaseError,
   generateOperationId,

@@ -190,6 +190,28 @@ const ResponseSchema = new Schema<FormResponseType>(
       required: false,
       index: true,
     },
+    respondentSessionId: {
+      type: String,
+      required: false,
+    },
+    deviceInfo: {
+      type: {
+        userAgent: { type: String, required: true },
+        platform: { type: String, required: false },
+        screen: { type: String, required: false },
+        timezone: { type: String, required: false },
+        acceptLanguage: { type: String, required: true },
+        acceptEncoding: { type: String, required: true },
+      },
+      required: false,
+      _id: false,
+    },
+    fingerprintStrength: {
+      type: Number,
+      required: false,
+      min: 0,
+      max: 100,
+    },
 
     submittedAt: {
       type: Date,

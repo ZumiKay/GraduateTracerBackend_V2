@@ -170,27 +170,9 @@ export class SolutionValidationService {
     switch (questionType) {
       case QuestionType.MultipleChoice:
       case QuestionType.Selection:
-        if (typeof answer !== "number") {
-          errors.push(`Multiple Question ${content.qIdx} have invalid answer`);
-        }
-        break;
-
       case QuestionType.CheckBox:
         if (!Array.isArray(answer)) {
-          errors.push(`Checkbox Question ${content.qIdx} have invalid answer`);
-        } else {
-          //Verify integrity of check answer
-          const maxIndex = (content.checkbox?.length || 0) - 1;
-          const invalidIndices = answer.filter(
-            (idx: number) => idx > maxIndex || idx < 0
-          );
-          if (invalidIndices.length > 0) {
-            errors.push(
-              `Question ${
-                content.qIdx
-              } Invalid checkbox indices: ${invalidIndices.join(", ")}`
-            );
-          }
+          errors.push(`Choice Question ${content.qIdx} have invalid answer`);
         }
         break;
 
@@ -497,6 +479,7 @@ export class SolutionValidationService {
     }
 
     const similarity = intersection.size / union.size;
+
     return Math.round(maxScore * similarity);
   }
 

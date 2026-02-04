@@ -4,11 +4,15 @@ import { MongoErrorHandler } from "../../utilities/MongoErrorHandler";
 import Zod from "zod";
 import { Types } from "mongoose";
 import Form, { TypeForm } from "../../model/Form.model";
-import { ResponseProcessingService } from "../../services/ResponseProcessingService";
+import {
+  ProcessNormalFormSubmissionType,
+  ResponseProcessingService,
+} from "../../services/ResponseProcessingService";
 import { RespondentTrackingService } from "../../services/RespondentTrackingService";
 import { ResponseQueryService } from "../../services/ResponseQueryService";
 import Formsession from "../../model/Formsession.model";
 import {
+  FormResponseType,
   ResponseSetType,
   SubmitionProcessionReturnType,
 } from "../../model/Response.model";
@@ -46,10 +50,6 @@ export class FormResponseSubmissionController {
     try {
       const validationResult = this.validateSubmissionInput(req.body);
       if (!validationResult.isValid) {
-        console.warn(
-          `[${submissionId}] Input validation failed:`,
-          validationResult.errors
-        );
         return res.status(400).json({
           ...ReturnCode(400, validationResult.message),
           validationErrors: validationResult.errors,
@@ -57,8 +57,11 @@ export class FormResponseSubmissionController {
         });
       }
 
-      const { responseSet, respondentEmail, respondentName } =
-        req.body as SubmitResponseBodyType;
+      const {
+        responseSet = [],
+        respondentEmail,
+        respondentName,
+      } = req.body as SubmitResponseBodyType;
 
       const { formId } = req.params as { formId: string };
 
@@ -67,15 +70,14 @@ export class FormResponseSubmissionController {
         .lean();
 
       if (!form) {
-        console.warn(`[${submissionId}] Form not found:`, formId);
         return res.status(404).json(ReturnCode(404, "Form not found"));
       }
 
-      let submissionDataWithTracking;
+      let submissionDataWithTracking: ProcessNormalFormSubmissionType;
 
-      const baseSubmissionData = {
-        formId: formId,
-        responseSet,
+      const baseSubmissionData: Partial<FormResponseType> = {
+        formId: new Types.ObjectId(formId),
+        responseset: responseSet,
         respondentEmail,
         respondentName,
       };
@@ -423,7 +425,7 @@ export class FormResponseSubmissionController {
         !process.env.ACCESS_TOKEN_COOKIE ||
         !process.env.RESPONDENT_COOKIE
       ) {
-        throw new Error("Missing important environment var");
+        throw new Error("Missing important Environment");
       }
 
       const { formId } = req.params;
