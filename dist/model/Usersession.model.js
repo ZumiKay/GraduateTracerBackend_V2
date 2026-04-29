@@ -22,6 +22,9 @@ const UsersessionSchema = new mongoose_1.Schema({
         default: null,
     },
 }, { timestamps: true });
-UsersessionSchema.index({ user: 1 });
+// Indexes for optimized CheckSession queries
+UsersessionSchema.index({ session_id: 1, expireAt: 1 }); // Compound index for session lookup
+UsersessionSchema.index({ user: 1 }); // Index for user lookups
+UsersessionSchema.index({ expireAt: 1 }); // Index for cleanup queries
 const Usersession = (0, mongoose_1.model)("Usersession", UsersessionSchema);
 exports.default = Usersession;

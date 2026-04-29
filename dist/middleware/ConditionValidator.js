@@ -1,8 +1,4 @@
 "use strict";
-/**
- * Backend middleware to validate condition questions
- * Ensures that condition questions are only allowed for checkbox and multiple choice questions
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ConditionQuestionValidator = void 0;
 const Content_model_1 = require("../model/Content.model");
@@ -25,7 +21,7 @@ class ConditionQuestionValidator {
         return { isValid: true };
     }
     /**
-     * Validates that condition keys correspond to valid option indices
+     * Validates that condition has a valid keys
      */
     static validateConditionKeys(question) {
         const errors = [];
@@ -51,9 +47,7 @@ class ConditionQuestionValidator {
         });
         return { isValid: errors.length === 0, errors };
     }
-    /**
-     * Validates a single content item for condition compliance
-     */
+    /**Verify static methods */
     static validateSingleContent(content) {
         const errors = [];
         // Check if question type supports conditions
@@ -68,9 +62,6 @@ class ConditionQuestionValidator {
         }
         return { isValid: errors.length === 0, errors };
     }
-    /**
-     * Validates multiple content items for condition compliance
-     */
     static validateMultipleContent(contents) {
         const errors = [];
         contents.forEach((content, index) => {
@@ -144,8 +135,6 @@ ConditionQuestionValidator.validateConditionCreationMiddleware = (req, res, next
                 .status(400)
                 .json((0, helper_1.ReturnCode)(400, "New content is required for condition creation"));
         }
-        // The validation of the parent question's type will be handled by the main controller
-        // since we need to fetch the parent question from the database
         next();
     }
     catch (error) {

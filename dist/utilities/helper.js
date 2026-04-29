@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.stringToBoolean = exports.contentTitleToString = exports.isObject = exports.GetAnswerKeyForQuestion = exports.GetAnswerKeyPairValue = exports.groupContentByParent = exports.CheckCondition = exports.hasArrayChange = exports.FormatToGeneralDate = exports.getDateByMinute = exports.getDateByNumDay = exports.ExtractTokenPaylod = exports.GenerateToken = exports.RandomNumber = exports.hashedPassword = exports.ValidatePassword = void 0;
+exports.isRangeValueValid = exports.contentTitleToString = exports.GetAnswerKeyForQuestion = exports.GetAnswerKeyPairValue = exports.AddQuestionNumbering = exports.groupContentByParent = exports.FormatToGeneralDate = exports.getDateByMinute = exports.getDateByNumDay = exports.ExtractTokenPaylod = exports.ExtractTokenPayload = exports.GenerateToken = exports.RandomNumber = exports.hashedPassword = exports.ValidatePassword = exports.convertResponseToString = exports.convertTitleToString = exports.formatDateToDDMMYYYY = void 0;
 exports.ReturnCode = ReturnCode;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -33,6 +33,9 @@ function ReturnCode(code, custommess) {
         case 404:
             message = "Not Found";
             break;
+        case 409:
+            message = "Duplicated Detected";
+            break;
         case 500:
             message = "Server Error";
         default:
@@ -40,6 +43,106 @@ function ReturnCode(code, custommess) {
     }
     return returnValue(code, custommess !== null && custommess !== void 0 ? custommess : message);
 }
+/**
+ * Formats a date to dd-mm-yyyy format
+ *
+ * @param date - Date object, string, or timestamp
+ * @returns Formatted date string in dd-mm-yyyy format
+ */
+const formatDateToDDMMYYYY = (date) => {
+    if (!date)
+        return "";
+    const d = new Date(date);
+    if (isNaN(d.getTime()))
+        return String(date);
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+};
+exports.formatDateToDDMMYYYY = formatDateToDDMMYYYY;
+/**
+ * Converts a ContentTitle object or string to a plain string
+ * Extracts text from ContentTitle structure recursively
+ *
+ * @param title - ContentTitle object or string
+ * @param fallback - Fallback text if title is empty (default: "Question")
+ * @returns Plain string representation of the title
+ */
+const convertTitleToString = (title, fallback = "Question") => {
+    if (!title)
+        return fallback;
+    if (typeof title === "string")
+        return title;
+    // If title has a text property directly
+    if (title.text)
+        return title.text;
+    // If title has content array, extract text from it
+    if (title.content && Array.isArray(title.content)) {
+        const texts = [];
+        const extractText = (items) => {
+            for (const item of items) {
+                if (item.text) {
+                    texts.push(item.text);
+                }
+                if (item.content && Array.isArray(item.content)) {
+                    extractText(item.content);
+                }
+            }
+        };
+        extractText(title.content);
+        const result = texts.join(" ").trim();
+        return result || fallback;
+    }
+    return fallback;
+};
+exports.convertTitleToString = convertTitleToString;
+/**
+ * Converts response value to string, handling object types
+ *
+ * @param value - Response value (can be string, number, object, etc.)
+ * @returns String representation of the value
+ */
+const convertResponseToString = (value) => {
+    if (value === null || value === undefined || value === "") {
+        return "No Response";
+    }
+    if (typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean") {
+        return String(value);
+    }
+    if (typeof value === "object") {
+        // Handle arrays
+        if (Array.isArray(value)) {
+            return value.map((v) => (0, exports.convertResponseToString)(v)).join(", ");
+        }
+        // Handle objects with key/val structure (like CheckBox)
+        if (value.key && value.val) {
+            if (Array.isArray(value.key) && Array.isArray(value.val)) {
+                return value.key
+                    .map((k, i) => `${k}: ${value.val[i]}`)
+                    .join(", ");
+            }
+            return `${value.key}: ${value.val}`;
+        }
+        // Handle range objects
+        if (value.start !== undefined && value.end !== undefined) {
+            return `${value.start} to ${value.end}`;
+        }
+        if (value.val !== undefined) {
+            return String(value.val);
+        }
+        try {
+            return JSON.stringify(value);
+        }
+        catch (_a) {
+            return String(value);
+        }
+    }
+    return String(value);
+};
+exports.convertResponseToString = convertResponseToString;
 const ValidatePassword = (pass) => {
     const hasNumber = /\d/.test(pass);
     const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
@@ -63,19 +166,75 @@ const RandomNumber = (length) => {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 exports.RandomNumber = RandomNumber;
-const GenerateToken = (payload, expiresIn) => {
-    const token = jsonwebtoken_1.default.sign(payload, process.env.JWT_SECRET || "secret", {
+const GenerateToken = (payload, expiresIn, customSecret) => {
+    const token = jsonwebtoken_1.default.sign(payload, customSecret !== null && customSecret !== void 0 ? customSecret : (process.env.JWT_SECRET || "secret"), {
         expiresIn,
         algorithm: "HS256",
     });
     return token;
 };
 exports.GenerateToken = GenerateToken;
-const ExtractTokenPaylod = ({ token }) => {
-    const payload = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET || "secret");
-    return payload;
+/**
+ * Extracts and verifies JWT token payload with enhanced error handling
+ *
+ * @param token - JWT token string to verify and decode
+ * @param customSecret - Optional custom secret key (defaults to process.env.JWT_SECRET)
+ * @param ignoreExpiration - If true, will not throw error for expired tokens (default: false)
+ * @returns Decoded token payload or null if verification fails
+ *
+ * @example
+ * ```typescript
+ * const payload = ExtractTokenPayload({ token: "eyJhbGc..." });
+ * if (payload) {
+ *   console.log(payload.userId);
+ * }
+ * ```
+ */
+const ExtractTokenPayload = ({ token, customSecret, ignoreExpiration = false, }) => {
+    try {
+        // Validate token format
+        if (!token || typeof token !== "string" || token.trim() === "") {
+            console.error("ExtractTokenPayload: Invalid token format");
+            return null;
+        }
+        // Validate secret
+        const secret = customSecret !== null && customSecret !== void 0 ? customSecret : process.env.JWT_SECRET;
+        if (!secret) {
+            console.error("ExtractTokenPayload: JWT secret is not configured");
+            return null;
+        }
+        // Verify and decode token
+        const payload = jsonwebtoken_1.default.verify(token, secret, {
+            ignoreExpiration,
+            algorithms: ["HS256"], // Explicit algorithm for security
+        });
+        return payload;
+    }
+    catch (error) {
+        if (error instanceof jsonwebtoken_1.default.TokenExpiredError) {
+            console.error("ExtractTokenPayload: Token has expired", {
+                expiredAt: error.expiredAt,
+            });
+        }
+        else if (error instanceof jsonwebtoken_1.default.JsonWebTokenError) {
+            console.error("ExtractTokenPayload: Invalid token", {
+                message: error.message,
+            });
+        }
+        else if (error instanceof jsonwebtoken_1.default.NotBeforeError) {
+            console.error("ExtractTokenPayload: Token not active yet", {
+                date: error.date,
+            });
+        }
+        else {
+            console.error("ExtractTokenPayload: Unexpected error", error);
+        }
+        return null;
+    }
 };
-exports.ExtractTokenPaylod = ExtractTokenPaylod;
+exports.ExtractTokenPayload = ExtractTokenPayload;
+// Alias for backward compatibility (fixing typo)
+exports.ExtractTokenPaylod = exports.ExtractTokenPayload;
 const getDateByNumDay = (add) => {
     const today = new Date();
     today.setDate(today.getDate() + add); // Add 1 day
@@ -93,57 +252,6 @@ const FormatToGeneralDate = (date) => {
     return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 };
 exports.FormatToGeneralDate = FormatToGeneralDate;
-const hasArrayChange = (arr1, arr2) => {
-    function deepEqual(a, b) {
-        if (a === b)
-            return true;
-        if (a == null || b == null)
-            return false;
-        if (typeof a !== typeof b)
-            return false;
-        if (a instanceof Date && b instanceof Date)
-            return a.getTime() === b.getTime();
-        // Handle Array comparison
-        if (Array.isArray(a) && Array.isArray(b)) {
-            if (a.length !== b.length)
-                return false;
-            return a.every((item, index) => deepEqual(item, b[index]));
-        }
-        // Handle Object comparison
-        if (typeof a === "object") {
-            const aKeys = Object.keys(a);
-            const bKeys = Object.keys(b);
-            if (aKeys.length !== bKeys.length)
-                return false;
-            if (!aKeys.every((key) => bKeys.includes(key)))
-                return false;
-            return aKeys.every((key) => deepEqual(a[key], b[key]));
-        }
-        return false;
-    }
-    if (arr1.length !== arr2.length)
-        return false;
-    // Element-wise deep comparison
-    return arr1.every((item, index) => deepEqual(item, arr2[index]));
-};
-exports.hasArrayChange = hasArrayChange;
-const CheckCondition = (allcontent, qId, qIdx) => {
-    var _a, _b, _c, _d, _e;
-    console.log(qId, qIdx);
-    const isConditional = allcontent.find((question) => {
-        var _a;
-        return (_a = question.conditional) === null || _a === void 0 ? void 0 : _a.some((cond) => qIdx ? cond.contentIdx === qIdx : cond.contentId === qId);
-    });
-    if (!isConditional) {
-        return null;
-    }
-    return {
-        qId: (_b = (_a = isConditional._id) === null || _a === void 0 ? void 0 : _a.toString()) !== null && _b !== void 0 ? _b : qId,
-        qIdx: undefined,
-        optIdx: (_e = (_d = (_c = isConditional.conditional) === null || _c === void 0 ? void 0 : _c.find((cond) => cond.contentId === qId)) === null || _d === void 0 ? void 0 : _d.key) !== null && _e !== void 0 ? _e : 0,
-    };
-};
-exports.CheckCondition = CheckCondition;
 const groupContentByParent = (data) => {
     var _a, _b;
     if (!data.length)
@@ -172,11 +280,11 @@ const groupContentByParent = (data) => {
         processed.add(item._id.toString());
         const children = childrenMap.get(item._id.toString());
         if (children && children.length > 0) {
-            // Sort children by qIdx in descending order (higher qIdx first)
+            // Sort children by qIdx in ascending order (lower qIdx first)
             children.sort((a, b) => {
                 const aIdx = a.qIdx || 0;
                 const bIdx = b.qIdx || 0;
-                return bIdx - aIdx; // Descending order
+                return aIdx - bIdx; // Ascending order
             });
             for (const child of children) {
                 addWithChildren(child);
@@ -204,6 +312,139 @@ const groupContentByParent = (data) => {
     return result;
 };
 exports.groupContentByParent = groupContentByParent;
+/**
+ * Adds hierarchical question numbering to questions
+ * Main questions: 1, 2, 3
+ * Conditional questions: 3.1, 3.2
+ * Sub-conditional questions: 3.1.1, 3.1.2
+ *
+ * @param questions - Array of questions
+ * @returns Array of questions with (questionId)
+ */
+const AddQuestionNumbering = ({ questions, lastIdx, }) => {
+    if (!questions || questions.length === 0) {
+        return [];
+    }
+    const questionIdMap = new Map();
+    const questionIndexMap = new Map();
+    questions.forEach((q, index) => {
+        questionIndexMap.set(q, index);
+    });
+    // Helper to get parent identifier (qId or fallback to qIdx-based temp id)
+    const getParentIdentifier = (question) => {
+        if (!question.parentcontent)
+            return null;
+        // If qId exists, use it
+        if (question.parentcontent.qId) {
+            return question.parentcontent.qId;
+        }
+        // Fallback to qIdx-based identifier for unsaved data
+        if (question.parentcontent.qIdx !== undefined) {
+            return `temp_${question.parentcontent.qIdx}`;
+        }
+        return null;
+    };
+    // Helper to get question identifier
+    const getQuestionIdentifier = (question) => {
+        if (question._id)
+            return question._id.toString();
+        return `temp_${question.qIdx}`;
+    };
+    // Check if question is top-level (no parent)
+    const isTopLevelQuestion = (question) => {
+        return (!question.parentcontent ||
+            (question.parentcontent.qIdx === undefined && !question.parentcontent.qId));
+    };
+    const parentChildrenMap = new Map();
+    questions.forEach((question, index) => {
+        const parentId = getParentIdentifier(question);
+        if (parentId) {
+            if (!parentChildrenMap.has(parentId)) {
+                parentChildrenMap.set(parentId, []);
+            }
+            parentChildrenMap.get(parentId).push({ question, index });
+        }
+    });
+    // Sort sibling groups once upfront by qIdx and original index
+    parentChildrenMap.forEach((siblings) => {
+        siblings.sort((a, b) => {
+            const qIdxDiff = (a.question.qIdx || 0) - (b.question.qIdx || 0);
+            return qIdxDiff !== 0 ? qIdxDiff : a.index - b.index;
+        });
+    });
+    // Helper function to build hierarchical number
+    const buildQuestionNumber = (question, index, lastIndexWihoutParentCount) => {
+        //QuestionId for non conditional question (top-level)
+        if (isTopLevelQuestion(question)) {
+            // Count how many top-level questions come before this one (inclusive)
+            let topLevelCount = 0;
+            for (let i = 0; i <= index; i++) {
+                if (isTopLevelQuestion(questions[i])) {
+                    topLevelCount++;
+                }
+            }
+            // Add lastIdx to account for questions from previous pages
+            const offset = lastIdx !== null && lastIdx !== void 0 ? lastIdx : 0;
+            return `${topLevelCount + offset}`;
+        }
+        // Find parent question number
+        const parentId = getParentIdentifier(question);
+        if (!parentId) {
+            return `${index + 1}`;
+        }
+        let parentNumber = questionIdMap.get(parentId);
+        if (!parentNumber) {
+            // Try to find parent by _id first
+            let parentQuestion = questions.find((q) => { var _a; return ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()) === parentId; });
+            // If not found, try by temp identifier (qIdx-based)
+            if (!parentQuestion && parentId.startsWith("temp_")) {
+                const parentQIdx = parseInt(parentId.replace("temp_", ""), 10);
+                parentQuestion = questions.find((q) => q.qIdx === parentQIdx);
+            }
+            if (parentQuestion) {
+                parentNumber = parentQuestion.questionId || `${index + 1}`;
+            }
+            else {
+                parentNumber = `${index + 1}`;
+            }
+        }
+        const siblings = parentChildrenMap.get(parentId);
+        let position = 1;
+        if (siblings) {
+            for (const sibling of siblings) {
+                const siblingId = getQuestionIdentifier(sibling.question);
+                const currentId = getQuestionIdentifier(question);
+                if (siblingId === currentId) {
+                    break;
+                }
+                position++;
+            }
+        }
+        return `${parentNumber}.${position}`;
+    };
+    let lastIndexWihoutParentCount = 0;
+    // Process questions and assign questionId
+    const result = questions.map((question, index) => {
+        const questionId = buildQuestionNumber(question, index, // Use array index, not offset
+        lastIdx ? undefined : lastIndexWihoutParentCount);
+        // Store in map for reference by child questions using identifier
+        const qIdentifier = getQuestionIdentifier(question);
+        questionIdMap.set(qIdentifier, questionId);
+        // Update parentcontent with parent's questionId if it exists
+        let updatedParentContent = question.parentcontent;
+        if (question.parentcontent) {
+            const parentId = getParentIdentifier(question);
+            const parentQuestionId = parentId
+                ? questionIdMap.get(parentId)
+                : undefined;
+            updatedParentContent = Object.assign(Object.assign({}, question.parentcontent), { questionId: parentQuestionId || undefined });
+            lastIndexWihoutParentCount += 1;
+        }
+        return Object.assign(Object.assign({}, question), { questionId, parentcontent: updatedParentContent });
+    });
+    return result;
+};
+exports.AddQuestionNumbering = AddQuestionNumbering;
 //Extract Answer Key Value
 const GetAnswerKeyPairValue = (content) => {
     var _a;
@@ -240,7 +481,7 @@ const GetAnswerKeyForQuestion = (content) => {
     if (content.type === Content_model_1.QuestionType.CheckBox) {
         const val = content.checkbox;
         const answerkey = (_a = content.answer) === null || _a === void 0 ? void 0 : _a.answer;
-        if (!answerkey || !val)
+        if (!answerkey || !Array.isArray(answerkey) || !val)
             return;
         const result = val
             .map((i) => {
@@ -254,14 +495,8 @@ const GetAnswerKeyForQuestion = (content) => {
     return (_c = (_b = content[content.type]) === null || _b === void 0 ? void 0 : _b.filter((i) => { var _a; return i.idx === ((_a = content.answer) === null || _a === void 0 ? void 0 : _a.answer); })) === null || _c === void 0 ? void 0 : _c[0];
 };
 exports.GetAnswerKeyForQuestion = GetAnswerKeyForQuestion;
-const isObject = (value) => {
-    return (value !== null &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        !(value instanceof Date) &&
-        !(value instanceof RegExp));
-};
-exports.isObject = isObject;
+/**
+ *Convert TipTab JSON Content to string  */
 const contentTitleToString = (contentTitle) => {
     if (!contentTitle) {
         return "";
@@ -338,5 +573,78 @@ const processContentTitleInternal = (contentTitle) => {
             return "";
     }
 };
-const stringToBoolean = (str) => str.toLowerCase() === "true";
-exports.stringToBoolean = stringToBoolean;
+/**
+ * Converts ISO date string to Unix timestamp (milliseconds)
+ *
+ * @param isoString - ISO 8601 date string
+ * @returns Unix timestamp in milliseconds, or NaN if invalid
+ *
+ * @example
+ * ```typescript
+ * const timestamp = ISODateToNumber("2025-10-24T00:00:00.000Z");
+ * console.log(timestamp); // 1729728000000
+ * ```
+ */
+const ISODateToNumber = (isoString) => {
+    if (!isoString || typeof isoString !== "string") {
+        console.error("ISODateToNumber: Invalid input", isoString);
+        return NaN;
+    }
+    const timestamp = new Date(isoString).getTime();
+    if (isNaN(timestamp)) {
+        console.error("ISODateToNumber: Invalid ISO date string", isoString);
+    }
+    return timestamp;
+};
+/**
+ * Validates if a range value has valid start and end values
+ *
+ * @param value - Range object with start and end properties
+ * @param isDate - If true, treats values as ISO date strings; otherwise as numbers
+ * @returns true if range is valid (start < end), false otherwise
+ *
+ */
+const isRangeValueValid = (value, isDate) => {
+    // Check if both start and end exist
+    if (!value.start || !value.end) {
+        console.warn("isRangeValueValid: Missing start or end value", value);
+        return false;
+    }
+    try {
+        let startValue;
+        let endValue;
+        if (isDate) {
+            // Handle date ranges
+            startValue = ISODateToNumber(value.start);
+            endValue = ISODateToNumber(value.end);
+            if (isNaN(startValue) || isNaN(endValue)) {
+                console.error("isRangeValueValid: Invalid date string(s)", value);
+                return false;
+            }
+        }
+        else {
+            // Handle number ranges
+            startValue =
+                typeof value.start === "string" ? parseFloat(value.start) : value.start;
+            endValue =
+                typeof value.end === "string" ? parseFloat(value.end) : value.end;
+            if (isNaN(startValue) || isNaN(endValue)) {
+                console.error("isRangeValueValid: Invalid number value(s)", value);
+                return false;
+            }
+        }
+        const isValid = startValue < endValue;
+        if (!isValid) {
+            console.warn("isRangeValueValid: Start value is not less than end value", {
+                start: startValue,
+                end: endValue,
+            });
+        }
+        return isValid;
+    }
+    catch (error) {
+        console.error("isRangeValueValid: Error validating range", error, value);
+        return false;
+    }
+};
+exports.isRangeValueValid = isRangeValueValid;

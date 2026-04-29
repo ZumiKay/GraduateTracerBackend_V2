@@ -8,60 +8,41 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RespondentTrackingService = void 0;
 const fingerprint_1 = require("../utilities/fingerprint");
+const Response_model_1 = __importDefault(require("../model/Response.model"));
+const helper_1 = require("../utilities/helper");
 class RespondentTrackingService {
-    static checkRespondentExists(formId, req, ResponseModel) {
+    static checkRespondentExists(respondentData) {
         return __awaiter(this, void 0, void 0, function* () {
-            const trackingData = this.generateTrackingData(req);
-            // Check by fingerprint first (most reliable for unique identification)
-            try {
-                const existingResponseByFingerprint = yield ResponseModel.findOne({
-                    formId,
-                    respondentFingerprint: trackingData.fingerprint,
-                }).lean();
-                if (existingResponseByFingerprint) {
-                    return {
-                        hasResponded: true,
-                        trackingMethod: "fingerprint",
-                        responseId: existingResponseByFingerprint._id.toString(),
-                        fingerprint: trackingData.fingerprint,
-                        ipAddress: trackingData.ip,
-                        fingerprintStrength: trackingData.fingerprintStrength,
-                    };
-                }
-            }
-            catch (error) {
-                console.warn("Error checking fingerprint:", error);
-            }
-            // Fallback to IP address (less reliable but better than nothing)
-            try {
-                const existingResponseByIP = yield ResponseModel.findOne({
-                    formId,
-                    respondentIP: trackingData.ip,
-                }).lean();
-                if (existingResponseByIP) {
-                    return {
-                        hasResponded: true,
-                        trackingMethod: "ip",
-                        responseId: existingResponseByIP._id.toString(),
-                        fingerprint: trackingData.fingerprint,
-                        ipAddress: trackingData.ip,
-                        fingerprintStrength: trackingData.fingerprintStrength,
-                    };
-                }
-            }
-            catch (error) {
-                console.warn("Error checking IP address:", error);
-            }
-            return {
-                hasResponded: false,
-                trackingMethod: "none",
-                fingerprint: trackingData.fingerprint,
-                ipAddress: trackingData.ip,
-                fingerprintStrength: trackingData.fingerprintStrength,
+            const { formId, respondentFingerprint, respondentIP, respondentEmail, fingerprintStrength, } = respondentData;
+            // Build common base result to avoid repetition
+            const baseResult = {
+                fingerprint: respondentFingerprint,
+                ipAddress: respondentIP,
+                fingerprintStrength,
+                respondentEmail,
             };
+            // Attempt fingerprint lookup first (most reliable)
+            if (respondentFingerprint) {
+                const existingResponse = yield Response_model_1.default.findOne({ formId, respondentFingerprint }, { _id: 1 }).lean();
+                if (existingResponse) {
+                    return Object.assign({ hasResponded: true, trackingMethod: "fingerprint", responseId: existingResponse._id.toString() }, baseResult);
+                }
+            }
+            // Fallback to IP + email lookup (requires both for reliability)
+            if (respondentIP && respondentEmail) {
+                const existingResponse = yield Response_model_1.default.findOne({ formId, respondentIP, respondentEmail }, { _id: 1 }).lean();
+                if (existingResponse) {
+                    return Object.assign({ hasResponded: true, trackingMethod: "ip", responseId: existingResponse._id.toString() }, baseResult);
+                }
+            }
+            // No existing response found
+            return Object.assign({ hasResponded: false, trackingMethod: "none" }, baseResult);
         });
     }
     static generateTrackingData(req) {
@@ -106,7 +87,8 @@ class RespondentTrackingService {
     }
     static createSubmissionWithTracking(baseData, req) {
         const trackingData = this.generateTrackingData(req);
-        return Object.assign(Object.assign({}, baseData), { respondentFingerprint: trackingData.fingerprint, respondentIP: trackingData.ip, deviceInfo: trackingData.deviceInfo, respondentSessionId: trackingData.sessionId, fingerprintStrength: trackingData.fingerprintStrength });
+        const hashedIP = (0, helper_1.hashedPassword)(trackingData.ip);
+        return Object.assign(Object.assign({}, baseData), { respondentFingerprint: trackingData.fingerprint, respondentIP: hashedIP, deviceInfo: trackingData.deviceInfo, respondentSessionId: trackingData.sessionId, fingerprintStrength: trackingData.fingerprintStrength });
     }
 }
 exports.RespondentTrackingService = RespondentTrackingService;

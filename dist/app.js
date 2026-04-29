@@ -15,6 +15,7 @@ const notification_route_1 = __importDefault(require("./router/notification.rout
 const export_route_1 = __importDefault(require("./router/export.route"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const express_rate_limit_1 = require("express-rate-limit");
+const encrypt_route_1 = __importDefault(require("./router/encrypt.route"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 //Limiter
@@ -36,6 +37,7 @@ app.use("/v0/api", user_route_1.default);
 app.use("/v0/api/response", response_route_1.default);
 app.use("/v0/api/notifications", notification_route_1.default);
 app.use("/v0/api/exports", export_route_1.default);
+app.use("/v0/api/de", encrypt_route_1.default);
 app.get("/", (req, res) => {
     res.send("Hello, TypeScript with Express!");
 });

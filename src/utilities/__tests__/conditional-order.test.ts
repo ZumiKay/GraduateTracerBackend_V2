@@ -253,8 +253,8 @@ describe("groupContentByParent with conditional order", () => {
     // Check q2's children are correctly identified
     const q2Children = childQuestionsMap.get(q2Id.toString()) || [];
     expect(q2Children.length).toBe(2);
-    expect(q2Children[0]._id).toBe(s1Id.toString());
-    expect(q2Children[1]._id).toBe(s2Id.toString());
+    expect(q2Children[0]._id?.toString()).toBe(s1Id.toString());
+    expect(q2Children[1]._id?.toString()).toBe(s2Id.toString());
 
     // Check s2's children are correctly identified
     const s2Children = childQuestionsMap.get(s2Id.toString()) || [];

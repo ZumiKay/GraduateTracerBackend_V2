@@ -218,7 +218,7 @@ const ResponseSchema = new Schema<FormResponseType>(
       required: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 ResponseSchema.index({ userId: 1, formId: 1 });

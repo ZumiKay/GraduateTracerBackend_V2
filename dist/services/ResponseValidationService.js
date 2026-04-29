@@ -223,8 +223,8 @@ class ResponseValidationService {
         var _a, _b, _c, _d, _e, _f, _g;
         const options = Object.assign({}, additionalOptions);
         // Extract user ID from authenticated request
-        if ("user" in req && req.user && req.user.id) {
-            options.userId = req.user.id.toString();
+        if ("user" in req && req.user && req.user.sub) {
+            options.userId = req.user.sub.toString();
         }
         // Extract guest email from request body
         if ((_b = (_a = req.body) === null || _a === void 0 ? void 0 : _a.guest) === null || _b === void 0 ? void 0 : _b.email) {
@@ -256,10 +256,10 @@ class ResponseValidationService {
         });
     }
     static validateRequest(_a) {
-        return __awaiter(this, arguments, void 0, function* ({ req, res, requireFormId = true, requireUserInfo, }) {
-            var _b, _c;
+        return __awaiter(this, arguments, void 0, function* ({ req, res, requireFormId = true, requireUserInfo, noToken, }) {
+            var _b, _c, _d;
             const user = req.user;
-            if (!user) {
+            if (!user && !noToken) {
                 res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
                 return { user: null, isValid: false };
             }
@@ -267,30 +267,31 @@ class ResponseValidationService {
                 const formId = req.query.formId ||
                     req.params.formId ||
                     req.body.formId;
-                if (!formId) {
+                if (!formId && user) {
                     res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
                     return { user, isValid: false };
                 }
                 return {
-                    user,
+                    user: user !== null && user !== void 0 ? user : null,
                     formId,
                     page: Number(req.query.page || req.query.p) || 1,
                     limit: Number(req.query.limit || req.query.lt) || 10,
                     uid: (_b = req.query.uid) !== null && _b !== void 0 ? _b : undefined,
+                    rid: (_c = req.query.rid) !== null && _c !== void 0 ? _c : undefined,
                     isValid: true,
                 };
             }
             if (requireUserInfo) {
-                if (!req.query.uid) {
+                if (!req.query.uid && user) {
                     res.status(400).json((0, helper_1.ReturnCode)(400));
                     return { user, isValid: false };
                 }
             }
             return {
-                user,
+                user: user !== null && user !== void 0 ? user : null,
                 page: Number(req.query.page || req.query.p) || 1,
                 limit: Number(req.query.limit || req.query.lt) || 10,
-                uid: (_c = req.query.uid) !== null && _c !== void 0 ? _c : undefined,
+                uid: (_d = req.query.uid) !== null && _d !== void 0 ? _d : undefined,
                 isValid: true,
             };
         });
@@ -298,9 +299,7 @@ class ResponseValidationService {
     static validateFormAccess(formId, userId, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const form = yield Form_model_1.default.findById(formId)
-                    .populate({ path: "user", select: "email" })
-                    .lean();
+                const form = yield Form_model_1.default.findById(new mongoose_1.Types.ObjectId(formId)).lean();
                 if (!form) {
                     res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
                     return null;
@@ -326,9 +325,7 @@ class ResponseValidationService {
                     res.status(404).json((0, helper_1.ReturnCode)(404, "Response not found"));
                     return null;
                 }
-                const form = yield Form_model_1.default.findById(response.formId)
-                    .populate({ path: "user", select: "email" })
-                    .lean();
+                const form = yield Form_model_1.default.findById(response.formId).lean();
                 if (!form) {
                     res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
                     return null;
@@ -365,16 +362,16 @@ class ResponseValidationService {
         // Completion status filter
         if (filters.completionStatus) {
             switch (filters.completionStatus) {
-                case Response_model_1.completionStatus.completed:
+                case Response_model_1.ResponseCompletionStatus.completed:
                     query.isCompleted = true;
                     break;
-                case Response_model_1.completionStatus.partial:
+                case Response_model_1.ResponseCompletionStatus.partial:
                     query.$and = [
                         { isCompleted: { $ne: true } },
                         { submittedAt: { $exists: true } },
                     ];
                     break;
-                case Response_model_1.completionStatus.abandoned:
+                case Response_model_1.ResponseCompletionStatus.abandoned:
                     query.$and = [
                         { isCompleted: { $ne: true } },
                         { submittedAt: { $exists: false } },
@@ -403,6 +400,11 @@ class ResponseValidationService {
             if (filters.maxScore !== undefined && filters.maxScore !== "") {
                 query.totalScore.$lte = Number(filters.maxScore);
             }
+        }
+        //Id and userId filter
+        if (filters.id || filters.userId) {
+            query._id = filters.id;
+            query.userId = filters.userId;
         }
         return query;
     }

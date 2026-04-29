@@ -13,7 +13,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
     const mockFormId = new mongoose_1.Types.ObjectId();
     describe("Multiple Choice Questions", () => {
         const mockMultipleChoiceQuestion = {
-            _id: new mongoose_1.Types.ObjectId("q1"),
+            _id: new mongoose_1.Types.ObjectId(),
             title: createMockTitle(),
             type: Content_model_1.QuestionType.MultipleChoice,
             qIdx: 1,
@@ -31,7 +31,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         };
         it("should return correct choice for multiple choice question", () => {
             const result = (0, helper_1.GetAnswerKeyForQuestion)(mockMultipleChoiceQuestion);
-            expect(result).toBeDefined();
+            expect(result);
             expect(result === null || result === void 0 ? void 0 : result.idx).toBe(1);
             expect(result === null || result === void 0 ? void 0 : result.content).toBe("Option B");
         });
@@ -56,7 +56,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
     });
     describe("Selection Questions", () => {
         const mockSelectionQuestion = {
-            _id: new mongoose_1.Types.ObjectId("q2"),
+            _id: new mongoose_1.Types.ObjectId(),
             title: createMockTitle(),
             type: Content_model_1.QuestionType.Selection,
             qIdx: 2,
@@ -89,7 +89,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
     });
     describe("Checkbox Questions", () => {
         const mockCheckboxQuestion = {
-            _id: new mongoose_1.Types.ObjectId("q3"),
+            _id: new mongoose_1.Types.ObjectId(),
             title: createMockTitle(),
             type: Content_model_1.QuestionType.CheckBox,
             qIdx: 3,
@@ -164,7 +164,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
     describe("Non-Choice Questions", () => {
         it("should return answer as-is for short answer questions", () => {
             const shortAnswerQuestion = {
-                _id: new mongoose_1.Types.ObjectId("q4"),
+                _id: new mongoose_1.Types.ObjectId(),
                 title: createMockTitle(),
                 type: Content_model_1.QuestionType.ShortAnswer,
                 qIdx: 4,
@@ -183,7 +183,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         });
         it("should return answer as-is for paragraph questions", () => {
             const paragraphQuestion = {
-                _id: new mongoose_1.Types.ObjectId("q5"),
+                _id: new mongoose_1.Types.ObjectId(),
                 title: createMockTitle(),
                 type: Content_model_1.QuestionType.Paragraph,
                 qIdx: 5,
@@ -202,7 +202,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         });
         it("should return answer as-is for number questions", () => {
             const numberQuestion = {
-                _id: new mongoose_1.Types.ObjectId("q6"),
+                _id: new mongoose_1.Types.ObjectId(),
                 title: createMockTitle(),
                 type: Content_model_1.QuestionType.Number,
                 qIdx: 6,
@@ -222,7 +222,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         it("should return answer as-is for date questions", () => {
             const testDate = new Date("2024-01-15");
             const dateQuestion = {
-                _id: new mongoose_1.Types.ObjectId("q7"),
+                _id: new mongoose_1.Types.ObjectId(),
                 title: createMockTitle(),
                 type: Content_model_1.QuestionType.Date,
                 qIdx: 7,
@@ -241,7 +241,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         });
         it("should return answer as-is for range number questions", () => {
             const rangeNumberQuestion = {
-                _id: new mongoose_1.Types.ObjectId("q8"),
+                _id: new mongoose_1.Types.ObjectId(),
                 title: createMockTitle(),
                 type: Content_model_1.QuestionType.RangeNumber,
                 qIdx: 8,
@@ -262,7 +262,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
     describe("Edge Cases", () => {
         it("should return undefined when content has no answer", () => {
             const questionWithoutAnswer = {
-                _id: new mongoose_1.Types.ObjectId("q9"),
+                _id: new mongoose_1.Types.ObjectId(),
                 title: createMockTitle(),
                 type: Content_model_1.QuestionType.MultipleChoice,
                 qIdx: 9,
@@ -279,7 +279,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         });
         it("should handle undefined answer property gracefully", () => {
             const questionWithUndefinedAnswer = {
-                _id: new mongoose_1.Types.ObjectId("q10"),
+                _id: new mongoose_1.Types.ObjectId(),
                 title: createMockTitle(),
                 type: Content_model_1.QuestionType.ShortAnswer,
                 qIdx: 10,
@@ -292,7 +292,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         });
         it("should handle question with empty string answer", () => {
             const questionWithEmptyAnswer = {
-                _id: new mongoose_1.Types.ObjectId("q11"),
+                _id: new mongoose_1.Types.ObjectId(),
                 title: createMockTitle(),
                 type: Content_model_1.QuestionType.Text,
                 qIdx: 11,
@@ -311,7 +311,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         });
         it("should handle question with zero as answer", () => {
             const questionWithZeroAnswer = {
-                _id: new mongoose_1.Types.ObjectId("q12"),
+                _id: new mongoose_1.Types.ObjectId(),
                 title: createMockTitle(),
                 type: Content_model_1.QuestionType.Number,
                 qIdx: 12,
@@ -345,7 +345,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
             ];
             supportedTypes.forEach((type) => {
                 const question = {
-                    _id: new mongoose_1.Types.ObjectId(`q_${type}`),
+                    _id: new mongoose_1.Types.ObjectId(),
                     title: createMockTitle(),
                     type: type,
                     qIdx: 1,

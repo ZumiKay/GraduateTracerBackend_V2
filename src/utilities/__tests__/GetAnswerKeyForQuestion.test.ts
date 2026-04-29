@@ -19,7 +19,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
   describe("Multiple Choice Questions", () => {
     const mockMultipleChoiceQuestion: ContentType = {
-      _id: new Types.ObjectId("q1"),
+      _id: new Types.ObjectId(),
       title: createMockTitle(),
       type: QuestionType.MultipleChoice,
       qIdx: 1,
@@ -38,10 +38,10 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
     it("should return correct choice for multiple choice question", () => {
       const result = GetAnswerKeyForQuestion(
-        mockMultipleChoiceQuestion
+        mockMultipleChoiceQuestion,
       ) as ChoiceQuestionType;
 
-      expect(result).toBeDefined();
+      expect(result);
       expect(result?.idx).toBe(1);
       expect(result?.content).toBe("Option B");
     });
@@ -85,7 +85,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
   describe("Selection Questions", () => {
     const mockSelectionQuestion: ContentType = {
-      _id: new Types.ObjectId("q2"),
+      _id: new Types.ObjectId(),
       title: createMockTitle(),
       type: QuestionType.Selection,
       qIdx: 2,
@@ -104,7 +104,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
     it("should return correct choice for selection question", () => {
       const result = GetAnswerKeyForQuestion(
-        mockSelectionQuestion
+        mockSelectionQuestion,
       ) as ChoiceQuestionType;
 
       expect(result).toBeDefined();
@@ -129,7 +129,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
   describe("Checkbox Questions", () => {
     const mockCheckboxQuestion: ContentType = {
-      _id: new Types.ObjectId("q3"),
+      _id: new Types.ObjectId(),
       title: createMockTitle(),
       type: QuestionType.CheckBox,
       qIdx: 3,
@@ -191,7 +191,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
       };
 
       const result = GetAnswerKeyForQuestion(
-        questionWithInvalidIndices
+        questionWithInvalidIndices,
       ) as Array<{ key: number; val: string }>;
 
       expect(result).toBeDefined();
@@ -211,7 +211,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
       };
 
       const result = GetAnswerKeyForQuestion(
-        questionWithNoValidIndices
+        questionWithNoValidIndices,
       ) as Array<{ key: number; val: string }>;
 
       expect(result).toBeDefined();
@@ -248,7 +248,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
   describe("Non-Choice Questions", () => {
     it("should return answer as-is for short answer questions", () => {
       const shortAnswerQuestion: ContentType = {
-        _id: new Types.ObjectId("q4"),
+        _id: new Types.ObjectId(),
         title: createMockTitle(),
         type: QuestionType.ShortAnswer,
         qIdx: 4,
@@ -270,7 +270,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
     it("should return answer as-is for paragraph questions", () => {
       const paragraphQuestion: ContentType = {
-        _id: new Types.ObjectId("q5"),
+        _id: new Types.ObjectId(),
         title: createMockTitle(),
         type: QuestionType.Paragraph,
         qIdx: 5,
@@ -292,7 +292,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
     it("should return answer as-is for number questions", () => {
       const numberQuestion: ContentType = {
-        _id: new Types.ObjectId("q6"),
+        _id: new Types.ObjectId(),
         title: createMockTitle(),
         type: QuestionType.Number,
         qIdx: 6,
@@ -315,7 +315,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
     it("should return answer as-is for date questions", () => {
       const testDate = new Date("2024-01-15");
       const dateQuestion: ContentType = {
-        _id: new Types.ObjectId("q7"),
+        _id: new Types.ObjectId(),
         title: createMockTitle(),
         type: QuestionType.Date,
         qIdx: 7,
@@ -337,7 +337,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
     it("should return answer as-is for range number questions", () => {
       const rangeNumberQuestion: ContentType = {
-        _id: new Types.ObjectId("q8"),
+        _id: new Types.ObjectId(),
         title: createMockTitle(),
         type: QuestionType.RangeNumber,
         qIdx: 8,
@@ -361,7 +361,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
   describe("Edge Cases", () => {
     it("should return undefined when content has no answer", () => {
       const questionWithoutAnswer: ContentType = {
-        _id: new Types.ObjectId("q9"),
+        _id: new Types.ObjectId(),
         title: createMockTitle(),
         type: QuestionType.MultipleChoice,
         qIdx: 9,
@@ -381,7 +381,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
     it("should handle undefined answer property gracefully", () => {
       const questionWithUndefinedAnswer: ContentType = {
-        _id: new Types.ObjectId("q10"),
+        _id: new Types.ObjectId(),
         title: createMockTitle(),
         type: QuestionType.ShortAnswer,
         qIdx: 10,
@@ -397,7 +397,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
     it("should handle question with empty string answer", () => {
       const questionWithEmptyAnswer: ContentType = {
-        _id: new Types.ObjectId("q11"),
+        _id: new Types.ObjectId(),
         title: createMockTitle(),
         type: QuestionType.Text,
         qIdx: 11,
@@ -410,7 +410,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
       };
 
       const result = GetAnswerKeyForQuestion(
-        questionWithEmptyAnswer
+        questionWithEmptyAnswer,
       ) as AnswerKey;
 
       expect(result).toEqual({
@@ -421,7 +421,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
     it("should handle question with zero as answer", () => {
       const questionWithZeroAnswer: ContentType = {
-        _id: new Types.ObjectId("q12"),
+        _id: new Types.ObjectId(),
         title: createMockTitle(),
         type: QuestionType.Number,
         qIdx: 12,
@@ -434,7 +434,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
       };
 
       const result = GetAnswerKeyForQuestion(
-        questionWithZeroAnswer
+        questionWithZeroAnswer,
       ) as AnswerKey;
 
       expect(result).toEqual({
@@ -461,7 +461,7 @@ describe("GetAnswerKeyForQuestion Tests", () => {
 
       supportedTypes.forEach((type) => {
         const question: ContentType = {
-          _id: new Types.ObjectId(`q_${type}`),
+          _id: new Types.ObjectId(),
           title: createMockTitle(),
           type: type,
           qIdx: 1,
@@ -471,9 +471,9 @@ describe("GetAnswerKeyForQuestion Tests", () => {
               type === QuestionType.CheckBox
                 ? [0]
                 : type === QuestionType.MultipleChoice ||
-                  type === QuestionType.Selection
-                ? 0
-                : "test answer",
+                    type === QuestionType.Selection
+                  ? 0
+                  : "test answer",
             isCorrect: true,
           },
           score: 10,

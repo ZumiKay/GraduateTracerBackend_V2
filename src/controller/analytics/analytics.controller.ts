@@ -18,10 +18,9 @@ import FormResponse, {
   FormResponseType,
   ResponseSetType,
 } from "../../model/Response.model";
-import Form, { FormType } from "../../model/Form.model";
+import { FormType } from "../../model/Form.model";
 import { RootFilterQuery, Types } from "mongoose";
 
-// Extended response type for analytics
 type ExtendedResponseSet = ResponseSetType & {
   respondentId: Types.ObjectId;
   respondentName: string;
@@ -29,7 +28,6 @@ type ExtendedResponseSet = ResponseSetType & {
   submittedAt: Date | undefined;
 };
 
-// Base data type for question analytics
 interface QuestionBaseData {
   id: string;
   questionId: string;
@@ -44,7 +42,7 @@ class AnalyticsController {
   public GetAnalyticsData = async (req: CustomRequest, res: Response) => {
     //Process Request Params
     const query = this.ValidateParamData(
-      req.query as unknown as GetAnalyticsParamType
+      req.query as unknown as GetAnalyticsParamType,
     );
     if (!query) return res.status(400).json(ReturnCode(400));
 
@@ -59,10 +57,10 @@ class AnalyticsController {
       const form = await ResponseValidationService.validateFormAccess(
         formId,
         user.sub,
-        res
+        res,
       );
       if (!form) {
-        return; // Response already sent by validateFormAccess
+        return;
       }
 
       // Get all responses for the form
@@ -110,7 +108,7 @@ class AnalyticsController {
       const analyticsData = await Promise.all(
         questions.map(async (question) => {
           return await this.ProcessQuestionAnalytics(question, responses);
-        })
+        }),
       );
 
       // Calculate overall form statistics
@@ -140,7 +138,7 @@ class AnalyticsController {
    */
   private ProcessQuestionAnalytics = async (
     question: ContentType,
-    responses: Array<FormResponseType>
+    responses: Array<FormResponseType>,
   ) => {
     if (!question._id) return;
 
@@ -173,7 +171,7 @@ class AnalyticsController {
       id,
       questionId: question.questionId as string,
       questionTitle: ResponseAnalyticsService["extractQuestionTitle"](
-        question.title
+        question.title,
       ),
       questionType,
       questionIndex: question.qIdx,
@@ -192,7 +190,7 @@ class AnalyticsController {
         return this.ProcessChoiceQuestion(
           question,
           questionResponses,
-          baseData
+          baseData,
         );
 
       case QuestionType.RangeDate:
@@ -225,7 +223,7 @@ class AnalyticsController {
   private ProcessChoiceQuestion = (
     question: ContentType,
     questionResponses: ExtendedResponseSet[],
-    baseData: QuestionBaseData
+    baseData: QuestionBaseData,
   ) => {
     const choices = question?.[
       question.type as keyof ContentType
@@ -315,7 +313,7 @@ class AnalyticsController {
 
     // Calculate how many responses got full marks
     const fullScoreCount = questionResponses.filter(
-      (r) => (r.score || 0) === (question.score || 0)
+      (r) => (r.score || 0) === (question.score || 0),
     ).length;
 
     // Calculate average score
@@ -337,7 +335,7 @@ class AnalyticsController {
     const labels = distribution.map((d) => d.choiceContent);
     const data = distribution.map((d) => d.count);
     const chartColors = distribution.map(
-      (_, idx: number) => colors[idx % colors.length]
+      (_, idx: number) => colors[idx % colors.length],
     );
 
     return {
@@ -368,7 +366,7 @@ class AnalyticsController {
           doughnut: {
             labels: labels.map(
               (label: string, idx: number) =>
-                `${label} (${distribution[idx].percentage.toFixed(1)}%)`
+                `${label} (${distribution[idx].percentage.toFixed(1)}%)`,
             ),
             datasets: [
               {
@@ -391,7 +389,7 @@ class AnalyticsController {
   private ProcessRangeQuestion = (
     question: ContentType,
     questionResponses: ExtendedResponseSet[],
-    baseData: QuestionBaseData
+    baseData: QuestionBaseData,
   ) => {
     const values: number[] = [];
     const scatterData: {
@@ -441,14 +439,14 @@ class AnalyticsController {
             typeof value.start === "number"
               ? value.start
               : typeof value.start === "string"
-              ? parseFloat(value.start)
-              : NaN;
+                ? parseFloat(value.start)
+                : NaN;
           const endNum =
             typeof value.end === "number"
               ? value.end
               : typeof value.end === "string"
-              ? parseFloat(value.end)
-              : NaN;
+                ? parseFloat(value.end)
+                : NaN;
           if (!isNaN(startNum) && !isNaN(endNum)) {
             scatterData.push({
               x: startNum,
@@ -503,7 +501,7 @@ class AnalyticsController {
       } else {
         const binIndex = Math.min(
           Math.floor((value - min) / binWidth),
-          numBins - 1
+          numBins - 1,
         );
         bins[binIndex].count++;
       }
@@ -513,7 +511,7 @@ class AnalyticsController {
     bins.forEach((bin) => {
       if (question.type === QuestionType.RangeDate) {
         bin.label = `${new Date(bin.min).toLocaleDateString()} - ${new Date(
-          bin.max
+          bin.max,
         ).toLocaleDateString()}`;
       } else {
         bin.label = `${Math.round(bin.min)}-${Math.round(bin.max)}`;
@@ -585,7 +583,7 @@ class AnalyticsController {
    */
   private ProcessTextQuestion = (
     questionResponses: ExtendedResponseSet[],
-    baseData: QuestionBaseData
+    baseData: QuestionBaseData,
   ) => {
     const textResponses: string[] = questionResponses
       .map((r) => (typeof r?.response === "string" ? r.response.trim() : ""))
@@ -604,15 +602,15 @@ class AnalyticsController {
     // Calculate text metrics
     const lengths = textResponses.map((r) => r.length);
     const wordCounts = textResponses.map(
-      (r) => r.split(/\s+/).filter(Boolean).length
+      (r) => r.split(/\s+/).filter(Boolean).length,
     );
 
     const textMetrics = {
       averageLength: Math.round(
-        lengths.reduce((sum, len) => sum + len, 0) / lengths.length
+        lengths.reduce((sum, len) => sum + len, 0) / lengths.length,
       ),
       averageWordCount: Math.round(
-        wordCounts.reduce((sum, count) => sum + count, 0) / wordCounts.length
+        wordCounts.reduce((sum, count) => sum + count, 0) / wordCounts.length,
       ),
       minLength: Math.min(...lengths),
       maxLength: Math.max(...lengths),
@@ -679,7 +677,7 @@ class AnalyticsController {
    */
   private ProcessNumberQuestion = (
     questionResponses: ExtendedResponseSet[],
-    baseData: QuestionBaseData
+    baseData: QuestionBaseData,
   ) => {
     const numbers: number[] = questionResponses
       .map((r) => {
@@ -726,7 +724,7 @@ class AnalyticsController {
    */
   private ProcessDateQuestion = (
     questionResponses: ExtendedResponseSet[],
-    baseData: QuestionBaseData
+    baseData: QuestionBaseData,
   ) => {
     const dates: Date[] = questionResponses
       .map((r) => {
@@ -764,10 +762,10 @@ class AnalyticsController {
    */
   private CalculateFormStats = (
     responses: Array<FormResponseType>,
-    form: FormType
+    form: FormType,
   ) => {
     const completedResponses = responses.filter(
-      (r) => r.completionStatus === "completed"
+      (r) => r.completionStatus === "completed",
     ).length;
 
     const averageScore =

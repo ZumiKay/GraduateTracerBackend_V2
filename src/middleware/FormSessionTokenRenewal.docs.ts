@@ -1,17 +1,5 @@
-/**
- * Enhanced VerifyFormSession Middleware - Token Expiration & Auto-Renewal
- * =====================================================================
- *
- * This enhancement adds automatic token renewal functionality to the form session middleware.
- * When a JWT token is expired or about to expire (within 5 minutes), the system will:
- * 1. Check if the database session is still valid
- * 2. Generate a new JWT token with the same expiration as the database session
- * 3. Update the session_id in the database
- * 4. Set a new cookie with the renewed token
- * 5. Allow the request to proceed with the new token
- *
- * Features Implemented:
- * ====================
+/** 
+ * Features:
  *
  * 1. **Token Expiration Detection**
  *    - Checks JWT exp claim against current time + 5-minute buffer
@@ -32,11 +20,10 @@
  *    - Logs renewal errors for debugging
  *    - Maintains session security during failures
  *
- * Flow Diagram:
- * =============
+ * Flow Process:
  *
  * Request → Check Cookie → Extract JWT → Check Expiration
- *     ↓
+ *     
  * Token Valid? → YES → Proceed with Request
  *     ↓ NO
  * Find DB Session → Session Valid? → NO → Return 401
@@ -44,7 +31,6 @@
  * Generate New Token → Update Database → Set New Cookie → Proceed
  *
  * Security Considerations:
- * =======================
  *
  * 1. **5-Minute Buffer**: Prevents tokens from expiring during request processing
  * 2. **Database Validation**: Ensures session hasn't been revoked server-side
@@ -53,7 +39,6 @@
  * 5. **Cleanup**: Expired sessions are removed from database
  *
  * Error Scenarios Handled:
- * =======================
  *
  * 1. **No Cookie Present**: Returns 401 Unauthorized
  * 2. **Invalid JWT**: Returns 401 Unauthorized
@@ -62,8 +47,7 @@
  * 5. **Token Generation Failed**: Returns 500 Internal Server Error
  * 6. **Database Update Failed**: Returns 500 Internal Server Error
  *
- * Testing Scenarios:
- * ==================
+ 
  */
 
 export const testScenarios = {

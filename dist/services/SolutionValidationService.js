@@ -46,17 +46,29 @@ exports.SolutionValidationService = void 0;
 const Content_model_1 = __importStar(require("../model/Content.model"));
 const Form_model_1 = __importStar(require("../model/Form.model"));
 const mongoose_1 = require("mongoose");
+const helper_1 = require("../utilities/helper");
+const scoreHelper_1 = require("../utilities/scoreHelper");
 class SolutionValidationService {
     //Check the valid of question answers and scores
+    /**
+     * @params
+     * - content: Contenttype (questionId is required)
+     * - parentScore: number
+     *
+     * @returns
+     * - errors
+     * - warnings
+     * - missingAnswers
+     * - missingScores
+     * - wrongScores
+     */
     static validateContent(content, parentScore) {
-        var _a;
         const errors = [];
         const warnings = [];
         const missingAnswers = [];
         const missingScores = [];
-        const questionTitle = content.qIdx
-            ? `Question ${content.qIdx}`
-            : `Condition of Question ${(_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qIdx}`;
+        const wrongScores = [];
+        const questionTitle = `Question ${content.questionId}`;
         if (content.type === Content_model_1.QuestionType.Text) {
             return {
                 isValid: true,
@@ -64,29 +76,35 @@ class SolutionValidationService {
                 warnings: [],
                 missingAnswers: [],
                 missingScores: [],
+                wrongScores: [],
             };
         }
         // Check if content has answer
-        if (!content.answer ||
+        if ((!content.answer ||
             content.answer.answer === null ||
-            content.answer.answer === undefined) {
-            missingAnswers.push(`Question "${content.title}" has no answer key`);
+            content.answer.answer === undefined) &&
+            content.type !== Content_model_1.QuestionType.ShortAnswer &&
+            content.type !== Content_model_1.QuestionType.Paragraph) {
+            missingAnswers.push(questionTitle);
         }
         // Check if content has score
         if (content.score === null ||
             content.score === undefined ||
             content.score === 0) {
-            missingScores.push(`${questionTitle} has no score assigned`);
+            missingScores.push(questionTitle);
         }
-        //validate conditioned question score
+        //validate child conditioned question score
         if (content.score && content.parentcontent && parentScore) {
             const isValid = content.score > parentScore;
-            if (!isValid) {
-                missingScores.push(`${questionTitle} has wrong score`);
+            if (isValid) {
+                wrongScores.push(questionTitle);
             }
         }
         // Validate answer format based on question type
-        if (content.answer && content.answer.answer) {
+        if (content.answer &&
+            content.answer.answer &&
+            content.type !== Content_model_1.QuestionType.ShortAnswer &&
+            content.type !== Content_model_1.QuestionType.Paragraph) {
             const answerValidation = this.validateAnswerFormat(content.type, content.answer.answer, content);
             if (!answerValidation.isValid) {
                 errors.push(...answerValidation.errors);
@@ -94,81 +112,78 @@ class SolutionValidationService {
         }
         // Check if required question has proper setup
         if (content.require && (!content.answer || !content.score)) {
-            errors.push(`Required ${questionTitle} must have both answer and score`);
+            //Required Score only for short answer and paragraph question type
+            if (content.type === Content_model_1.QuestionType.ShortAnswer ||
+                content.type === Content_model_1.QuestionType.Paragraph) {
+                if (!content.score)
+                    errors.push(`Required ${questionTitle} must have scores`);
+            }
+            else {
+                errors.push(`Required ${questionTitle} must have both answer and score`);
+            }
         }
         const isValid = errors.length === 0 &&
             missingAnswers.length === 0 &&
-            missingScores.length === 0;
+            missingScores.length === 0 &&
+            wrongScores.length === 0;
         return {
             isValid,
             errors,
             warnings,
             missingAnswers,
             missingScores,
+            wrongScores,
         };
     }
     static validateAnswerFormat(questionType, answer, content) {
-        var _a, _b;
         const errors = [];
         switch (questionType) {
             case Content_model_1.QuestionType.MultipleChoice:
-                if (!Array.isArray(answer) || answer.length === 0) {
-                    errors.push("Multiple choice answer must be an array with at least one selection");
-                }
-                else {
-                    const maxIndex = (((_a = content.multiple) === null || _a === void 0 ? void 0 : _a.length) || 0) - 1;
-                    const invalidIndices = answer.filter((idx) => idx > maxIndex || idx < 0);
-                    if (invalidIndices.length > 0) {
-                        errors.push(`Invalid answer indices: ${invalidIndices.join(", ")}`);
-                    }
-                }
-                break;
+            case Content_model_1.QuestionType.Selection:
             case Content_model_1.QuestionType.CheckBox:
                 if (!Array.isArray(answer)) {
-                    errors.push("Checkbox answer must be an array");
-                }
-                else {
-                    const maxIndex = (((_b = content.checkbox) === null || _b === void 0 ? void 0 : _b.length) || 0) - 1;
-                    const invalidIndices = answer.filter((idx) => idx > maxIndex || idx < 0);
-                    if (invalidIndices.length > 0) {
-                        errors.push(`Invalid checkbox indices: ${invalidIndices.join(", ")}`);
-                    }
+                    errors.push(`Choice Question ${content.qIdx} have invalid answer`);
                 }
                 break;
             case Content_model_1.QuestionType.Text:
             case Content_model_1.QuestionType.ShortAnswer:
             case Content_model_1.QuestionType.Paragraph:
                 if (typeof answer !== "string") {
-                    errors.push("Text answer must be a string");
+                    errors.push(`Question ${content.qIdx} Text answer must be a string`);
                 }
                 break;
             case Content_model_1.QuestionType.Number:
                 if (typeof answer !== "number") {
-                    errors.push("Number answer must be a number");
+                    errors.push(`Question ${content.qIdx} number answer must be a number`);
                 }
                 break;
             case Content_model_1.QuestionType.Date:
-                if (!(answer instanceof Date) && !this.isValidDateString(answer)) {
-                    errors.push("Date answer must be a valid date");
+                if (typeof answer !== "string") {
+                    errors.push(`Question ${content.qIdx} have invalid answer`);
                 }
                 break;
             case Content_model_1.QuestionType.RangeDate:
-                if (!this.isValidRangeObject(answer) ||
-                    !this.isValidDateString(answer.start) ||
-                    !this.isValidDateString(answer.end)) {
-                    errors.push("Range date answer must have valid start and end dates");
+                {
+                    if (!this.isValidRangeObject(answer)) {
+                        errors.push("Range date answer must have valid start and end dates");
+                    }
+                    //Verify if range date value is correct format
+                    if (!(0, helper_1.isRangeValueValid)(answer, true)) {
+                        errors.push(`Question ${content.qIdx} have invalid answer`);
+                    }
                 }
                 break;
             case Content_model_1.QuestionType.RangeNumber:
-                if (!this.isValidRangeObject(answer) ||
-                    typeof answer.start !== "number" ||
-                    typeof answer.end !== "number") {
-                    errors.push("Range number answer must have valid start and end numbers");
-                }
-                break;
-            case Content_model_1.QuestionType.Selection:
-                if (!Array.isArray(answer) || answer.length === 0) {
-                    errors.push("Selection answer must be an array with at least one selection");
+                {
+                    const localAnswer = answer;
+                    if (!this.isValidRangeObject(answer) ||
+                        typeof localAnswer.start !== "number" ||
+                        typeof localAnswer.end !== "number") {
+                        errors.push("Range number answer must have valid start and end numbers");
+                    }
+                    if (!(0, helper_1.isRangeValueValid)(localAnswer)) {
+                        errors.push(`Question ${content.qIdx} have invalid answer`);
+                    }
                 }
                 break;
             default:
@@ -208,20 +223,18 @@ class SolutionValidationService {
         }
         return false;
     }
-    static isValidDateString(date) {
-        if (date instanceof Date)
-            return !isNaN(date.getTime());
-        if (typeof date === "string") {
-            const parsedDate = new Date(date);
-            return !isNaN(parsedDate.getTime());
-        }
-        return false;
-    }
     static isValidRangeObject(obj) {
         return obj && typeof obj === "object" && "start" in obj && "end" in obj;
     }
     /**
      * Validates entire form for quiz requirements
+     * @param formId type string
+     * @returns
+     *  - canReturnScoreAutomatically,
+        - totalValidQuestions
+        - totalInvalidQuestions
+        - totalScore
+        - validationResults,
      */
     static validateForm(formId) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -237,12 +250,14 @@ class SolutionValidationService {
             let totalValidQuestions = 0;
             let totalInvalidQuestions = 0;
             let totalScore = 0;
-            for (const content of contents) {
+            for (const content of (0, helper_1.AddQuestionNumbering)({ questions: contents })) {
                 if (content.type === Content_model_1.QuestionType.Text) {
+                    //Validate Text Display Only question
                     const result = this.validateContent(content);
                     validationResults.push(result);
                     continue;
                 }
+                //Validate question with condition
                 const parentScore = (_a = contents.find((ques) => { var _a; return ques._id.toString() === ((_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qId); })) === null || _a === void 0 ? void 0 : _a.score;
                 const result = this.validateContent(content, parentScore);
                 validationResults.push(result);
@@ -260,12 +275,23 @@ class SolutionValidationService {
                 totalInvalidQuestions === 0 &&
                 scorableQuestions.length > 0 &&
                 ((_b = form.setting) === null || _b === void 0 ? void 0 : _b.returnscore) === Form_model_1.returnscore.partial;
+            // Combine all validation results into aggregated arrays
+            const combinedResults = {
+                errors: validationResults.flatMap((r) => r.errors),
+                warnings: validationResults.flatMap((r) => r.warnings),
+                missingAnswers: validationResults.flatMap((r) => r.missingAnswers),
+                missingScores: validationResults.flatMap((r) => r.missingScores),
+                wrongScores: validationResults.flatMap((r) => r.wrongScores),
+            };
+            // Get detailed scoring analysis
+            const scoringAnalysis = (0, scoreHelper_1.getFormScoringAnalysis)({ questions: contents });
             return {
                 canReturnScoreAutomatically,
                 totalValidQuestions,
                 totalInvalidQuestions,
                 totalScore,
-                validationResults,
+                validationResults: combinedResults,
+                scoringAnalysis,
             };
         });
     }
@@ -276,13 +302,12 @@ class SolutionValidationService {
             if (summary.totalInvalidQuestions > 0) {
                 errors.push(`${summary.totalInvalidQuestions} question(s) have validation errors`);
             }
-            const allMissingAnswers = summary.validationResults.flatMap((r) => r.missingAnswers);
-            const allMissingScores = summary.validationResults.flatMap((r) => r.missingScores);
-            if (allMissingAnswers.length > 0) {
-                errors.push(`Missing answers: ${allMissingAnswers.length} question(s)`);
+            const { missingAnswers, missingScores } = summary.validationResults;
+            if (missingAnswers.length > 0) {
+                errors.push(`Missing answers: ${missingAnswers.length} question(s)`);
             }
-            if (allMissingScores.length > 0) {
-                errors.push(`Missing scores: ${allMissingScores.length} question(s)`);
+            if (missingScores.length > 0) {
+                errors.push(`Missing scores: ${missingScores.length} question(s)`);
             }
             return errors;
         });
@@ -331,6 +356,7 @@ class SolutionValidationService {
      * Calculate score for array-based answers (multiple choice, checkbox, selection)
      */
     static calculateChoiceQuestionScore(userAnswer, correctAnswer, maxScore) {
+        //Verify answer format
         if (!Array.isArray(userAnswer) || !Array.isArray(correctAnswer))
             return 0;
         const userSet = new Set(userAnswer);

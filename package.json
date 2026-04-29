@@ -4,6 +4,7 @@
   "main": "server.js",
   "scripts": {
     "build": "tsc",
+    "start": "node dist/server.js" ,
     "test": "jest",
     "test:watch": "jest --watch",
     "test:helper": "jest -t \"groupContentByParent\" --no-cache",
@@ -40,7 +41,7 @@
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^6.4.17",
-    "jest": "^30.0.5",
+    "jest": "^30.3.0",
     "ts-jest": "^29.4.1",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.7.2"

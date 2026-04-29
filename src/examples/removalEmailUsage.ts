@@ -5,11 +5,11 @@
  * in different scenarios throughout your application.
  */
 
+import FormsessionService from "../controller/form/formsession.controller";
 import {
   sendRemovalLinkEmail,
   sendBulkRemovalEmails,
 } from "../utilities/removalEmail";
-import FormsessionService from "../controller/formsession.controller";
 
 // Example 1: Send single removal email
 export const sendSingleRemovalExample = async () => {
@@ -17,7 +17,7 @@ export const sendSingleRemovalExample = async () => {
     const result = await sendRemovalLinkEmail(
       "user@example.com",
       "123456",
-      "Customer Satisfaction Survey"
+      "Customer Satisfaction Survey",
     );
 
     if (result.success) {
@@ -41,7 +41,7 @@ export const sendBulkRemovalExample = async () => {
   try {
     const results = await sendBulkRemovalEmails(
       recipients,
-      "Employee Survey 2024"
+      "Employee Survey 2024",
     );
 
     results.forEach((result) => {
@@ -60,7 +60,7 @@ export const sendBulkRemovalExample = async () => {
 export const handleDuplicateSession = async (
   respondentEmail: string,
   formId: string,
-  removeCode: string
+  removeCode: string,
 ) => {
   try {
     // This is how it's used in FormsessionService.RespondentLogin
@@ -69,7 +69,7 @@ export const handleDuplicateSession = async (
       removeCode,
       formId,
 
-      process.env.FRONTEND_URL
+      process.env.FRONTEND_URL,
     );
 
     if (emailResult.success) {

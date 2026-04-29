@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -12,13 +45,259 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ResponseAnalyticsService = void 0;
+exports.ResponseAnalyticsService = exports.GraphType = void 0;
 const mongoose_1 = require("mongoose");
 const Response_model_1 = __importDefault(require("../model/Response.model"));
-const Content_model_1 = __importDefault(require("../model/Content.model"));
+const Content_model_1 = __importStar(require("../model/Content.model"));
 const Form_model_1 = __importDefault(require("../model/Form.model"));
 const respondentUtils_1 = require("../utilities/respondentUtils");
+// Graph types for analytics visualization
+var GraphType;
+(function (GraphType) {
+    GraphType["BAR"] = "bar";
+    GraphType["PIE"] = "pie";
+    GraphType["LINE"] = "line";
+    GraphType["DOUGHNUT"] = "doughnut";
+    GraphType["HORIZONTAL_BAR"] = "horizontalBar";
+})(GraphType || (exports.GraphType = GraphType = {}));
 class ResponseAnalyticsService {
+    /**
+     * Get comprehensive analytics for choice questions with multiple graph types
+     * Supports: Multiple Choice, Checkbox, Selection questions
+     */
+    static getChoiceQuestionAnalytics(formId, questionId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const form = yield Form_model_1.default.findById(formId).populate("contentIds");
+            if (!form) {
+                throw new Error("Form not found");
+            }
+            // Get all responses for the form
+            const responses = yield Response_model_1.default.find({
+                formId: new mongoose_1.Types.ObjectId(formId),
+            }).lean();
+            const questions = questionId
+                ? yield Content_model_1.default.find({
+                    _id: new mongoose_1.Types.ObjectId(questionId),
+                    formId: new mongoose_1.Types.ObjectId(formId),
+                })
+                : yield Content_model_1.default.find({
+                    formId: new mongoose_1.Types.ObjectId(formId),
+                    type: {
+                        $in: [
+                            Content_model_1.QuestionType.MultipleChoice,
+                            Content_model_1.QuestionType.CheckBox,
+                            Content_model_1.QuestionType.Selection,
+                        ],
+                    },
+                });
+            const analytics = [];
+            for (const question of questions) {
+                if (![
+                    Content_model_1.QuestionType.MultipleChoice,
+                    Content_model_1.QuestionType.CheckBox,
+                    Content_model_1.QuestionType.Selection,
+                ].includes(question.type)) {
+                    continue;
+                }
+                const questionAnalytics = yield this.generateMultiGraphAnalytics(question, responses);
+                analytics.push(questionAnalytics);
+            }
+            return analytics;
+        });
+    }
+    /**
+     * Generate analytics data for multiple graph types for a single choice question
+     */
+    static generateMultiGraphAnalytics(question, responses) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const questionId = question._id.toString();
+            // Get the choice options based on question type
+            const choices = question.multiple || question.checkbox || question.selection || [];
+            // Extract responses for this question
+            const questionResponses = responses
+                .map((response) => {
+                const responseSet = response.responseset.find((rs) => rs.question.toString() === questionId);
+                return responseSet;
+            })
+                .filter(Boolean);
+            // Count responses for each choice
+            const choiceDistribution = this.calculateChoiceDistribution(choices, questionResponses);
+            // Generate different graph formats
+            const barChart = this.generateBarChartData(choiceDistribution, question);
+            const pieChart = this.generatePieChartData(choiceDistribution, question);
+            const horizontalBarChart = this.generateHorizontalBarChartData(choiceDistribution, question);
+            const doughnutChart = this.generateDoughnutChartData(choiceDistribution, question);
+            // Extract question title
+            const questionTitle = this.extractQuestionTitle(question.title);
+            return {
+                questionId,
+                questionTitle,
+                questionType: question.type,
+                totalResponses: questionResponses.length,
+                availableGraphTypes: [
+                    GraphType.BAR,
+                    GraphType.PIE,
+                    GraphType.HORIZONTAL_BAR,
+                    GraphType.DOUGHNUT,
+                ],
+                barChart,
+                pieChart,
+                horizontalBarChart,
+                doughnutChart,
+                rawData: choiceDistribution,
+            };
+        });
+    }
+    /**
+     * Calculate distribution of choices with counts and percentages
+     */
+    static calculateChoiceDistribution(choices, questionResponses) {
+        const totalResponses = questionResponses.length;
+        const choiceCounts = new Map();
+        // Initialize counts for all choices
+        choices.forEach((choice) => {
+            choiceCounts.set(choice.idx, 0);
+        });
+        // Count responses
+        questionResponses.forEach((response) => {
+            if (!(response === null || response === void 0 ? void 0 : response.response))
+                return;
+            const responseValue = response.response;
+            // Handle both single and multiple selections
+            if (Array.isArray(responseValue)) {
+                responseValue.forEach((idx) => {
+                    choiceCounts.set(idx, (choiceCounts.get(idx) || 0) + 1);
+                });
+            }
+            else if (typeof responseValue === "number") {
+                choiceCounts.set(responseValue, (choiceCounts.get(responseValue) || 0) + 1);
+            }
+            else if (typeof responseValue === "object" && "key" in responseValue) {
+                // Handle ResponseAnswerReturnType format
+                const key = responseValue.key;
+                if (Array.isArray(key)) {
+                    key.forEach((idx) => {
+                        choiceCounts.set(idx, (choiceCounts.get(idx) || 0) + 1);
+                    });
+                }
+                else {
+                    choiceCounts.set(key, (choiceCounts.get(key) || 0) + 1);
+                }
+            }
+        });
+        // Generate distribution data
+        return choices.map((choice, index) => {
+            const count = choiceCounts.get(choice.idx) || 0;
+            const percentage = totalResponses > 0 ? (count / totalResponses) * 100 : 0;
+            return {
+                choiceIdx: choice.idx,
+                choiceContent: choice.content,
+                count,
+                percentage: Math.round(percentage * 100) / 100, // Round to 2 decimal places
+                color: this.CHART_COLORS[index % this.CHART_COLORS.length],
+            };
+        });
+    }
+    /**
+     * Generate Bar Chart data
+     */
+    static generateBarChartData(distribution, question) {
+        return {
+            labels: distribution.map((d) => d.choiceContent),
+            datasets: [
+                {
+                    label: "Response Count",
+                    data: distribution.map((d) => d.count),
+                    backgroundColor: distribution.map((d) => d.color + "CC"), // Add transparency
+                    borderColor: distribution.map((d) => d.color),
+                    borderWidth: 2,
+                },
+            ],
+        };
+    }
+    /**
+     * Generate Pie Chart data
+     */
+    static generatePieChartData(distribution, question) {
+        // Filter out zero counts for cleaner pie chart
+        const nonZeroData = distribution.filter((d) => d.count > 0);
+        return {
+            labels: nonZeroData.map((d) => d.choiceContent),
+            datasets: [
+                {
+                    data: nonZeroData.map((d) => d.count),
+                    backgroundColor: nonZeroData.map((d) => d.color + "CC"),
+                    borderColor: nonZeroData.map((d) => d.color),
+                    borderWidth: 2,
+                },
+            ],
+        };
+    }
+    /**
+     * Generate Horizontal Bar Chart data
+     */
+    static generateHorizontalBarChartData(distribution, question) {
+        // Sort by count for better visualization
+        const sorted = [...distribution].sort((a, b) => b.count - a.count);
+        return {
+            labels: sorted.map((d) => d.choiceContent),
+            datasets: [
+                {
+                    label: "Response Count",
+                    data: sorted.map((d) => d.count),
+                    backgroundColor: sorted.map((d) => d.color + "CC"),
+                    borderColor: sorted.map((d) => d.color),
+                    borderWidth: 2,
+                },
+            ],
+        };
+    }
+    /**
+     * Generate Doughnut Chart data (similar to pie but with hole in center)
+     */
+    static generateDoughnutChartData(distribution, question) {
+        // Filter out zero counts
+        const nonZeroData = distribution.filter((d) => d.count > 0);
+        return {
+            labels: nonZeroData.map((d) => `${d.choiceContent} (${d.percentage.toFixed(1)}%)`),
+            datasets: [
+                {
+                    data: nonZeroData.map((d) => d.count),
+                    backgroundColor: nonZeroData.map((d) => d.color + "DD"),
+                    borderColor: nonZeroData.map((d) => d.color),
+                    borderWidth: 2,
+                },
+            ],
+        };
+    }
+    /**
+     * Extract plain text from ContentTitle structure
+     */
+    static extractQuestionTitle(title) {
+        if (typeof title === "string") {
+            return title;
+        }
+        if (title && typeof title === "object") {
+            // Handle TipTap/ProseMirror JSON structure
+            if (title.content && Array.isArray(title.content)) {
+                return title.content
+                    .map((node) => {
+                    if (node.text)
+                        return node.text;
+                    if (node.content) {
+                        return node.content.map((n) => n.text || "").join("");
+                    }
+                    return "";
+                })
+                    .join(" ")
+                    .trim();
+            }
+            if (title.text) {
+                return title.text;
+            }
+        }
+        return "Question";
+    }
     static getFormAnalytics(formId_1) {
         return __awaiter(this, arguments, void 0, function* (formId, period = "7d") {
             const now = new Date();
@@ -112,6 +391,7 @@ class ResponseAnalyticsService {
         });
     }
     static analyzeChoiceQuestion(contentObj, questionResponses) {
+        const choices = contentObj.multiple || contentObj.checkbox || contentObj.selection || [];
         const answerCounts = {};
         questionResponses.forEach((response) => {
             if (response) {
@@ -121,23 +401,98 @@ class ResponseAnalyticsService {
                         answerCounts[key] = (answerCounts[key] || 0) + 1;
                     });
                 }
+                else if (typeof response.response === "object" &&
+                    "key" in response.response) {
+                    // Handle ResponseAnswerReturnType
+                    const key = response.response.key;
+                    if (Array.isArray(key)) {
+                        key.forEach((idx) => {
+                            answerCounts[idx.toString()] =
+                                (answerCounts[idx.toString()] || 0) + 1;
+                        });
+                    }
+                    else {
+                        answerCounts[key.toString()] =
+                            (answerCounts[key.toString()] || 0) + 1;
+                    }
+                }
                 else {
                     const key = response.response.toString();
                     answerCounts[key] = (answerCounts[key] || 0) + 1;
                 }
             }
         });
+        // Generate chart data with choice labels
+        const chartData = Object.entries(answerCounts).map(([answer, count]) => {
+            const choiceIdx = parseInt(answer);
+            const choice = choices.find((c) => c.idx === choiceIdx);
+            const percentage = (count / questionResponses.length) * 100;
+            return {
+                answer: (choice === null || choice === void 0 ? void 0 : choice.content) || answer,
+                answerIdx: choiceIdx,
+                count,
+                percentage: percentage.toFixed(1),
+            };
+        });
+        // Generate multi-graph format
+        const labels = chartData.map((d) => d.answer);
+        const data = chartData.map((d) => d.count);
+        const colors = chartData.map((_, idx) => this.CHART_COLORS[idx % this.CHART_COLORS.length]);
         return {
             type: contentObj.type,
-            title: contentObj.title,
+            title: this.extractQuestionTitle(contentObj.title),
             totalResponses: questionResponses.length,
             answerCounts,
-            chartData: Object.entries(answerCounts).map(([answer, count]) => ({
-                answer,
-                count,
-                percentage: ((count / questionResponses.length) *
-                    100).toFixed(1),
-            })),
+            chartData,
+            // Multiple graph formats
+            graphs: {
+                barChart: {
+                    labels,
+                    datasets: [
+                        {
+                            label: "Response Count",
+                            data,
+                            backgroundColor: colors.map((c) => c + "CC"),
+                            borderColor: colors,
+                            borderWidth: 2,
+                        },
+                    ],
+                },
+                pieChart: {
+                    labels,
+                    datasets: [
+                        {
+                            data,
+                            backgroundColor: colors.map((c) => c + "CC"),
+                            borderColor: colors,
+                            borderWidth: 2,
+                        },
+                    ],
+                },
+                horizontalBarChart: {
+                    labels,
+                    datasets: [
+                        {
+                            label: "Response Count",
+                            data,
+                            backgroundColor: colors.map((c) => c + "CC"),
+                            borderColor: colors,
+                            borderWidth: 2,
+                        },
+                    ],
+                },
+                doughnutChart: {
+                    labels: labels.map((label, idx) => `${label} (${chartData[idx].percentage}%)`),
+                    datasets: [
+                        {
+                            data,
+                            backgroundColor: colors.map((c) => c + "DD"),
+                            borderColor: colors,
+                            borderWidth: 2,
+                        },
+                    ],
+                },
+            },
         };
     }
     static analyzeRangeQuestion(contentObj, questionResponses) {
@@ -283,3 +638,26 @@ class ResponseAnalyticsService {
     }
 }
 exports.ResponseAnalyticsService = ResponseAnalyticsService;
+// Color palette for charts
+ResponseAnalyticsService.CHART_COLORS = [
+    "#FF6384",
+    "#36A2EB",
+    "#FFCE56",
+    "#4BC0C0",
+    "#9966FF",
+    "#FF9F40",
+    "#FF6384",
+    "#C9CBCF",
+    "#4BC0C0",
+    "#FF9F40",
+    "#36A2EB",
+    "#FFCE56",
+    "#9966FF",
+    "#FF6384",
+    "#4BC0C0",
+    "#FF9F40",
+    "#36A2EB",
+    "#FFCE56",
+    "#9966FF",
+    "#C9CBCF",
+];

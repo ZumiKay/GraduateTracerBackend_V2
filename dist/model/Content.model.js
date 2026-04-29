@@ -9,8 +9,9 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.QuestionType = void 0;
+exports.QuestionType = exports.DetailContentSelection = void 0;
 const mongoose_1 = require("mongoose");
+exports.DetailContentSelection = "_id qIdx title type text multiple checkbox selection rangedate rangenumber date require page conditional parentcontent";
 var QuestionType;
 (function (QuestionType) {
     QuestionType["MultipleChoice"] = "multiple";
@@ -37,11 +38,11 @@ const ChoiceQuestionSchema = new mongoose_1.Schema({
 });
 const RangeSchema = new mongoose_1.Schema({
     start: {
-        type: mongoose_1.Schema.Types.Mixed, // Can handle Date or Number
+        type: mongoose_1.Schema.Types.Mixed,
         required: true,
     },
     end: {
-        type: mongoose_1.Schema.Types.Mixed, // Can handle Date or Number
+        type: mongoose_1.Schema.Types.Mixed,
         required: true,
     },
 });
@@ -108,14 +109,8 @@ const ContentSchema = new mongoose_1.Schema({
     multiple: {
         type: [ChoiceQuestionSchema],
     },
-    range: {
-        type: RangeSchema,
-    },
     selection: {
         type: [ChoiceQuestionSchema],
-    },
-    numrange: {
-        type: RangeSchema,
     },
     rangedate: {
         type: RangeSchema,
@@ -211,5 +206,3 @@ ContentSchema.index({ formId: 1, page: 1 });
 ContentSchema.index({ idx: 1 });
 const Content = (0, mongoose_1.model)("Content", ContentSchema);
 exports.default = Content;
-//helper function
-const GetQuestionContentAsString = () => { };

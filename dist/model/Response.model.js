@@ -1,19 +1,22 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ScoringMethod = exports.completionStatus = exports.RespondentType = void 0;
+exports.ScoringMethod = exports.ResponseCompletionStatus = exports.RespondentType = void 0;
 const mongoose_1 = require("mongoose");
 var RespondentType;
 (function (RespondentType) {
     RespondentType["user"] = "USER";
     RespondentType["guest"] = "GUEST";
 })(RespondentType || (exports.RespondentType = RespondentType = {}));
-var completionStatus;
-(function (completionStatus) {
-    completionStatus["completed"] = "completed";
-    completionStatus["partial"] = "partial";
-    completionStatus["abandoned"] = "abandoned";
-    completionStatus["idle"] = "idle";
-})(completionStatus || (exports.completionStatus = completionStatus = {}));
+var ResponseCompletionStatus;
+(function (ResponseCompletionStatus) {
+    ResponseCompletionStatus["completed"] = "completed";
+    ResponseCompletionStatus["noscore"] = "noscore";
+    ResponseCompletionStatus["notreturn"] = "notreturn";
+    ResponseCompletionStatus["autoscore"] = "autoscore";
+    ResponseCompletionStatus["partial"] = "partial";
+    ResponseCompletionStatus["abandoned"] = "abandoned";
+    ResponseCompletionStatus["submitted"] = "submitted";
+})(ResponseCompletionStatus || (exports.ResponseCompletionStatus = ResponseCompletionStatus = {}));
 var ScoringMethod;
 (function (ScoringMethod) {
     ScoringMethod["AUTO"] = "auto";
@@ -34,6 +37,10 @@ const ResponseSetSchema = new mongoose_1.Schema({
     },
     score: {
         type: Number,
+        required: false,
+    },
+    comment: {
+        type: String,
         required: false,
     },
     scoringMethod: {
@@ -64,17 +71,17 @@ const ResponseSchema = new mongoose_1.Schema({
         },
         required: true,
     },
+    maxScore: {
+        type: Number,
+        default: 0,
+    },
     totalScore: {
         type: Number,
         default: 0,
     },
-    isCompleted: {
-        type: Boolean,
-        default: false,
-    },
     completionStatus: {
         type: String,
-        enum: completionStatus,
+        enum: ResponseCompletionStatus,
         default: "partial",
     },
     respondentEmail: {
@@ -101,6 +108,28 @@ const ResponseSchema = new mongoose_1.Schema({
         type: String,
         required: false,
         index: true,
+    },
+    respondentSessionId: {
+        type: String,
+        required: false,
+    },
+    deviceInfo: {
+        type: {
+            userAgent: { type: String, required: true },
+            platform: { type: String, required: false },
+            screen: { type: String, required: false },
+            timezone: { type: String, required: false },
+            acceptLanguage: { type: String, required: true },
+            acceptEncoding: { type: String, required: true },
+        },
+        required: false,
+        _id: false,
+    },
+    fingerprintStrength: {
+        type: Number,
+        required: false,
+        min: 0,
+        max: 100,
     },
     submittedAt: {
         type: Date,

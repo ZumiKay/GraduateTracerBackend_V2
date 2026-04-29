@@ -11,7 +11,7 @@ import { ResponseSetType } from "../model/Response.model";
 
 export function ReturnCode(
   code: 200 | 201 | 204 | 400 | 401 | 403 | 404 | 409 | 500,
-  custommess?: string
+  custommess?: string,
 ) {
   const returnValue = (code: number, message: string) => ({ code, message });
 
@@ -80,7 +80,7 @@ export const formatDateToDDMMYYYY = (date: Date | string | number): string => {
  */
 export const convertTitleToString = (
   title: ContentTitle | string | undefined | null,
-  fallback: string = "Question"
+  fallback: string = "Question",
 ): string => {
   if (!title) return fallback;
 
@@ -194,7 +194,7 @@ export const RandomNumber = (length: number) => {
 export const GenerateToken = (
   payload: Record<string, any>,
   expiresIn: number | string,
-  customSecret?: string
+  customSecret?: string,
 ) => {
   const token = JWT.sign(
     payload,
@@ -202,7 +202,7 @@ export const GenerateToken = (
     {
       expiresIn,
       algorithm: "HS256",
-    }
+    },
   );
 
   return token;
@@ -453,7 +453,7 @@ export const AddQuestionNumbering = ({
   const buildQuestionNumber = (
     question: ContentType,
     index: number,
-    lastIndexWihoutParentCount?: number
+    lastIndexWihoutParentCount?: number,
   ): string => {
     //QuestionId for non conditional question (top-level)
     if (isTopLevelQuestion(question)) {
@@ -480,7 +480,7 @@ export const AddQuestionNumbering = ({
     if (!parentNumber) {
       // Try to find parent by _id first
       let parentQuestion = questions.find(
-        (q) => q._id?.toString() === parentId
+        (q) => q._id?.toString() === parentId,
       );
 
       // If not found, try by temp identifier (qIdx-based)
@@ -519,7 +519,7 @@ export const AddQuestionNumbering = ({
     const questionId = buildQuestionNumber(
       question,
       index, // Use array index, not offset
-      lastIdx ? undefined : lastIndexWihoutParentCount
+      lastIdx ? undefined : lastIndexWihoutParentCount,
     );
 
     // Store in map for reference by child questions using identifier
@@ -598,7 +598,7 @@ export const GetAnswerKeyForQuestion = (content: ContentType) => {
     const val = content.checkbox;
     const answerkey = content.answer?.answer as Array<number>;
 
-    if (!answerkey || !val) return;
+    if (!answerkey || !Array.isArray(answerkey) || !val) return;
 
     const result = val
       .map((i) => {
@@ -610,14 +610,14 @@ export const GetAnswerKeyForQuestion = (content: ContentType) => {
     return result;
   }
   return content[content.type]?.filter(
-    (i) => i.idx === content.answer?.answer
+    (i) => i.idx === content.answer?.answer,
   )?.[0];
 };
 
 /**
  *Convert TipTab JSON Content to string  */
 export const contentTitleToString = (
-  contentTitle: ContentTitle | null | undefined
+  contentTitle: ContentTitle | null | undefined,
 ): string => {
   if (!contentTitle) {
     return "";
@@ -751,7 +751,7 @@ const ISODateToNumber = (isoString: string): number => {
  */
 export const isRangeValueValid = (
   value: RangeType<string | number>,
-  isDate?: boolean
+  isDate?: boolean,
 ): boolean => {
   // Check if both start and end exist
   if (!value.start || !value.end) {
@@ -793,7 +793,7 @@ export const isRangeValueValid = (
         {
           start: startValue,
           end: endValue,
-        }
+        },
       );
     }
 

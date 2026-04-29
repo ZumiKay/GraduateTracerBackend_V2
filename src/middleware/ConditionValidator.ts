@@ -1,11 +1,8 @@
-/**
- * Backend middleware to validate condition questions
- * Ensures that condition questions are only allowed for checkbox and multiple choice questions
- */
-
 import { Request, Response, NextFunction } from "express";
 import { ContentType, QuestionType } from "../model/Content.model";
 import { ReturnCode } from "../utilities/helper";
+
+/**Middleware for verify the validity of the condtioned question */
 
 export interface ConditionValidationRequest extends Request {
   body: {
@@ -43,7 +40,7 @@ export class ConditionQuestionValidator {
   }
 
   /**
-   * Validates that condition keys correspond to valid option indices
+   * Validates that condition has a valid keys
    */
   static validateConditionKeys(question: ContentType): {
     isValid: boolean;
@@ -72,11 +69,11 @@ export class ConditionQuestionValidator {
       }
 
       const optionExists = options.some(
-        (option) => option.idx === condition.key
+        (option) => option.idx === condition.key,
       );
       if (!optionExists) {
         errors.push(
-          `Condition ${conditionIndex} references non-existent option key: ${condition.key}`
+          `Condition ${conditionIndex} references non-existent option key: ${condition.key}`,
         );
       }
     });
@@ -84,9 +81,7 @@ export class ConditionQuestionValidator {
     return { isValid: errors.length === 0, errors };
   }
 
-  /**
-   * Validates a single content item for condition compliance
-   */
+  /**Verify static methods */
   static validateSingleContent(content: ContentType): {
     isValid: boolean;
     errors: string[];
@@ -108,9 +103,6 @@ export class ConditionQuestionValidator {
     return { isValid: errors.length === 0, errors };
   }
 
-  /**
-   * Validates multiple content items for condition compliance
-   */
   static validateMultipleContent(contents: ContentType[]): {
     isValid: boolean;
     errors: string[];
@@ -135,7 +127,7 @@ export class ConditionQuestionValidator {
   static validateConditionMiddleware = (
     req: ConditionValidationRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ): Response | void => {
     try {
       const { content, contents, data } = req.body;
@@ -166,9 +158,9 @@ export class ConditionQuestionValidator {
             ReturnCode(
               400,
               `Invalid condition question configuration: ${validationResult.errors.join(
-                ", "
-              )}`
-            )
+                ", ",
+              )}`,
+            ),
           );
       }
 
@@ -185,7 +177,7 @@ export class ConditionQuestionValidator {
   static validateConditionCreationMiddleware = (
     req: ConditionValidationRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ): Response | void => {
     try {
       const { content, key, newContent } = req.body;
@@ -196,8 +188,8 @@ export class ConditionQuestionValidator {
           .json(
             ReturnCode(
               400,
-              "Parent content ID is required for condition creation"
-            )
+              "Parent content ID is required for condition creation",
+            ),
           );
       }
 
@@ -211,12 +203,10 @@ export class ConditionQuestionValidator {
         return res
           .status(400)
           .json(
-            ReturnCode(400, "New content is required for condition creation")
+            ReturnCode(400, "New content is required for condition creation"),
           );
       }
 
-      // The validation of the parent question's type will be handled by the main controller
-      // since we need to fetch the parent question from the database
       next();
     } catch (error) {
       console.error("Condition creation validation middleware error:", error);

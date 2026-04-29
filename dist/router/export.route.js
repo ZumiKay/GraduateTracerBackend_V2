@@ -4,21 +4,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const export_controller_1 = require("../controller/export.controller");
 const User_middleware_1 = __importDefault(require("../middleware/User.middleware"));
+const export_controller_1 = require("../controller/utils/export.controller");
 const router = express_1.default.Router();
 // Get available columns for export - Enhanced Security
-router.get("/forms/:formId/columns", User_middleware_1.default.VerifyTokenAndSession, export_controller_1.getAvailableColumns);
+router.get("/forms/:formId/columns", User_middleware_1.default.VerifyToken, export_controller_1.getAvailableColumns);
 // Get export jobs for a form - Enhanced Security
-router.get("/forms/:formId/exports", User_middleware_1.default.VerifyTokenAndSession, export_controller_1.getExportJobs);
+router.get("/forms/:formId/exports", User_middleware_1.default.VerifyToken, export_controller_1.getExportJobs);
 // Create new export job - Enhanced Security
-router.post("/forms/:formId/exports", User_middleware_1.default.VerifyTokenAndSession, export_controller_1.createExportJob);
+router.post("/forms/:formId/exports", User_middleware_1.default.VerifyToken, export_controller_1.createExportJob);
 // Get export job by ID - Enhanced Security
-router.get("/forms/:formId/exports/:jobId", User_middleware_1.default.VerifyTokenAndSession, export_controller_1.getExportJob);
+router.get("/forms/:formId/exports/:jobId", User_middleware_1.default.VerifyToken, export_controller_1.getExportJob);
 // Delete export job - Enhanced Security
-router.delete("/forms/:formId/exports/:jobId", User_middleware_1.default.VerifyTokenAndSession, export_controller_1.deleteExportJob);
+router.delete("/forms/:formId/exports/:jobId", User_middleware_1.default.VerifyToken, export_controller_1.deleteExportJob);
 // Download export file - Public access (requires valid filename token)
 router.get("/download/:filename", export_controller_1.downloadExportFile);
 // Quick export - Enhanced Security
-router.get("/forms/:formId/quick", User_middleware_1.default.VerifyTokenAndSession, export_controller_1.quickExport);
+router.get("/forms/:formId/quick", User_middleware_1.default.VerifyToken, export_controller_1.quickExport);
 exports.default = router;

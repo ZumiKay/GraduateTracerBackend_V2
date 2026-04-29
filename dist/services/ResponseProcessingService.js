@@ -53,33 +53,33 @@ const Form_model_1 = __importStar(require("../model/Form.model"));
 const SolutionValidationService_1 = __importDefault(require("./SolutionValidationService"));
 const EmailService_1 = __importDefault(require("./EmailService"));
 const User_model_1 = __importDefault(require("../model/User.model"));
-const fingerprint_1 = require("../utilities/fingerprint");
+const RespondentTrackingService_1 = require("./RespondentTrackingService");
 class ResponseProcessingService {
-    static processNormalFormSubmission(_a) {
-        return __awaiter(this, arguments, void 0, function* ({ formId, responseset, respondentEmail, respondentName, req, }) {
-            var _b, _c, _d, _e;
-            const form = yield Form_model_1.default.findById(formId).select("_id setting");
+    static processNormalFormSubmission(responseData) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b, _c, _d;
+            const { formId, responseset, respondentEmail, respondentName } = responseData;
+            const form = yield Form_model_1.default.findById(formId).select("_id setting").lean();
             if (!form)
                 throw new Error("Form not found");
-            let browserfingerprinting = undefined;
-            let respodnentIp = undefined;
-            //Save anonoymus fingerprinting for form that doesn't require email
-            if (!((_b = form.setting) === null || _b === void 0 ? void 0 : _b.email) && req) {
-                const anoynomusTrackingData = fingerprint_1.FingerprintService.generateTrackingData(req);
-                browserfingerprinting = anoynomusTrackingData.fingerprint;
-                respodnentIp = anoynomusTrackingData.ip;
-            }
-            if (((_c = form.setting) === null || _c === void 0 ? void 0 : _c.email) && !respondentEmail) {
+            if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.email) && !respondentEmail) {
                 throw new Error("Email is required for this form");
             }
             let isUser = undefined;
             if (respondentEmail) {
-                isUser = (_d = (yield User_model_1.default.findOne({ email: respondentEmail }))) === null || _d === void 0 ? void 0 : _d._id;
+                isUser = (_b = (yield User_model_1.default.findOne({ email: respondentEmail }))) === null || _b === void 0 ? void 0 : _b._id;
+            }
+            //Verify if user already responded for single response form
+            if ((_c = form.setting) === null || _c === void 0 ? void 0 : _c.submitonce) {
+                const trackingResult = yield RespondentTrackingService_1.RespondentTrackingService.checkRespondentExists(responseData);
+                if (trackingResult.hasResponded) {
+                    throw new Error("Form already submitted");
+                }
             }
             //Check response format
             const contents = yield Content_model_1.default.find({ formId: formId }).lean();
             contents.forEach((question) => {
-                const response = responseset.find((i) => { var _a; return ((_a = i.question._id) === null || _a === void 0 ? void 0 : _a.toString()) === question._id.toString(); });
+                const response = responseset.find((i) => i.question === question._id.toString());
                 //Verify required question
                 if (question.require) {
                     if (!response ||
@@ -94,7 +94,7 @@ class ResponseProcessingService {
                     throw new Error("Format");
             });
             //Save response
-            yield Response_model_1.default.create(Object.assign(Object.assign({ formId: new mongoose_1.Types.ObjectId(formId), responseset, submittedAt: new Date(), completionStatus: Response_model_1.completionStatus.completed, respondentFingerprint: browserfingerprinting, respondentIP: respodnentIp }, (((_e = form.setting) === null || _e === void 0 ? void 0 : _e.email) && {
+            yield Response_model_1.default.create(Object.assign(Object.assign({ formId: new mongoose_1.Types.ObjectId(formId), responseset, submittedAt: new Date(), completionStatus: Response_model_1.ResponseCompletionStatus.completed, respondentFingerprint: responseData.respondentFingerprint, deviceInfo: responseData.deviceInfo, respondentIP: responseData.respondentIP, fingerprintStrength: responseData.fingerprintStrength }, (((_d = form.setting) === null || _d === void 0 ? void 0 : _d.email) && {
                 respondentEmail,
                 respondentName,
                 respondentType: isUser ? Response_model_1.RespondentType.user : Response_model_1.RespondentType.guest,
@@ -104,23 +104,19 @@ class ResponseProcessingService {
             };
         });
     }
-    static processFormSubmission(submissionData) {
+    static processFormSubmission(submissionData, form) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c;
             const { formId, responseset, respondentEmail, respondentName } = submissionData;
-            const form = yield Form_model_1.default.findById(formId);
-            if (!form) {
-                throw new Error("Form not found");
+            if (!responseset || responseset.length === 0) {
+                throw new Error("Invalid Response Data");
             }
             if (((_a = form.setting) === null || _a === void 0 ? void 0 : _a.email) && !respondentEmail) {
                 throw new Error("Email is required for this form");
             }
-            //Verify respondent
-            const user = yield User_model_1.default.findById(respondentEmail).select("email").lean();
             //Verify if user alr respond for single response form
-            if (!((_b = form.setting) === null || _b === void 0 ? void 0 : _b.submitonce)) {
+            if ((_b = form.setting) === null || _b === void 0 ? void 0 : _b.submitonce) {
                 const hasResponse = yield Response_model_1.default.findOne({
-                    userId: respondentEmail,
                     respondentEmail,
                     formId,
                 });
@@ -128,18 +124,28 @@ class ResponseProcessingService {
                     throw new Error("Form already exisited");
                 }
             }
+            const user = yield User_model_1.default.findOne({
+                email: submissionData.respondentEmail,
+            })
+                .lean()
+                .select("_id email");
+            //*Score calculate process
             let scoredResponses = [];
             let totalScore = 0;
             let isAutoScored = false;
+            let isNonScore = false;
             // Auto-score
             if (((_c = form.setting) === null || _c === void 0 ? void 0 : _c.returnscore) === Form_model_1.returnscore.partial) {
-                scoredResponses = yield this.addScore(responseset.map((response) => new mongoose_1.Types.ObjectId(response.question.toString())), responseset);
+                const addscore = yield this.addScore(responseset);
                 isAutoScored = true;
+                // Check if all questions have no score
+                isNonScore = addscore.isNonScore || false;
+                scoredResponses = addscore.response;
             }
             else {
                 const contents = yield Content_model_1.default.find({ formId: formId }).lean();
                 contents.forEach((question) => {
-                    const response = responseset.find((i) => { var _a; return ((_a = i.question._id) === null || _a === void 0 ? void 0 : _a.toString()) === question._id.toString(); });
+                    const response = responseset === null || responseset === void 0 ? void 0 : responseset.find((i) => question._id.equals(i.question));
                     //Verify required question
                     if (question.require) {
                         if (!response ||
@@ -157,14 +163,26 @@ class ResponseProcessingService {
             // Calculate total score
             totalScore =
                 SolutionValidationService_1.default.calcualteResponseTotalScore(scoredResponses);
+            // Determine completion status based on auto-scoring and scoring method
+            let completionStatus = Response_model_1.ResponseCompletionStatus.submitted;
+            if (isNonScore) {
+                completionStatus = Response_model_1.ResponseCompletionStatus.noscore;
+            }
+            else if (isAutoScored) {
+                // Check if there are any manual scoring responses
+                const hasManualScoring = scoredResponses.some((i) => i.scoringMethod === Response_model_1.ScoringMethod.MANUAL);
+                completionStatus = hasManualScoring
+                    ? Response_model_1.ResponseCompletionStatus.partial
+                    : Response_model_1.ResponseCompletionStatus.autoscore;
+            }
             // Create response data
             const responseData = {
                 formId: new mongoose_1.Types.ObjectId(formId),
                 responseset: scoredResponses,
+                maxScore: form.totalscore,
                 totalScore,
-                isCompleted: true,
                 submittedAt: new Date(),
-                completionStatus: Response_model_1.completionStatus.completed,
+                completionStatus: completionStatus,
                 respondentType: user ? Response_model_1.RespondentType.user : Response_model_1.RespondentType.guest,
                 respondentEmail: user ? user.email : respondentEmail,
                 respondentName: respondentName,
@@ -175,7 +193,7 @@ class ResponseProcessingService {
             }
             const savedResponse = yield Response_model_1.default.create(responseData);
             // Send results email if auto-scored
-            if (isAutoScored && respondentEmail) {
+            if (isAutoScored && respondentEmail && !isNonScore) {
                 const emailService = new EmailService_1.default();
                 const email = user ? user.email : respondentEmail;
                 if (email) {
@@ -189,9 +207,13 @@ class ResponseProcessingService {
                     });
                 }
             }
-            const isHavePartialScore = scoredResponses.some((i) => i.scoringMethod === Response_model_1.ScoringMethod.MANUAL);
+            const isHavePartialScore = scoredResponses.some((i) => i.scoringMethod === Response_model_1.ScoringMethod.MANUAL) ||
+                isNonScore;
             return {
+                isNonScore,
                 totalScore,
+                respondentEmail,
+                responseId: savedResponse._id.toString(),
                 maxScore: form.totalscore || 0,
                 message: !isAutoScored
                     ? "Score will be return by form owner"
@@ -201,76 +223,184 @@ class ResponseProcessingService {
             };
         });
     }
-    static addScore(qids, response) {
+    /**
+     *Add Score Method
+     *@Feature
+     * - Verify answer format
+     * - If all question have no score return isNonScore
+     * - Only avaliable if form returntype is PARTIAL
+     */
+    static addScore(response) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a;
-            if (qids.length === 0) {
-                return response;
+            if (response.length === 0) {
+                return { response };
             }
             try {
                 //Fetch all content responsible in the qids
-                const content = yield Content_model_1.default.find({ _id: { $in: qids } })
-                    .lean()
-                    .exec();
+                const content = yield Content_model_1.default.find({
+                    _id: {
+                        $in: response.map((i) => new mongoose_1.Types.ObjectId(i.question)),
+                    },
+                }).lean();
                 if (content.length === 0) {
-                    return response;
+                    return { response };
                 }
                 let result = [];
+                let hasAnyScore = false;
                 //Scoring process
                 for (let i = 0; i < content.length; i++) {
                     const question = content[i];
-                    const userresponse = response.find((resp) => { var _a, _b; return ((_a = resp.question._id) === null || _a === void 0 ? void 0 : _a.toString()) === ((_b = question._id) === null || _b === void 0 ? void 0 : _b.toString()); });
+                    const userresponse = response.find((resp) => question._id.equals(resp.question));
                     if (!userresponse) {
                         throw new Error("Question not found");
                     }
-                    //verify requried question
+                    //Verify requried question
                     if (question.require) {
                         if (!userresponse ||
                             SolutionValidationService_1.default.isAnswerisempty(userresponse.response)) {
                             throw new Error("Require");
                         }
                     }
-                    //Verify answer format
+                    //Verify answer format and validity
                     const isVerify = SolutionValidationService_1.default.validateAnswerFormat(question.type, userresponse.response, question);
                     if (!isVerify.isValid) {
-                        throw new Error("Format");
+                        throw new Error(isVerify.errors.join("||"));
                     }
                     const maxScore = question.score || 0;
+                    // Track if any question has a score
+                    if (maxScore > 0) {
+                        hasAnyScore = true;
+                    }
+                    //Automically Score All Scoreable Questions
                     if (question.answer && ((_a = question.answer) === null || _a === void 0 ? void 0 : _a.answer)) {
                         const partialScored = SolutionValidationService_1.default.calculateResponseScore(userresponse.response, question.answer.answer, question.type, maxScore);
                         result.push(Object.assign(Object.assign({}, userresponse), { score: partialScored, scoringMethod: Response_model_1.ScoringMethod.AUTO }));
                     }
+                    //If unscoreable mark to score manually
                     else
                         result.push(Object.assign(Object.assign({}, userresponse), { scoringMethod: Response_model_1.ScoringMethod.MANUAL }));
                 }
-                return result;
+                // isNonScore is true when NO questions have scores (all maxScore = 0)
+                const isNonScore = !hasAnyScore;
+                return { response: result, isNonScore };
             }
             catch (error) {
                 console.error("AddScore Error:", error);
-                return response;
+                return { response };
             }
         });
     }
-    static updateResponseScores(responseId, scores) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const response = yield Response_model_1.default.findById(responseId).populate("formId");
+    static updateResponseScores(_a) {
+        return __awaiter(this, arguments, void 0, function* ({ responseId, scores, }) {
+            // Validate input
+            if (!scores || !Array.isArray(scores) || scores.length === 0) {
+                throw new Error("Invalid scores data");
+            }
+            // Find response - not using lean() to maintain _id on subdocuments
+            const response = yield Response_model_1.default.findById(responseId).select("responseset totalScore maxScore formId");
             if (!response) {
                 throw new Error("Response not found");
             }
-            const updatedResponseSet = response.responseset.map((responseItem) => {
-                const scoreUpdate = scores.find((s) => s.questionId === responseItem.question.toString());
-                if (scoreUpdate) {
-                    return Object.assign(Object.assign({}, responseItem), { score: scoreUpdate.score, isManuallyScored: true });
+            // Create a map for efficient lookup
+            const [questionScoreMap, questionCommentMap] = [
+                new Map(scores.map((s) => [s.questionId.toString(), s.score])),
+                new Map(scores.map((c) => [c.questionId.toString(), c.comment])),
+            ];
+            let updatedTotalScore = 0;
+            let updatedCount = 0;
+            // Update scores and comment in the responseset array
+            response.responseset.forEach((responseItem) => {
+                const questionId = typeof responseItem.question === "string"
+                    ? responseItem.question
+                    : responseItem.question.toString();
+                const newScore = questionScoreMap.get(questionId);
+                const newComment = questionCommentMap.get(questionId);
+                if (newScore !== undefined || newComment) {
+                    if (newScore !== undefined) {
+                        responseItem.score = newScore;
+                        responseItem.scoringMethod = Response_model_1.ScoringMethod.MANUAL;
+                    }
+                    if (newComment)
+                        responseItem.comment = newComment;
+                    updatedCount++;
                 }
-                return responseItem;
+                // Calculate new total score
+                updatedTotalScore += responseItem.score || 0;
             });
-            const totalScore = updatedResponseSet.reduce((sum, item) => sum + (item.score || 0), 0);
-            yield Response_model_1.default.findByIdAndUpdate(responseId, {
-                responseset: updatedResponseSet,
-                totalScore,
-                isAutoScored: false,
-            });
-            return { success: true };
+            if (updatedCount === 0) {
+                return {
+                    success: true,
+                    message: "No matching questions found to update",
+                };
+            }
+            // Update totalScore and completionStatus
+            response.totalScore = updatedTotalScore;
+            response.completionStatus = Response_model_1.ResponseCompletionStatus.completed;
+            // Save all changes in a single operation with optimized write concern
+            yield response.save({ validateBeforeSave: false });
+            return {
+                success: true,
+                updatedScores: updatedCount,
+                totalScore: updatedTotalScore,
+            };
+        });
+    }
+    /**
+     * Batch update scores for multiple responses
+     * More efficient when updating multiple responses at once
+     */
+    static batchUpdateResponseScores(updates) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const results = yield Promise.allSettled(updates.map((update) => this.updateResponseScores({
+                responseId: update.responseId,
+                scores: update.scores,
+            })));
+            const successful = results.filter((r) => r.status === "fulfilled").length;
+            const failed = results.filter((r) => r.status === "rejected").length;
+            return {
+                success: failed === 0,
+                total: updates.length,
+                successful,
+                failed,
+                results: results.map((r, idx) => {
+                    var _a;
+                    return ({
+                        responseId: updates[idx].responseId,
+                        status: r.status,
+                        data: r.status === "fulfilled" ? r.value : undefined,
+                        error: r.status === "rejected" ? (_a = r.reason) === null || _a === void 0 ? void 0 : _a.message : undefined,
+                    });
+                }),
+            };
+        });
+    }
+    /**
+     * Recalculate total score for a response
+     * Useful for fixing inconsistencies or after data migration
+     */
+    static recalculateResponseTotalScore(responseId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const response = yield Response_model_1.default.findById(responseId).select("responseset totalScore");
+            if (!response) {
+                throw new Error("Response not found");
+            }
+            const calculatedTotal = response.responseset.reduce((sum, item) => sum + (item.score || 0), 0);
+            if (calculatedTotal !== response.totalScore) {
+                response.totalScore = calculatedTotal;
+                yield response.save({ validateBeforeSave: false });
+                return {
+                    success: true,
+                    previousTotal: response.totalScore,
+                    newTotal: calculatedTotal,
+                    corrected: true,
+                };
+            }
+            return {
+                success: true,
+                totalScore: calculatedTotal,
+                corrected: false,
+            };
         });
     }
     static deepEqual(a, b) {
@@ -443,7 +573,7 @@ class ResponseProcessingService {
             const totalResponses = yield Response_model_1.default.countDocuments({ formId });
             const completedResponses = yield Response_model_1.default.countDocuments({
                 formId,
-                completionStatus: Response_model_1.completionStatus.completed,
+                completionStatus: Response_model_1.ResponseCompletionStatus.completed,
             });
             const responses = yield Response_model_1.default.find({ formId })
                 .select("totalScore")

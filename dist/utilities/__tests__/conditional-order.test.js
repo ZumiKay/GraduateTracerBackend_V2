@@ -5,6 +5,7 @@ const helper_1 = require("../helper");
 const Content_model_1 = require("../../model/Content.model");
 describe("groupContentByParent with conditional order", () => {
     test("maintains order based on parent conditional array", () => {
+        var _a, _b;
         const formId = new mongoose_1.Types.ObjectId();
         const createTitle = (text) => ({
             type: "doc",
@@ -234,8 +235,8 @@ describe("groupContentByParent with conditional order", () => {
         // Check q2's children are correctly identified
         const q2Children = childQuestionsMap.get(q2Id.toString()) || [];
         expect(q2Children.length).toBe(2);
-        expect(q2Children[0]._id).toBe(s1Id.toString());
-        expect(q2Children[1]._id).toBe(s2Id.toString());
+        expect((_a = q2Children[0]._id) === null || _a === void 0 ? void 0 : _a.toString()).toBe(s1Id.toString());
+        expect((_b = q2Children[1]._id) === null || _b === void 0 ? void 0 : _b.toString()).toBe(s2Id.toString());
         // Check s2's children are correctly identified
         const s2Children = childQuestionsMap.get(s2Id.toString()) || [];
         expect(s2Children.length).toBe(3);

@@ -80,6 +80,45 @@ const FormSettingSchema = new mongoose_1.Schema({
         type: Boolean,
         default: true,
     },
+    acceptGuest: {
+        type: Boolean,
+        default: false,
+    },
+});
+const FormCollarboratorPendingSchema = new mongoose_1.Schema({
+    code: {
+        type: "String",
+        required: true,
+    },
+    expireIn: {
+        type: "Number",
+        required: true,
+    },
+    user: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+});
+const PendingOwnershipTransferSchema = new mongoose_1.Schema({
+    code: {
+        type: "String",
+        required: true,
+    },
+    expireIn: {
+        type: "Number",
+        required: true,
+    },
+    fromUser: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+    toUser: {
+        type: mongoose_1.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
 });
 const FormSchema = new mongoose_1.Schema({
     title: {
@@ -111,8 +150,17 @@ const FormSchema = new mongoose_1.Schema({
     editors: {
         type: [mongoose_1.Schema.Types.ObjectId],
         ref: "User",
-        default: null,
+        default: [],
         required: false,
+    },
+    pendingCollarborators: {
+        type: [FormCollarboratorPendingSchema],
+        required: false,
+    },
+    pendingOwnershipTransfer: {
+        type: PendingOwnershipTransferSchema,
+        required: false,
+        default: null,
     },
     totalpage: {
         type: Number,
