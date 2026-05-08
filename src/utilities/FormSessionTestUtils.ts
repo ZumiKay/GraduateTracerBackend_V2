@@ -1,10 +1,3 @@
-/**
- * Test Utilities for Form Session Token Renewal
- * ==============================================
- *
- * Helper functions for testing the enhanced VerifyFormSession middleware
- */
-
 import JWT from "jsonwebtoken";
 import { GenerateToken } from "../utilities/helper";
 import Formsession from "../model/Formsession.model";
@@ -44,7 +37,7 @@ export class FormSessionTestUtils {
     const sessionId = GenerateToken(
       tokenPayload,
       `${tokenExpiresInMinutes}m`,
-      process.env.RESPONDENT_TOKEN_JWT_SECRET
+      process.env.RESPONDENT_TOKEN_JWT_SECRET,
     );
 
     // Create database session with different expiration
@@ -91,7 +84,7 @@ export class FormSessionTestUtils {
    * Create a token that expires within the 5-minute buffer
    */
   static async createNearExpirySession(
-    options: Omit<CreateTestSessionOptions, "tokenExpiresInMinutes">
+    options: Omit<CreateTestSessionOptions, "tokenExpiresInMinutes">,
   ) {
     return this.createTestSession({
       ...options,
@@ -144,7 +137,7 @@ export class FormSessionTestUtils {
    */
   static async verifySessionRenewed(
     originalSessionId: string,
-    email: string
+    email: string,
   ): Promise<boolean> {
     const session = await Formsession.findOne({ respondentEmail: email });
     return session ? session.session_id !== originalSessionId : false;
@@ -190,7 +183,7 @@ export const exampleTests = {
       // 3. Verify renewal occurred
       const renewed = await FormSessionTestUtils.verifySessionRenewed(
         session.sessionId,
-        email
+        email,
       );
 
       console.log("Session renewed:", renewed);
@@ -223,9 +216,8 @@ export const exampleTests = {
       // (You would make HTTP request here and verify 401 response)
 
       // Verify session was cleaned up
-      const currentSession = await FormSessionTestUtils.getCurrentSessionId(
-        email
-      );
+      const currentSession =
+        await FormSessionTestUtils.getCurrentSessionId(email);
       console.log("Session after cleanup:", currentSession); // Should be null
     } catch (error) {
       console.error("Test failed:", error);

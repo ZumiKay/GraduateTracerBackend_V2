@@ -1,8 +1,4 @@
 /**
- * Utility functions for handling respondent data in backend
- */
-
-/**
  * Extracts the name from an email address (part before @)
  * @param email - The email address
  * @returns The part before @ symbol, or empty string if invalid
@@ -13,27 +9,12 @@ export const getNameFromEmail = (email: string): string => {
   return parts[0] || "";
 };
 
-/**
- * Gets the display name for a respondent, falling back to email name if no name provided
- * @param respondentName - The respondent's name (optional)
- * @param respondentEmail - The respondent's email (optional)
- * @param guestName - Guest name (optional)
- * @param guestEmail - Guest email (optional)
- * @returns The best available name or "Anonymous"
- */
 export const getRespondentDisplayName = (
   respondentName?: string,
   respondentEmail?: string,
   guestName?: string,
-  guestEmail?: string
+  guestEmail?: string,
 ): string => {
-  // Priority order:
-  // 1. Respondent name
-  // 2. Guest name
-  // 3. Name from respondent email
-  // 4. Name from guest email
-  // 5. "Anonymous"
-
   if (respondentName && respondentName.trim()) {
     return respondentName.trim();
   }
@@ -76,6 +57,6 @@ export const getResponseDisplayName = (response: {
     response.respondentName,
     response.respondentEmail,
     response.guest?.name,
-    response.guest?.email
+    response.guest?.email,
   );
 };

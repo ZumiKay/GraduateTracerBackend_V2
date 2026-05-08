@@ -3,15 +3,6 @@
  * Example Usage for Choice Question Analytics
  * Demonstrates how to use the new multi-graph analytics API
  */
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.manualTestExamples = void 0;
 exports.getAllChoiceQuestionAnalytics = getAllChoiceQuestionAnalytics;
@@ -23,36 +14,32 @@ const analytics_types_1 = require("../types/analytics.types");
 /**
  * Example 1: Fetch analytics for all choice questions in a form
  */
-function getAllChoiceQuestionAnalytics(formId, token) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const response = yield fetch(`/api/response/analytics/choice-questions?formId=${formId}`, {
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-        });
-        if (!response.ok) {
-            throw new Error(`Failed to fetch analytics: ${response.statusText}`);
-        }
-        const data = yield response.json();
-        return data.data;
+async function getAllChoiceQuestionAnalytics(formId, token) {
+    const response = await fetch(`/api/response/analytics/choice-questions?formId=${formId}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
     });
+    if (!response.ok) {
+        throw new Error(`Failed to fetch analytics: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.data;
 }
 /**
  * Example 2: Fetch analytics for a specific question
  */
-function getSpecificQuestionAnalytics(formId, questionId, token) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const response = yield fetch(`/api/response/analytics/choice-questions?formId=${formId}&questionId=${questionId}`, {
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-        });
-        if (!response.ok) {
-            throw new Error(`Failed to fetch analytics: ${response.statusText}`);
-        }
-        const data = yield response.json();
-        return data.data[0] || null;
+async function getSpecificQuestionAnalytics(formId, questionId, token) {
+    const response = await fetch(`/api/response/analytics/choice-questions?formId=${formId}&questionId=${questionId}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
     });
+    if (!response.ok) {
+        throw new Error(`Failed to fetch analytics: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.data[0] || null;
 }
 /**
  * Example 3: Process analytics data for display

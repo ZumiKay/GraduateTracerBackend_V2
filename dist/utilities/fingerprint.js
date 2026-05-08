@@ -34,7 +34,6 @@ class FingerprintService {
         };
     }
     static getClientIP(req) {
-        var _a, _b;
         const forwarded = req.headers["x-forwarded-for"];
         const realIP = req.headers["x-real-ip"];
         if (forwarded) {
@@ -43,13 +42,12 @@ class FingerprintService {
         if (realIP) {
             return realIP;
         }
-        return (((_a = req.connection) === null || _a === void 0 ? void 0 : _a.remoteAddress) ||
-            ((_b = req.socket) === null || _b === void 0 ? void 0 : _b.remoteAddress) ||
+        return (req.connection?.remoteAddress ||
+            req.socket?.remoteAddress ||
             req.ip ||
             "unknown");
     }
     static generateTrackingData(req) {
-        var _a;
         const clientIP = this.getClientIP(req);
         const browserFingerprint = this.extractFingerprintFromRequest(req);
         const fingerprintHash = this.generateFingerprint(browserFingerprint);
@@ -57,7 +55,7 @@ class FingerprintService {
             fingerprint: fingerprintHash,
             ip: clientIP,
             deviceInfo: browserFingerprint,
-            sessionId: ((_a = req.session) === null || _a === void 0 ? void 0 : _a.id) || req.sessionID,
+            sessionId: req.session?.id || req.sessionID,
         };
     }
     static validateFingerprint(fingerprint) {

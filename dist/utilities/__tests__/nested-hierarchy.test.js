@@ -51,7 +51,7 @@ describe("groupContentByParent with nested hierarchies", () => {
         // Log the result for debugging
         console.log("Result order:", result.map((item) => item._id));
         // Check the nesting structure
-        const resultIds = result.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; });
+        const resultIds = result.map((item) => item._id?.toString() || "");
         // Define the expected ID order (ascending qIdx sort: s1→s2→s3, n1→n2→n3, m1→m2)
         const expectedOrder = [
             "q1",
@@ -82,14 +82,13 @@ describe("groupContentByParent with nested hierarchies", () => {
         const data = [parent, child1, child2];
         const result = (0, helper_1.groupContentByParent)(data);
         // Expected: parent followed by its children (ascending qIdx: child1=2 before child2=3)
-        expect(result.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; })).toEqual([
+        expect(result.map((item) => item._id?.toString() || "")).toEqual([
             toHex("parent"),
             toHex("child1"),
             toHex("child2"),
         ]);
     });
     test("handles orphaned items", () => {
-        var _a, _b, _c;
         const parent = createContent("parent", { qIdx: 1 });
         const child = createContent("child", { parentId: "parent", qIdx: 2 });
         const orphan = createContent("orphan", {
@@ -100,9 +99,9 @@ describe("groupContentByParent with nested hierarchies", () => {
         const result = (0, helper_1.groupContentByParent)(data);
         // Expected: parent, its children, then orphans
         expect(result.length).toBe(3);
-        expect((_a = result[0]._id) === null || _a === void 0 ? void 0 : _a.toString()).toBe(toHex("parent"));
-        expect((_b = result[1]._id) === null || _b === void 0 ? void 0 : _b.toString()).toBe(toHex("child"));
-        expect((_c = result[2]._id) === null || _c === void 0 ? void 0 : _c.toString()).toBe(toHex("orphan"));
+        expect(result[0]._id?.toString()).toBe(toHex("parent"));
+        expect(result[1]._id?.toString()).toBe(toHex("child"));
+        expect(result[2]._id?.toString()).toBe(toHex("orphan"));
     });
     test("handles four levels of nesting with proper sorting", () => {
         // Create more complex test data with mixed qIdx values to verify sorting behavior
@@ -129,23 +128,23 @@ describe("groupContentByParent with nested hierarchies", () => {
         ];
         // Act
         const result = (0, helper_1.groupContentByParent)(complexTestData);
-        const resultOrder = result.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; });
+        const resultOrder = result.map((item) => item._id?.toString() || "");
         // Log results for debugging
         console.log("Actual complex order:", resultOrder);
         // Verify top-level item ordering (ascending by qIdx)
         const topLevelItems = result.filter((item) => !item.parentcontent);
-        expect(topLevelItems.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; })).toEqual([
+        expect(topLevelItems.map((item) => item._id?.toString() || "")).toEqual([
             toHex("q2"),
             toHex("q3"),
             toHex("q1"),
         ]);
         // Verify children of q1 are ordered by descending qIdx
-        const q1Children = result.filter((item) => { var _a; return ((_a = item.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) === toHex("q1"); });
-        const q1ChildrenIds = q1Children.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; });
+        const q1Children = result.filter((item) => item.parentcontent?.qId === toHex("q1"));
+        const q1ChildrenIds = q1Children.map((item) => item._id?.toString() || "");
         expect(q1ChildrenIds).toEqual(expect.arrayContaining([toHex("s1-1"), toHex("s1-3"), toHex("s1-2")]));
         // Verify children of s1-1 are ordered by descending qIdx
-        const s1_1Children = result.filter((item) => { var _a; return ((_a = item.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) === toHex("s1-1"); });
-        const s1_1ChildrenIds = s1_1Children.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; });
+        const s1_1Children = result.filter((item) => item.parentcontent?.qId === toHex("s1-1"));
+        const s1_1ChildrenIds = s1_1Children.map((item) => item._id?.toString() || "");
         expect(s1_1ChildrenIds).toEqual(expect.arrayContaining([toHex("s1-1-2"), toHex("s1-1-1")]));
         // Verify that s1-1-1-1 appears in the result
         expect(resultOrder).toContain(toHex("s1-1-1-1"));

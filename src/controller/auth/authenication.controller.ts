@@ -11,10 +11,6 @@ import {
 import bcrypt from "bcrypt";
 import Usersession from "../../model/Usersession.model";
 import HandleEmail from "../../utilities/email";
-import {
-  handleDatabaseError,
-  generateOperationId,
-} from "../../utilities/MongoErrorHandler";
 import sessionCache from "../../utilities/sessionCache";
 
 interface Logindata {
@@ -35,7 +31,6 @@ interface ForgotPasswordType {
 class AuthenticationController {
   public Login = async (req: Request, res: Response) => {
     const { email, password, rememberMe } = req.body as Logindata;
-    const operationId = generateOperationId("login");
 
     try {
       const user = await User.findOne({
@@ -58,7 +53,7 @@ class AuthenticationController {
       const AccessToken = GenerateToken(TokenPayload, "15m");
       const RefreshToken = GenerateToken(
         TokenPayload,
-        rememberMe ? "7d" : "1d"
+        rememberMe ? "7d" : "1d",
       );
 
       //Create Login Session
@@ -80,18 +75,12 @@ class AuthenticationController {
         },
       });
     } catch (error) {
-      if (handleDatabaseError(error, res, "user login")) {
-        return;
-      }
-
-      console.error(`[${operationId}] Login Error:`, error);
+      console.error(`Login Error:`, error);
       return res.status(500).json(ReturnCode(500));
     }
   };
 
   public Logout = async (req: Request, res: Response) => {
-    const operationId = generateOperationId("logout");
-
     try {
       const refresh_token =
         req.cookies?.[process.env.REFRESH_TOKEN_COOKIE ?? ""];
@@ -106,18 +95,13 @@ class AuthenticationController {
       this.clearRefreshTokenCookie(res);
       return res.status(200).json(ReturnCode(200));
     } catch (error) {
-      if (handleDatabaseError(error, res, "user logout")) {
-        return;
-      }
-
-      console.log(`[${operationId}] Logout Error`, error);
+      console.log(`Logout Error`, error);
       return res.status(500).json(ReturnCode(500));
     }
   };
 
   public ForgotPassword = async (req: Request, res: Response) => {
     const { ty, email, code, password, html } = req.body as ForgotPasswordType;
-    const operationId = generateOperationId("forgot_password");
 
     try {
       switch (ty) {
@@ -139,14 +123,14 @@ class AuthenticationController {
               { email },
               {
                 code: generateCode,
-              }
+              },
             );
 
             //Send Code Email
             const sendemail = await HandleEmail(
               email,
               "Reset Password",
-              html.replace("$code$", generateCode.toString())
+              html.replace("$code$", generateCode.toString()),
             );
 
             if (!sendemail.success) {
@@ -161,7 +145,7 @@ class AuthenticationController {
           {
             const isValid = await User.findOneAndUpdate(
               { code },
-              { code: null }
+              { code: null },
             );
 
             if (!isValid)
@@ -186,11 +170,6 @@ class AuthenticationController {
 
       return res.status(200).json(ReturnCode(200));
     } catch (error) {
-      if (handleDatabaseError(error, res, "forgot password operation")) {
-        return;
-      }
-
-      console.log(`[${operationId}] forgot password`, error);
       return res.status(500).json(ReturnCode(500));
     }
   };
@@ -201,17 +180,13 @@ class AuthenticationController {
    * - In-memory caching (2-minute TTL)
    * - Lean queries for better performance
    * - Reduced field selection
-   * - Async cleanup (non-blocking)
    * - Early returns to minimize processing
    */
 
   public CheckSession = async (req: Request, res: Response) => {
-    const operationId = generateOperationId("check_session");
-
     try {
       const refreshToken = req?.cookies[process.env.REFRESH_TOKEN_COOKIE ?? ""];
 
-      // Early return if no refresh token
       if (!refreshToken) {
         return res.status(401).json(ReturnCode(401, "No session found"));
       }
@@ -240,23 +215,20 @@ class AuthenticationController {
       })
         .populate({
           path: "user",
-          select: "_id email name role", // Only fetch needed fields
+          select: "_id email name role",
         })
-        .select("session_id expireAt createdAt user") // Only fetch needed session fields
-        .lean() // Use plain JS objects for better performance
+        .select("session_id expireAt createdAt user")
+        .lean()
         .exec();
 
-      // Clean up expired sessions asynchronously (non-blocking)
-      // Run this in background without awaiting
       Usersession.deleteMany({
         expireAt: { $lt: new Date() },
       })
         .exec()
         .catch((err) => {
-          console.error(`[${operationId}] Background cleanup error:`, err);
+          console.error(`Background cleanup error:`, err);
         });
 
-      // Invalid or expired session
       if (!userSession?.user) {
         this.clearAccessTokenCookie(res);
         this.clearRefreshTokenCookie(res);
@@ -286,11 +258,6 @@ class AuthenticationController {
         },
       });
     } catch (error) {
-      if (handleDatabaseError(error, res, "session check")) {
-        return;
-      }
-
-      console.error(`[${operationId}] Check Session Error:`, error);
       return res.status(500).json(ReturnCode(500, "Internal server error"));
     }
   };
@@ -301,8 +268,6 @@ class AuthenticationController {
     if (!process.env.REFRESH_TOKEN_COOKIE) {
       return res.status(500).json(ReturnCode(500));
     }
-
-    const operationId = generateOperationId("refresh_token");
 
     try {
       const refresh_token =
@@ -324,11 +289,6 @@ class AuthenticationController {
 
       return res.status(200).json({ ...ReturnCode(200) });
     } catch (error) {
-      if (handleDatabaseError(error, res, "token refresh")) {
-        return;
-      }
-
-      console.log(`[${operationId}] Refresh Token`, error);
       return res.status(500).json(ReturnCode(500));
     }
   };
@@ -351,7 +311,7 @@ class AuthenticationController {
         httpOnly: true,
         secure: process.env.NODE_ENV === "PROD",
         expires: getDateByNumDay(1),
-      }
+      },
     );
   }
 

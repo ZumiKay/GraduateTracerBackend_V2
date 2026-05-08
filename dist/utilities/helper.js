@@ -41,7 +41,7 @@ function ReturnCode(code, custommess) {
         default:
             return;
     }
-    return returnValue(code, custommess !== null && custommess !== void 0 ? custommess : message);
+    return returnValue(code, custommess ?? message);
 }
 /**
  * Formats a date to dd-mm-yyyy format
@@ -136,7 +136,7 @@ const convertResponseToString = (value) => {
         try {
             return JSON.stringify(value);
         }
-        catch (_a) {
+        catch {
             return String(value);
         }
     }
@@ -167,7 +167,7 @@ const RandomNumber = (length) => {
 };
 exports.RandomNumber = RandomNumber;
 const GenerateToken = (payload, expiresIn, customSecret) => {
-    const token = jsonwebtoken_1.default.sign(payload, customSecret !== null && customSecret !== void 0 ? customSecret : (process.env.JWT_SECRET || "secret"), {
+    const token = jsonwebtoken_1.default.sign(payload, customSecret ?? (process.env.JWT_SECRET || "secret"), {
         expiresIn,
         algorithm: "HS256",
     });
@@ -198,7 +198,7 @@ const ExtractTokenPayload = ({ token, customSecret, ignoreExpiration = false, })
             return null;
         }
         // Validate secret
-        const secret = customSecret !== null && customSecret !== void 0 ? customSecret : process.env.JWT_SECRET;
+        const secret = customSecret ?? process.env.JWT_SECRET;
         if (!secret) {
             console.error("ExtractTokenPayload: JWT secret is not configured");
             return null;
@@ -253,7 +253,6 @@ const FormatToGeneralDate = (date) => {
 };
 exports.FormatToGeneralDate = FormatToGeneralDate;
 const groupContentByParent = (data) => {
-    var _a, _b;
     if (!data.length)
         return [];
     const childrenMap = new Map();
@@ -264,7 +263,7 @@ const groupContentByParent = (data) => {
         const item = data[i];
         if (!item._id)
             continue;
-        if ((_a = item.parentcontent) === null || _a === void 0 ? void 0 : _a.qId) {
+        if (item.parentcontent?.qId) {
             const parentId = item.parentcontent.qId;
             if (!childrenMap.has(parentId)) {
                 childrenMap.set(parentId, []);
@@ -298,7 +297,7 @@ const groupContentByParent = (data) => {
         return aIdx - bIdx; // Ascending order for top-level items
     });
     for (const item of topLevelItems) {
-        if (!processed.has((_b = item._id) === null || _b === void 0 ? void 0 : _b.toString())) {
+        if (!processed.has(item._id?.toString())) {
             addWithChildren(item);
         }
     }
@@ -384,7 +383,7 @@ const AddQuestionNumbering = ({ questions, lastIdx, }) => {
                 }
             }
             // Add lastIdx to account for questions from previous pages
-            const offset = lastIdx !== null && lastIdx !== void 0 ? lastIdx : 0;
+            const offset = lastIdx ?? 0;
             return `${topLevelCount + offset}`;
         }
         // Find parent question number
@@ -395,7 +394,7 @@ const AddQuestionNumbering = ({ questions, lastIdx, }) => {
         let parentNumber = questionIdMap.get(parentId);
         if (!parentNumber) {
             // Try to find parent by _id first
-            let parentQuestion = questions.find((q) => { var _a; return ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()) === parentId; });
+            let parentQuestion = questions.find((q) => q._id?.toString() === parentId);
             // If not found, try by temp identifier (qIdx-based)
             if (!parentQuestion && parentId.startsWith("temp_")) {
                 const parentQIdx = parseInt(parentId.replace("temp_", ""), 10);
@@ -437,17 +436,23 @@ const AddQuestionNumbering = ({ questions, lastIdx, }) => {
             const parentQuestionId = parentId
                 ? questionIdMap.get(parentId)
                 : undefined;
-            updatedParentContent = Object.assign(Object.assign({}, question.parentcontent), { questionId: parentQuestionId || undefined });
+            updatedParentContent = {
+                ...question.parentcontent,
+                questionId: parentQuestionId || undefined,
+            };
             lastIndexWihoutParentCount += 1;
         }
-        return Object.assign(Object.assign({}, question), { questionId, parentcontent: updatedParentContent });
+        return {
+            ...question,
+            questionId,
+            parentcontent: updatedParentContent,
+        };
     });
     return result;
 };
 exports.AddQuestionNumbering = AddQuestionNumbering;
 //Extract Answer Key Value
 const GetAnswerKeyPairValue = (content) => {
-    var _a;
     const questionContent = content.question;
     const questionType = questionContent.type;
     const response = content.response;
@@ -467,12 +472,11 @@ const GetAnswerKeyPairValue = (content) => {
         return { key: response, val: selectedChoices };
     }
     const matchingChoice = choices.find((choice) => choice.idx === response);
-    const val = (_a = matchingChoice === null || matchingChoice === void 0 ? void 0 : matchingChoice.content) !== null && _a !== void 0 ? _a : response;
+    const val = matchingChoice?.content ?? response;
     return { key: response, val };
 };
 exports.GetAnswerKeyPairValue = GetAnswerKeyPairValue;
 const GetAnswerKeyForQuestion = (content) => {
-    var _a, _b, _c;
     if (content.type !== Content_model_1.QuestionType.CheckBox &&
         content.type !== Content_model_1.QuestionType.MultipleChoice &&
         content.type !== Content_model_1.QuestionType.Selection) {
@@ -480,7 +484,7 @@ const GetAnswerKeyForQuestion = (content) => {
     }
     if (content.type === Content_model_1.QuestionType.CheckBox) {
         const val = content.checkbox;
-        const answerkey = (_a = content.answer) === null || _a === void 0 ? void 0 : _a.answer;
+        const answerkey = content.answer?.answer;
         if (!answerkey || !Array.isArray(answerkey) || !val)
             return;
         const result = val
@@ -492,7 +496,7 @@ const GetAnswerKeyForQuestion = (content) => {
             .filter(Boolean);
         return result;
     }
-    return (_c = (_b = content[content.type]) === null || _b === void 0 ? void 0 : _b.filter((i) => { var _a; return i.idx === ((_a = content.answer) === null || _a === void 0 ? void 0 : _a.answer); })) === null || _c === void 0 ? void 0 : _c[0];
+    return content[content.type]?.filter((i) => i.idx === content.answer?.answer)?.[0];
 };
 exports.GetAnswerKeyForQuestion = GetAnswerKeyForQuestion;
 /**
@@ -512,7 +516,6 @@ const contentTitleToString = (contentTitle) => {
 };
 exports.contentTitleToString = contentTitleToString;
 const processContentTitleInternal = (contentTitle) => {
-    var _a, _b, _c, _d, _e;
     if (contentTitle.type === "text" && contentTitle.text) {
         return contentTitle.text;
     }
@@ -558,14 +561,14 @@ const processContentTitleInternal = (contentTitle) => {
         case "horizontalRule":
             return "\n---\n";
         case "image":
-            const alt = ((_a = contentTitle.attrs) === null || _a === void 0 ? void 0 : _a.alt) || "";
-            const src = ((_b = contentTitle.attrs) === null || _b === void 0 ? void 0 : _b.src) || "";
+            const alt = contentTitle.attrs?.alt || "";
+            const src = contentTitle.attrs?.src || "";
             return alt ? `[Image: ${alt}]` : `[Image: ${src}]`;
         case "mention":
-            const mentionLabel = ((_c = contentTitle.attrs) === null || _c === void 0 ? void 0 : _c.label) || ((_d = contentTitle.attrs) === null || _d === void 0 ? void 0 : _d.id) || "";
+            const mentionLabel = contentTitle.attrs?.label || contentTitle.attrs?.id || "";
             return `@${mentionLabel}`;
         case "emoji":
-            return ((_e = contentTitle.attrs) === null || _e === void 0 ? void 0 : _e.emoji) || "";
+            return contentTitle.attrs?.emoji || "";
         default:
             if (contentTitle.text) {
                 return contentTitle.text;

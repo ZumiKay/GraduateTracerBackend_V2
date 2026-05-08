@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.QuestionType = exports.DetailContentSelection = void 0;
 const mongoose_1 = require("mongoose");
@@ -153,53 +144,49 @@ const ContentSchema = new mongoose_1.Schema({
     },
 }, { timestamps: true });
 //Pre-save middleware to update form total score
-ContentSchema.pre("save", function (next) {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            const Form = require("./Form.model").default;
-            // Calculate total score for all contents in this form, excluding Text questions
-            const allContents = yield Content.find({ formId: this.formId });
-            const totalScore = allContents
-                .filter((content) => content.type !== QuestionType.Text) // Exclude Text questions
-                .reduce((sum, content) => {
-                return sum + (content.score || 0);
-            }, 0) + (this.type !== QuestionType.Text ? this.score || 0 : 0); // Only add this content's score if it's not Text
-            // Update the form's total score
-            yield Form.findByIdAndUpdate(this.formId, { totalscore: totalScore });
-            next();
-        }
-        catch (error) {
-            next(error);
-        }
-    });
+ContentSchema.pre("save", async function (next) {
+    try {
+        const Form = require("./Form.model").default;
+        // Calculate total score for all contents in this form, excluding Text questions
+        const allContents = await Content.find({ formId: this.formId });
+        const totalScore = allContents
+            .filter((content) => content.type !== QuestionType.Text) // Exclude Text questions
+            .reduce((sum, content) => {
+            return sum + (content.score || 0);
+        }, 0) + (this.type !== QuestionType.Text ? this.score || 0 : 0); // Only add this content's score if it's not Text
+        // Update the form's total score
+        await Form.findByIdAndUpdate(this.formId, { totalscore: totalScore });
+        next();
+    }
+    catch (error) {
+        next(error);
+    }
 });
 //Pre-remove middleware to update form total score
-ContentSchema.pre("deleteOne", function (next) {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            const Form = require("./Form.model").default;
-            const contentToDelete = yield this.model.findOne(this.getQuery());
-            if (contentToDelete) {
-                const remainingContents = yield Content.find({
-                    formId: contentToDelete.formId,
-                    _id: { $ne: contentToDelete._id },
-                });
-                // Calculate total score excluding Text questions
-                const totalScore = remainingContents
-                    .filter((content) => content.type !== QuestionType.Text)
-                    .reduce((sum, content) => {
-                    return sum + (content.score || 0);
-                }, 0);
-                yield Form.findByIdAndUpdate(contentToDelete.formId, {
-                    totalscore: totalScore,
-                });
-            }
-            next();
+ContentSchema.pre("deleteOne", async function (next) {
+    try {
+        const Form = require("./Form.model").default;
+        const contentToDelete = await this.model.findOne(this.getQuery());
+        if (contentToDelete) {
+            const remainingContents = await Content.find({
+                formId: contentToDelete.formId,
+                _id: { $ne: contentToDelete._id },
+            });
+            // Calculate total score excluding Text questions
+            const totalScore = remainingContents
+                .filter((content) => content.type !== QuestionType.Text)
+                .reduce((sum, content) => {
+                return sum + (content.score || 0);
+            }, 0);
+            await Form.findByIdAndUpdate(contentToDelete.formId, {
+                totalscore: totalScore,
+            });
         }
-        catch (error) {
-            next(error);
-        }
-    });
+        next();
+    }
+    catch (error) {
+        next(error);
+    }
 });
 //Indexes
 ContentSchema.index({ formId: 1, page: 1 });

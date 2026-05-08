@@ -32,15 +32,6 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -51,7 +42,6 @@ const Response_model_1 = __importDefault(require("../model/Response.model"));
 const Content_model_1 = __importStar(require("../model/Content.model"));
 const Form_model_1 = __importDefault(require("../model/Form.model"));
 const respondentUtils_1 = require("../utilities/respondentUtils");
-// Graph types for analytics visualization
 var GraphType;
 (function (GraphType) {
     GraphType["BAR"] = "bar";
@@ -61,95 +51,107 @@ var GraphType;
     GraphType["HORIZONTAL_BAR"] = "horizontalBar";
 })(GraphType || (exports.GraphType = GraphType = {}));
 class ResponseAnalyticsService {
-    /**
-     * Get comprehensive analytics for choice questions with multiple graph types
-     * Supports: Multiple Choice, Checkbox, Selection questions
-     */
-    static getChoiceQuestionAnalytics(formId, questionId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const form = yield Form_model_1.default.findById(formId).populate("contentIds");
-            if (!form) {
-                throw new Error("Form not found");
-            }
-            // Get all responses for the form
-            const responses = yield Response_model_1.default.find({
+    // Color palette for charts
+    static CHART_COLORS = [
+        "#FF6384",
+        "#36A2EB",
+        "#FFCE56",
+        "#4BC0C0",
+        "#9966FF",
+        "#FF9F40",
+        "#FF6384",
+        "#C9CBCF",
+        "#4BC0C0",
+        "#FF9F40",
+        "#36A2EB",
+        "#FFCE56",
+        "#9966FF",
+        "#FF6384",
+        "#4BC0C0",
+        "#FF9F40",
+        "#36A2EB",
+        "#FFCE56",
+        "#9966FF",
+        "#C9CBCF",
+    ];
+    static async getChoiceQuestionAnalytics(formId, questionId) {
+        const form = await Form_model_1.default.findById(formId).populate("contentIds");
+        if (!form) {
+            throw new Error("Form not found");
+        }
+        // Get all responses for the form
+        const responses = await Response_model_1.default.find({
+            formId: new mongoose_1.Types.ObjectId(formId),
+        }).lean();
+        const questions = questionId
+            ? await Content_model_1.default.find({
+                _id: new mongoose_1.Types.ObjectId(questionId),
                 formId: new mongoose_1.Types.ObjectId(formId),
-            }).lean();
-            const questions = questionId
-                ? yield Content_model_1.default.find({
-                    _id: new mongoose_1.Types.ObjectId(questionId),
-                    formId: new mongoose_1.Types.ObjectId(formId),
-                })
-                : yield Content_model_1.default.find({
-                    formId: new mongoose_1.Types.ObjectId(formId),
-                    type: {
-                        $in: [
-                            Content_model_1.QuestionType.MultipleChoice,
-                            Content_model_1.QuestionType.CheckBox,
-                            Content_model_1.QuestionType.Selection,
-                        ],
-                    },
-                });
-            const analytics = [];
-            for (const question of questions) {
-                if (![
-                    Content_model_1.QuestionType.MultipleChoice,
-                    Content_model_1.QuestionType.CheckBox,
-                    Content_model_1.QuestionType.Selection,
-                ].includes(question.type)) {
-                    continue;
-                }
-                const questionAnalytics = yield this.generateMultiGraphAnalytics(question, responses);
-                analytics.push(questionAnalytics);
-            }
-            return analytics;
-        });
-    }
-    /**
-     * Generate analytics data for multiple graph types for a single choice question
-     */
-    static generateMultiGraphAnalytics(question, responses) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const questionId = question._id.toString();
-            // Get the choice options based on question type
-            const choices = question.multiple || question.checkbox || question.selection || [];
-            // Extract responses for this question
-            const questionResponses = responses
-                .map((response) => {
-                const responseSet = response.responseset.find((rs) => rs.question.toString() === questionId);
-                return responseSet;
             })
-                .filter(Boolean);
-            // Count responses for each choice
-            const choiceDistribution = this.calculateChoiceDistribution(choices, questionResponses);
-            // Generate different graph formats
-            const barChart = this.generateBarChartData(choiceDistribution, question);
-            const pieChart = this.generatePieChartData(choiceDistribution, question);
-            const horizontalBarChart = this.generateHorizontalBarChartData(choiceDistribution, question);
-            const doughnutChart = this.generateDoughnutChartData(choiceDistribution, question);
-            // Extract question title
-            const questionTitle = this.extractQuestionTitle(question.title);
-            return {
-                questionId,
-                questionTitle,
-                questionType: question.type,
-                totalResponses: questionResponses.length,
-                availableGraphTypes: [
-                    GraphType.BAR,
-                    GraphType.PIE,
-                    GraphType.HORIZONTAL_BAR,
-                    GraphType.DOUGHNUT,
-                ],
-                barChart,
-                pieChart,
-                horizontalBarChart,
-                doughnutChart,
-                rawData: choiceDistribution,
-            };
-        });
+            : await Content_model_1.default.find({
+                formId: new mongoose_1.Types.ObjectId(formId),
+                type: {
+                    $in: [
+                        Content_model_1.QuestionType.MultipleChoice,
+                        Content_model_1.QuestionType.CheckBox,
+                        Content_model_1.QuestionType.Selection,
+                    ],
+                },
+            });
+        const analytics = [];
+        for (const question of questions) {
+            if (![
+                Content_model_1.QuestionType.MultipleChoice,
+                Content_model_1.QuestionType.CheckBox,
+                Content_model_1.QuestionType.Selection,
+            ].includes(question.type)) {
+                continue;
+            }
+            const questionAnalytics = await this.generateMultiGraphAnalytics(question, responses);
+            analytics.push(questionAnalytics);
+        }
+        return analytics;
+    }
+    static async generateMultiGraphAnalytics(question, responses) {
+        const questionId = question._id?.toString() ?? "";
+        const choices = question.multiple || question.checkbox || question.selection || [];
+        // Extract responses for this question
+        const questionResponses = responses
+            .map((response) => {
+            const responseSet = response.responseset.find((rs) => rs.question.toString() === questionId);
+            return responseSet;
+        })
+            .filter(Boolean);
+        // Count responses for each choice
+        const choiceDistribution = this.calculateChoiceDistribution(choices, questionResponses);
+        // Generate different graph formats
+        const barChart = this.generateBarChartData(choiceDistribution);
+        const pieChart = this.generatePieChartData(choiceDistribution);
+        const horizontalBarChart = this.generateHorizontalBarChartData(choiceDistribution);
+        const doughnutChart = this.generateDoughnutChartData(choiceDistribution);
+        // Proccess Question Title to string
+        const questionTitle = this.extractQuestionTitle(question.title);
+        return {
+            questionId,
+            questionTitle,
+            questionType: question.type,
+            totalResponses: questionResponses.length,
+            availableGraphTypes: [
+                GraphType.BAR,
+                GraphType.PIE,
+                GraphType.HORIZONTAL_BAR,
+                GraphType.DOUGHNUT,
+            ],
+            barChart,
+            pieChart,
+            horizontalBarChart,
+            doughnutChart,
+            rawData: choiceDistribution,
+        };
     }
     /**
      * Calculate distribution of choices with counts and percentages
+     * @description  Example: Choice A with 3 persons selected with percentages of overall choices for ChoiceQuestionType
      */
     static calculateChoiceDistribution(choices, questionResponses) {
         const totalResponses = questionResponses.length;
@@ -160,7 +162,7 @@ class ResponseAnalyticsService {
         });
         // Count responses
         questionResponses.forEach((response) => {
-            if (!(response === null || response === void 0 ? void 0 : response.response))
+            if (!response?.response)
                 return;
             const responseValue = response.response;
             // Handle both single and multiple selections
@@ -194,14 +196,14 @@ class ResponseAnalyticsService {
                 choiceContent: choice.content,
                 count,
                 percentage: Math.round(percentage * 100) / 100, // Round to 2 decimal places
-                color: this.CHART_COLORS[index % this.CHART_COLORS.length],
+                color: this.CHART_COLORS[index % this.CHART_COLORS.length], //Assign Color Base on Index
             };
         });
     }
     /**
      * Generate Bar Chart data
      */
-    static generateBarChartData(distribution, question) {
+    static generateBarChartData(distribution) {
         return {
             labels: distribution.map((d) => d.choiceContent),
             datasets: [
@@ -218,7 +220,7 @@ class ResponseAnalyticsService {
     /**
      * Generate Pie Chart data
      */
-    static generatePieChartData(distribution, question) {
+    static generatePieChartData(distribution) {
         // Filter out zero counts for cleaner pie chart
         const nonZeroData = distribution.filter((d) => d.count > 0);
         return {
@@ -236,7 +238,7 @@ class ResponseAnalyticsService {
     /**
      * Generate Horizontal Bar Chart data
      */
-    static generateHorizontalBarChartData(distribution, question) {
+    static generateHorizontalBarChartData(distribution) {
         // Sort by count for better visualization
         const sorted = [...distribution].sort((a, b) => b.count - a.count);
         return {
@@ -255,7 +257,7 @@ class ResponseAnalyticsService {
     /**
      * Generate Doughnut Chart data (similar to pie but with hole in center)
      */
-    static generateDoughnutChartData(distribution, question) {
+    static generateDoughnutChartData(distribution) {
         // Filter out zero counts
         const nonZeroData = distribution.filter((d) => d.count > 0);
         return {
@@ -298,41 +300,47 @@ class ResponseAnalyticsService {
         }
         return "Question";
     }
-    static getFormAnalytics(formId_1) {
-        return __awaiter(this, arguments, void 0, function* (formId, period = "7d") {
-            const now = new Date();
-            const startDate = this.calculateStartDate(period, now);
-            const responses = yield Response_model_1.default.find({
-                formId: new mongoose_1.Types.ObjectId(formId),
-                createdAt: { $gte: startDate },
-            }).sort({ createdAt: -1 });
-            const questions = yield Content_model_1.default.find({
-                formId: new mongoose_1.Types.ObjectId(formId),
-            });
-            const form = yield Form_model_1.default.findById(formId).lean();
-            return Object.assign(Object.assign({}, this.calculateBasicMetrics(responses)), { questionAnalytics: yield this.generateQuestionAnalytics(responses, questions), scoreDistribution: this.generateScoreDistribution(responses, (form === null || form === void 0 ? void 0 : form.totalscore) || 100), timeSeriesData: this.generateTimeSeriesData(responses, startDate, now), performanceMetrics: this.generatePerformanceMetrics(responses, questions) });
+    /* ------------------------ Analytics Metries Methods ----------------------- */
+    /**Get analytics data for filtering the data base on the period with included all the data for graphs and metries*/
+    static async getFormAnalytics(formId, period = "7d") {
+        const now = new Date();
+        const startDate = this.calculateStartDate(period, now);
+        const responses = await Response_model_1.default.find({
+            formId: new mongoose_1.Types.ObjectId(formId),
+            createdAt: { $gte: startDate },
+        }).sort({ createdAt: -1 });
+        const questions = await Content_model_1.default.find({
+            formId: new mongoose_1.Types.ObjectId(formId),
         });
+        const form = await Form_model_1.default.findById(formId).lean();
+        return {
+            ...this.calculateBasicMetrics(responses),
+            questionAnalytics: await this.generateQuestionAnalytics(responses, questions),
+            scoreDistribution: this.generateScoreDistribution(responses, form?.totalscore || 100),
+            timeSeriesData: this.generateTimeSeriesData(responses, startDate, now),
+            performanceMetrics: this.generatePerformanceMetrics(responses, questions),
+        };
     }
-    static getResponseAnalytics(formId, responses, form) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const analytics = {};
-            if (form.contentIds && Array.isArray(form.contentIds)) {
-                for (const content of form.contentIds) {
-                    const contentObj = content;
-                    const questionId = contentObj._id.toString();
-                    const questionResponses = responses
-                        .map((response) => response.responseset.find((r) => r.questionId.toString() === questionId))
-                        .filter(Boolean);
-                    if (["multiple", "checkbox", "selection"].includes(contentObj.type)) {
-                        analytics[questionId] = this.analyzeChoiceQuestion(contentObj, questionResponses);
-                    }
-                    else if (["rangedate", "rangenumber"].includes(contentObj.type)) {
-                        analytics[questionId] = this.analyzeRangeQuestion(contentObj, questionResponses);
-                    }
+    static async getResponseAnalytics(responses, form) {
+        const analytics = {};
+        if (form.contentIds && Array.isArray(form.contents)) {
+            for (const content of form.contents) {
+                const questionId = content._id?.toString();
+                //Skip question with no _id
+                if (!questionId)
+                    continue;
+                const questionResponses = responses
+                    .map((response) => response.responseset.find((r) => r.questionId.toString() === questionId))
+                    .filter(Boolean);
+                if (["multiple", "checkbox", "selection"].includes(content.type)) {
+                    analytics[questionId] = this.analyzeChoiceQuestion(content, questionResponses);
+                }
+                else if (["rangedate", "rangenumber"].includes(content.type)) {
+                    analytics[questionId] = this.analyzeRangeQuestion(content, questionResponses);
                 }
             }
-            return analytics;
-        });
+        }
+        return analytics;
     }
     static calculateStartDate(period, now) {
         const periodMap = {
@@ -359,36 +367,33 @@ class ResponseAnalyticsService {
             averageCompletionTime: 8, // Mock data
         };
     }
-    static generateQuestionAnalytics(responses, questions) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return Promise.all(questions.map((question) => __awaiter(this, void 0, void 0, function* () {
-                var _a;
-                const questionResponses = responses.filter((r) => r.responseset.some((rs) => { var _a; return rs.questionId.toString() === ((_a = question._id) === null || _a === void 0 ? void 0 : _a.toString()); }));
-                const questionResponsesData = questionResponses
-                    .map((r) => r.responseset.find((rs) => { var _a; return rs.questionId.toString() === ((_a = question._id) === null || _a === void 0 ? void 0 : _a.toString()); }))
-                    .filter(Boolean);
-                const correctResponses = questionResponsesData.filter((r) => (r === null || r === void 0 ? void 0 : r.score) && r.score > 0).length;
-                const accuracy = questionResponsesData.length > 0
-                    ? (correctResponses / questionResponsesData.length) * 100
-                    : 0;
-                const avgScore = questionResponsesData.reduce((sum, r) => sum + ((r === null || r === void 0 ? void 0 : r.score) || 0), 0) /
-                    questionResponsesData.length || 0;
-                const responseDistribution = this.generateResponseDistribution(questionResponsesData, question);
-                return {
-                    questionId: ((_a = question._id) === null || _a === void 0 ? void 0 : _a.toString()) || "",
-                    questionTitle: typeof question.title === "string" ? question.title : "Question",
-                    questionType: question.type,
-                    totalResponses: questionResponsesData.length,
-                    correctResponses,
-                    accuracy,
-                    averageScore: avgScore,
-                    responseDistribution,
-                    commonAnswers: responseDistribution
-                        .map((r) => r.option)
-                        .slice(0, 5),
-                };
-            })));
-        });
+    static async generateQuestionAnalytics(responses, questions) {
+        return Promise.all(questions.map(async (question) => {
+            const questionResponses = responses.filter((r) => r.responseset.some((rs) => rs.questionId.toString() === question._id?.toString()));
+            const questionResponsesData = questionResponses
+                .map((r) => r.responseset.find((rs) => rs.questionId.toString() === question._id?.toString()))
+                .filter(Boolean);
+            const correctResponses = questionResponsesData.filter((r) => r?.score && r.score > 0).length;
+            const accuracy = questionResponsesData.length > 0
+                ? (correctResponses / questionResponsesData.length) * 100
+                : 0;
+            const avgScore = questionResponsesData.reduce((sum, r) => sum + (r?.score || 0), 0) /
+                questionResponsesData.length || 0;
+            const responseDistribution = this.generateResponseDistribution(questionResponsesData);
+            return {
+                questionId: question._id?.toString() || "",
+                questionTitle: typeof question.title === "string" ? question.title : "Question",
+                questionType: question.type,
+                totalResponses: questionResponsesData.length,
+                correctResponses,
+                accuracy,
+                averageScore: avgScore,
+                responseDistribution,
+                commonAnswers: responseDistribution
+                    .map((r) => r.option)
+                    .slice(0, 5),
+            };
+        }));
     }
     static analyzeChoiceQuestion(contentObj, questionResponses) {
         const choices = contentObj.multiple || contentObj.checkbox || contentObj.selection || [];
@@ -403,7 +408,6 @@ class ResponseAnalyticsService {
                 }
                 else if (typeof response.response === "object" &&
                     "key" in response.response) {
-                    // Handle ResponseAnswerReturnType
                     const key = response.response.key;
                     if (Array.isArray(key)) {
                         key.forEach((idx) => {
@@ -428,7 +432,7 @@ class ResponseAnalyticsService {
             const choice = choices.find((c) => c.idx === choiceIdx);
             const percentage = (count / questionResponses.length) * 100;
             return {
-                answer: (choice === null || choice === void 0 ? void 0 : choice.content) || answer,
+                answer: choice?.content || answer,
                 answerIdx: choiceIdx,
                 count,
                 percentage: percentage.toFixed(1),
@@ -497,7 +501,7 @@ class ResponseAnalyticsService {
     }
     static analyzeRangeQuestion(contentObj, questionResponses) {
         const ranges = questionResponses
-            .map((response) => response === null || response === void 0 ? void 0 : response.response)
+            .map((response) => response?.response)
             .filter(Boolean);
         return {
             type: contentObj.type,
@@ -506,10 +510,10 @@ class ResponseAnalyticsService {
             ranges,
         };
     }
-    static generateResponseDistribution(responses, question) {
+    static generateResponseDistribution(responses) {
         const distribution = {};
         responses.forEach((response) => {
-            if (response === null || response === void 0 ? void 0 : response.response) {
+            if (response?.response) {
                 const answer = Array.isArray(response.response)
                     ? response.response.join(", ")
                     : response.response.toString();
@@ -548,7 +552,7 @@ class ResponseAnalyticsService {
             const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
             const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
             const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
-            const dayResponses = responses.filter((r) => r.createdAt >= dayStart && r.createdAt < dayEnd);
+            const dayResponses = responses.filter((r) => r.createdAt && r.createdAt >= dayStart && r.createdAt < dayEnd);
             const avgScore = dayResponses.length > 0
                 ? dayResponses.reduce((sum, r) => sum + (r.totalScore || 0), 0) /
                     dayResponses.length
@@ -563,31 +567,19 @@ class ResponseAnalyticsService {
     }
     static generatePerformanceMetrics(responses, questions) {
         const topPerformers = responses
-            .filter((r) => {
-            var _a, _b, _c;
-            return (r.respondentName ||
-                ((_a = r.guest) === null || _a === void 0 ? void 0 : _a.name) ||
-                r.respondentEmail ||
-                ((_b = r.guest) === null || _b === void 0 ? void 0 : _b.email)) &&
-                (r.respondentEmail || ((_c = r.guest) === null || _c === void 0 ? void 0 : _c.email));
-        })
+            .filter((r) => (r.respondentName || r.respondentEmail) && r.respondentEmail)
             .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0))
             .slice(0, 5)
-            .map((r) => {
-            var _a;
-            return ({
-                name: (0, respondentUtils_1.getResponseDisplayName)(r),
-                email: r.respondentEmail || ((_a = r.guest) === null || _a === void 0 ? void 0 : _a.email),
-                score: r.totalScore || 0,
-                completionTime: 8, // Mock completion time
-            });
-        });
+            .map((r) => ({
+            name: (0, respondentUtils_1.getResponseDisplayName)(r),
+            email: r.respondentEmail,
+            score: r.totalScore || 0,
+        }));
         const difficultQuestions = questions
             .map((q) => {
-            var _a;
-            const questionResponses = responses.filter((r) => r.responseset.some((rs) => { var _a; return rs.questionId.toString() === ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()); }));
+            const questionResponses = responses.filter((r) => r.responseset.some((rs) => rs.question.toString() === q._id?.toString()));
             const correctCount = questionResponses.filter((r) => {
-                const questionResponse = r.responseset.find((rs) => { var _a; return rs.questionId.toString() === ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()); });
+                const questionResponse = r.responseset.find((rs) => rs.questionId.toString() === q._id?.toString());
                 return (questionResponse &&
                     questionResponse.score &&
                     questionResponse.score > 0);
@@ -596,11 +588,11 @@ class ResponseAnalyticsService {
                 ? (correctCount / questionResponses.length) * 100
                 : 0;
             const avgScore = questionResponses.reduce((sum, r) => {
-                const questionResponse = r.responseset.find((rs) => { var _a; return rs.questionId.toString() === ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()); });
-                return sum + ((questionResponse === null || questionResponse === void 0 ? void 0 : questionResponse.score) || 0);
+                const questionResponse = r.responseset.find((rs) => rs.questionId.toString() === q._id?.toString());
+                return sum + (questionResponse?.score || 0);
             }, 0) / questionResponses.length || 0;
             return {
-                questionId: ((_a = q._id) === null || _a === void 0 ? void 0 : _a.toString()) || "",
+                questionId: q._id?.toString() || "",
                 title: typeof q.title === "string" ? q.title : "Question",
                 accuracy,
                 averageScore: avgScore,
@@ -610,7 +602,7 @@ class ResponseAnalyticsService {
             .slice(0, 5);
         return { topPerformers, difficultQuestions };
     }
-    static generateCSVData(analyticsData, responses) {
+    static generateCSVData(responses) {
         const headers = [
             "Response ID",
             "Respondent Name",
@@ -621,11 +613,10 @@ class ResponseAnalyticsService {
         ];
         const csvRows = [headers.join(",")];
         responses.forEach((response) => {
-            var _a;
             const row = [
                 response._id,
                 (0, respondentUtils_1.getResponseDisplayName)(response),
-                response.respondentEmail || ((_a = response.guest) === null || _a === void 0 ? void 0 : _a.email) || "N/A",
+                response.respondentEmail || "N/A",
                 response.totalScore || 0,
                 response.completionStatus || "partial",
                 response.submittedAt
@@ -638,26 +629,3 @@ class ResponseAnalyticsService {
     }
 }
 exports.ResponseAnalyticsService = ResponseAnalyticsService;
-// Color palette for charts
-ResponseAnalyticsService.CHART_COLORS = [
-    "#FF6384",
-    "#36A2EB",
-    "#FFCE56",
-    "#4BC0C0",
-    "#9966FF",
-    "#FF9F40",
-    "#FF6384",
-    "#C9CBCF",
-    "#4BC0C0",
-    "#FF9F40",
-    "#36A2EB",
-    "#FFCE56",
-    "#9966FF",
-    "#FF6384",
-    "#4BC0C0",
-    "#FF9F40",
-    "#36A2EB",
-    "#FFCE56",
-    "#9966FF",
-    "#C9CBCF",
-];

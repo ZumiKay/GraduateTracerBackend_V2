@@ -1,6 +1,6 @@
 # GraduateTracer Backend V2
 
-REST API backend for the **GraduateTracer** system — a platform for managing graduate tracer survey forms, respondent sessions, form responses, analytics, and notifications.
+REST API backend for the **GraduateTracer** system — a platform for managing graduate tracer forms, respondent login sessions, responses, analytics, and notifications.
 
 Built with **Node.js**, **Express**, **TypeScript**, and **MongoDB**.
 
@@ -10,7 +10,7 @@ Built with **Node.js**, **Express**, **TypeScript**, and **MongoDB**.
 
 | Layer            | Technology                                    |
 | ---------------- | --------------------------------------------- |
-| Runtime          | Node.js 20                                    |
+| Runtime          | Node.js 24^                                   |
 | Language         | TypeScript 5                                  |
 | Framework        | Express 4                                     |
 | Database         | MongoDB (Mongoose 8)                          |
@@ -56,7 +56,7 @@ src/
 
 ### Prerequisites
 
-- Node.js ≥ 20
+- Node.js ≥ 24
 - MongoDB instance (local or Atlas)
 - (Optional) Docker
 

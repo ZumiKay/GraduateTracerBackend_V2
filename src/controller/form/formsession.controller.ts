@@ -31,8 +31,6 @@ interface RespodentLoginProps {
 }
 
 export default class FormsessionService {
-  // 📋 Validation schemas - defined once for reuse
-
   private static readonly respondentLoginSchema = z.object({
     formId: z.string().min(1),
     email: z.string().email().optional(),
@@ -51,7 +49,7 @@ export default class FormsessionService {
 
   public static async GenerateUniqueSessionId({
     email,
-    maxAttempts = 3, // ⚡ Reduced attempts for better performance
+    maxAttempts = 3,
     expireIn = "1d",
   }: {
     email: string;
@@ -80,7 +78,7 @@ export default class FormsessionService {
       const session_id = GenerateToken(
         payload,
         expireIn,
-        process.env.RESPONDENT_TOKEN_JWT_SECRET
+        process.env.RESPONDENT_TOKEN_JWT_SECRET,
       );
 
       const existingSession = await Formsession.exists({ session_id }).lean();
@@ -100,7 +98,7 @@ export default class FormsessionService {
     const fallbackId = GenerateToken(
       fallbackPayload,
       expireIn,
-      process.env.RESPONDENT_TOKEN_JWT_SECRET
+      process.env.RESPONDENT_TOKEN_JWT_SECRET,
     );
 
     return fallbackId;
@@ -109,7 +107,7 @@ export default class FormsessionService {
   public static async GenerateUniqueAccessId({
     email,
     formId,
-    maxAttempts = 3, // ⚡ Reduced attempts for better performance
+    maxAttempts = 3,
     expireIn = "1d",
   }: {
     email: string;
@@ -121,32 +119,29 @@ export default class FormsessionService {
       throw new Error("RESPONDENT_TOKEN_JWT_SECRET is not configured");
     }
 
-    // ⚡ Enhanced base payload for access_id with more entropy
     const basePayload = {
       email,
       formId: formId || "public",
       timestamp: Date.now(),
       random: Math.random().toString(36).substring(2),
-      type: "access_id", // Distinguish from session_id
-      process: process.pid, // Process ID for multi-instance uniqueness
+      type: "access_id",
+      process: process.pid,
     };
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // ⚡ Enhanced entropy generation
       const payload = {
         ...basePayload,
         attempt,
         entropy: Math.random().toString(36).substring(2),
-        nanotime: process.hrtime.bigint().toString(), // High-resolution time
+        nanotime: process.hrtime.bigint().toString(),
       };
 
       const access_id = GenerateToken(
         payload,
         expireIn,
-        process.env.RESPONDENT_TOKEN_JWT_SECRET
+        process.env.RESPONDENT_TOKEN_JWT_SECRET,
       );
 
-      // ⚡ Optimized existence check with lean query
       const existingAccess = await Formsession.exists({ access_id }).lean();
 
       if (!existingAccess) {
@@ -154,7 +149,6 @@ export default class FormsessionService {
       }
     }
 
-    // ⚡ Enhanced fallback with maximum entropy
     const fallbackPayload = {
       ...basePayload,
       fallback: true,
@@ -165,7 +159,7 @@ export default class FormsessionService {
     const fallbackId = GenerateToken(
       fallbackPayload,
       expireIn,
-      process.env.RESPONDENT_TOKEN_JWT_SECRET
+      process.env.RESPONDENT_TOKEN_JWT_SECRET,
     );
 
     return fallbackId;
@@ -175,7 +169,7 @@ export default class FormsessionService {
     email: string,
     formId: string,
     res: Response,
-    form: { type: TypeForm; setting?: { submitonce?: boolean } }
+    form: { type: TypeForm; setting?: { submitonce?: boolean } },
   ): Promise<boolean> {
     try {
       const requiresDuplicateSessionHandling =
@@ -214,7 +208,7 @@ export default class FormsessionService {
             await Promise.all([
               Formsession.updateOne(
                 { session_id: existingSession.session_id },
-                { removeCode }
+                { removeCode },
               ),
               this.SendRemovalEmail({
                 respondentEmail: email,
@@ -233,7 +227,7 @@ export default class FormsessionService {
           } catch (emailError) {
             console.error(
               `Error sending removal email for ${email}:`,
-              emailError
+              emailError,
             );
             res.status(403).json({
               success: false,
@@ -245,11 +239,10 @@ export default class FormsessionService {
           }
         }
 
-        // ⚡ Reactivate session - generate new access_id
         try {
           const newAccessId = await this.GenerateUniqueAccessId({
             email,
-            formId, // Include formId for better uniqueness
+            formId,
             expireIn: "30m",
           });
 
@@ -257,12 +250,12 @@ export default class FormsessionService {
             res,
             newAccessId,
             process.env.ACCESS_RESPONDENT_COOKIE as string,
-            getDateByMinute(30)
+            getDateByMinute(30),
           );
 
           await Formsession.updateOne(
             { session_id: existingSession.session_id },
-            { access_id: newAccessId, removeCode: null }
+            { access_id: newAccessId, removeCode: null },
           );
 
           res.status(200).json({
@@ -270,11 +263,11 @@ export default class FormsessionService {
             status: 200,
             message: "Session reactivated successfully",
           });
-          return true; // Return true to indicate response was sent
+          return true;
         } catch (reactivateError) {
           console.error(
             `Error reactivating session for ${email}:`,
-            reactivateError
+            reactivateError,
           );
           res.status(500).json({
             success: false,
@@ -284,16 +277,14 @@ export default class FormsessionService {
           return true;
         }
       } else {
-        // ⚡ Remove expired session before creating new one
         try {
           await Formsession.deleteOne({ _id: existingSession._id });
           return false;
         } catch (deleteError) {
           console.error(
             `Error deleting expired session for ${email}:`,
-            deleteError
+            deleteError,
           );
-          // Continue with normal flow even if deletion fails
           return false;
         }
       }
@@ -304,7 +295,7 @@ export default class FormsessionService {
         status: 500,
         message: "Verification Error",
       });
-      return true; // Return true to indicate error response was sent
+      return true;
     }
   }
 
@@ -312,7 +303,7 @@ export default class FormsessionService {
     res: Response,
     sessionId: string,
     cookie?: string,
-    expiredAt?: Date
+    expiredAt?: Date,
   ): void {
     const cookieOptions = {
       httpOnly: true,
@@ -324,7 +315,7 @@ export default class FormsessionService {
     res.cookie(
       cookie ?? (process.env.RESPONDENT_COOKIE as string),
       sessionId,
-      cookieOptions
+      cookieOptions,
     );
   }
 
@@ -369,7 +360,7 @@ export default class FormsessionService {
       const [form, userData] = await Promise.all([
         Form.findById(formId)
           .select(
-            "type setting.acceptResponses setting.acceptGuest setting.submitonce"
+            "type setting.acceptResponses setting.acceptGuest setting.submitonce",
           )
           .lean()
           .exec(),
@@ -501,7 +492,7 @@ export default class FormsessionService {
         userEmail,
         formId,
         res,
-        form
+        form,
       );
 
       if (hasDuplicateSession) {
@@ -573,7 +564,7 @@ export default class FormsessionService {
           res,
           session_id,
           process.env.RESPONDENT_COOKIE,
-          expiredAt
+          expiredAt,
         );
 
         // Set access token cookie
@@ -581,7 +572,7 @@ export default class FormsessionService {
           res,
           access_id,
           process.env.ACCESS_RESPONDENT_COOKIE as string,
-          accessExpiredAt
+          accessExpiredAt,
         );
 
         return res.status(200).json({
@@ -600,7 +591,7 @@ export default class FormsessionService {
         await Formsession.deleteOne({ session_id }).catch((cleanupError) => {
           console.error(
             "Failed to cleanup session after cookie error:",
-            cleanupError
+            cleanupError,
           );
         });
 
@@ -706,7 +697,7 @@ export default class FormsessionService {
           access_id: newUniqueAccessId,
           expiredAt,
           $unset: { removeCode: 1 },
-        }
+        },
       ).lean();
 
       const cookieOptions = {
@@ -727,7 +718,7 @@ export default class FormsessionService {
         res.cookie(
           process.env.ACCESS_RESPONDENT_COOKIE as string,
           newUniqueAccessId,
-          { ...cookieOptions, maxAge: accessExpiry.getTime() - Date.now() }
+          { ...cookieOptions, maxAge: accessExpiry.getTime() - Date.now() },
         );
       }
 
@@ -755,7 +746,7 @@ export default class FormsessionService {
       res.clearCookie(process.env.RESPONDENT_COOKIE as string, cookieOptions);
       res.clearCookie(
         process.env.ACCESS_RESPONDENT_COOKIE as string,
-        cookieOptions
+        cookieOptions,
       );
 
       // Return success only after cookies are cleared
@@ -771,7 +762,7 @@ export default class FormsessionService {
    */
   public static SessionVerification = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ) => {
     if (
       !process.env.RESPONDENT_COOKIE ||
@@ -793,19 +784,20 @@ export default class FormsessionService {
         return res.status(400).json(ReturnCode(400));
       }
 
-      if (isForm.type === TypeForm.Normal && !isForm.setting?.email)
+      //If the form doesn't require the authentication skipped the verification
+      if (!isForm.setting?.email)
         return res.status(200).json({
           data: {
             isNormalForm: true,
           },
         });
 
+      //Get Cookies
       const respondentCookie =
         req.cookies[process.env.RESPONDENT_COOKIE as string];
       const accessRespondentCookie =
         req.cookies[process.env.ACCESS_RESPONDENT_COOKIE as string];
 
-      //If no logged in session no content
       if (!respondentCookie) {
         console.log("Error session");
         return res.status(401).json({ ...ReturnCode(401) });
@@ -858,14 +850,14 @@ export default class FormsessionService {
 
         await Formsession.updateOne(
           { session_id: session.session_id },
-          { access_id: newAccessId }
+          { access_id: newAccessId },
         );
 
         FormsessionService.setCookie(
           res,
           newAccessId,
           process.env.ACCESS_RESPONDENT_COOKIE as string,
-          getDateByMinute(30)
+          getDateByMinute(30),
         );
       }
 
@@ -896,7 +888,7 @@ export default class FormsessionService {
     try {
       const isValid = JWT.verify(
         token,
-        customSecret ?? (process.env.RESPONDENT_TOKEN_JWT_SECRET || "secret")
+        customSecret ?? (process.env.RESPONDENT_TOKEN_JWT_SECRET || "secret"),
       );
 
       if (isValid) {
@@ -955,14 +947,14 @@ export default class FormsessionService {
         respondentEmail,
         removeCode,
         formId,
-        form?.title ?? "Form"
+        form?.title ?? "Form",
       );
 
       if (result.success) {
         console.log(`Removal email sent successfully to ${respondentEmail}`);
       } else {
         console.error(
-          `Failed to send removal email to ${respondentEmail}: ${result.message}`
+          `Failed to send removal email to ${respondentEmail}: ${result.message}`,
         );
       }
 
@@ -978,7 +970,7 @@ export default class FormsessionService {
 
   public static SendRemovalEmailEndpoint = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ) => {
     const { respondentEmail, removeCode, formId } = req.body;
 

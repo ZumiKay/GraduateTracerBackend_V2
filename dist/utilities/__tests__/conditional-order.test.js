@@ -5,7 +5,6 @@ const helper_1 = require("../helper");
 const Content_model_1 = require("../../model/Content.model");
 describe("groupContentByParent with conditional order", () => {
     test("maintains order based on parent conditional array", () => {
-        var _a, _b;
         const formId = new mongoose_1.Types.ObjectId();
         const createTitle = (text) => ({
             type: "doc",
@@ -212,9 +211,8 @@ describe("groupContentByParent with conditional order", () => {
                 const orderMap = conditionalOrderMap.get(parentId);
                 if (orderMap) {
                     children.sort((a, b) => {
-                        var _a, _b;
-                        const aId = ((_a = a._id) === null || _a === void 0 ? void 0 : _a.toString()) || "";
-                        const bId = ((_b = b._id) === null || _b === void 0 ? void 0 : _b.toString()) || "";
+                        const aId = a._id?.toString() || "";
+                        const bId = b._id?.toString() || "";
                         const aPos = orderMap.has(aId)
                             ? orderMap.get(aId)
                             : Number.MAX_SAFE_INTEGER;
@@ -235,13 +233,13 @@ describe("groupContentByParent with conditional order", () => {
         // Check q2's children are correctly identified
         const q2Children = childQuestionsMap.get(q2Id.toString()) || [];
         expect(q2Children.length).toBe(2);
-        expect((_a = q2Children[0]._id) === null || _a === void 0 ? void 0 : _a.toString()).toBe(s1Id.toString());
-        expect((_b = q2Children[1]._id) === null || _b === void 0 ? void 0 : _b.toString()).toBe(s2Id.toString());
+        expect(q2Children[0]._id?.toString()).toBe(s1Id.toString());
+        expect(q2Children[1]._id?.toString()).toBe(s2Id.toString());
         // Check s2's children are correctly identified
         const s2Children = childQuestionsMap.get(s2Id.toString()) || [];
         expect(s2Children.length).toBe(3);
         // Verify they're sorted correctly based on conditional order
-        const s2ChildrenIds = s2Children.map((child) => { var _a; return (_a = child._id) === null || _a === void 0 ? void 0 : _a.toString(); });
+        const s2ChildrenIds = s2Children.map((child) => child._id?.toString());
         expect(s2ChildrenIds[0]).toBe(n1Id.toString());
         expect(s2ChildrenIds[1]).toBe(n2Id.toString());
         expect(s2ChildrenIds[2]).toBe(n3Id.toString());
@@ -249,12 +247,12 @@ describe("groupContentByParent with conditional order", () => {
         const n2Children = childQuestionsMap.get(n2Id.toString()) || [];
         expect(n2Children.length).toBe(2);
         // Verify they're sorted correctly based on conditional order
-        const n2ChildrenIds = n2Children.map((child) => { var _a; return (_a = child._id) === null || _a === void 0 ? void 0 : _a.toString(); });
+        const n2ChildrenIds = n2Children.map((child) => child._id?.toString());
         expect(n2ChildrenIds[0]).toBe(m1Id.toString());
         expect(n2ChildrenIds[1]).toBe(m2Id.toString());
         // Now test the actual function
         const result = (0, helper_1.groupContentByParent)(testData);
-        const resultIds = result.map((item) => { var _a; return (_a = item._id) === null || _a === void 0 ? void 0 : _a.toString(); });
+        const resultIds = result.map((item) => item._id?.toString());
         // Simple check for inclusion and relative ordering
         expect(resultIds).toContain(q1Id.toString());
         expect(resultIds).toContain(q2Id.toString());

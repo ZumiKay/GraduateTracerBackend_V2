@@ -8,7 +8,6 @@ const toHex = (s) => Buffer.from(s).toString("hex").padEnd(24, "0").slice(0, 24)
 describe("groupContentByParent", () => {
     // Test case 1: Basic functionality with simple parent-child relationship
     test("should correctly group basic parent-child relationships", () => {
-        var _a, _b, _c;
         // Arrange
         const formId = new mongoose_1.Types.ObjectId();
         const mockData = [
@@ -52,9 +51,9 @@ describe("groupContentByParent", () => {
         console.log(result);
         // Assert
         expect(result.length).toBe(mockData.length);
-        expect((_a = result[0]._id) === null || _a === void 0 ? void 0 : _a.toString()).toBe(toHex("q1"));
-        expect((_b = result[1]._id) === null || _b === void 0 ? void 0 : _b.toString()).toBe(toHex("q3")); // Child should be after parent
-        expect((_c = result[2]._id) === null || _c === void 0 ? void 0 : _c.toString()).toBe(toHex("q2")); // Next question after parent-child group
+        expect(result[0]._id?.toString()).toBe(toHex("q1"));
+        expect(result[1]._id?.toString()).toBe(toHex("q3")); // Child should be after parent
+        expect(result[2]._id?.toString()).toBe(toHex("q2")); // Next question after parent-child group
     });
     // Test case 2: Complex nested structure with multiple levels
     test("should correctly handle multiple nested levels with mixed parent relationships", () => {
@@ -291,7 +290,7 @@ describe("groupContentByParent", () => {
         ];
         // Act
         const result = (0, helper_1.groupContentByParent)(mockData);
-        console.log("Result IDs:", result.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; }));
+        console.log("Result IDs:", result.map((item) => item._id?.toString() || ""));
         // Assert
         // Expected ordering: parent followed by all its nested children recursively before siblings
         const expectedOrder = [
@@ -309,7 +308,7 @@ describe("groupContentByParent", () => {
             toHex("s3"),
             toHex("q4"),
         ];
-        const resultIds = result.map((item) => { var _a; return ((_a = item._id) === null || _a === void 0 ? void 0 : _a.toString()) || ""; });
+        const resultIds = result.map((item) => item._id?.toString() || "");
         // Check that all items are included in the result
         expect(result.length).toBe(mockData.length);
         // For each item, check that it's at the expected position

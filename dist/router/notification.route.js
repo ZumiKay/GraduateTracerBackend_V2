@@ -8,7 +8,6 @@ const User_middleware_1 = __importDefault(require("../middleware/User.middleware
 const notification_controller_1 = require("../controller/utils/notification.controller");
 const router = (0, express_1.Router)();
 const notificationController = new notification_controller_1.NotificationController();
-// SSE endpoint for real-time notifications (must be before other routes)
 router.get("/stream", User_middleware_1.default.VerifyToken, notificationController.SubscribeToNotifications);
 // Get user notifications
 router.get("/", User_middleware_1.default.VerifyToken, notificationController.GetNotifications);

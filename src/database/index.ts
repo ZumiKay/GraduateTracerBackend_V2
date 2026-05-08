@@ -1,6 +1,4 @@
 import mongoose from "mongoose";
-import FormResponse from "../model/Response.model";
-import Form from "../model/Form.model";
 
 export default async function DBConnection() {
   try {

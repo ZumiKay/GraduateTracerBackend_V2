@@ -753,8 +753,13 @@ export const isRangeValueValid = (
   value: RangeType<string | number>,
   isDate?: boolean,
 ): boolean => {
-  // Check if both start and end exist
-  if (!value.start || !value.end) {
+  // Check if both start and end exist (0 is a valid value)
+  if (
+    value.start === null ||
+    value.start === undefined ||
+    value.end === null ||
+    value.end === undefined
+  ) {
     console.warn("isRangeValueValid: Missing start or end value", value);
     return false;
   }
@@ -785,16 +790,13 @@ export const isRangeValueValid = (
       }
     }
 
-    const isValid = startValue < endValue;
+    const isValid = startValue <= endValue;
 
     if (!isValid) {
-      console.warn(
-        "isRangeValueValid: Start value is not less than end value",
-        {
-          start: startValue,
-          end: endValue,
-        },
-      );
+      console.warn("isRangeValueValid: Start value is greater than end value", {
+        start: startValue,
+        end: endValue,
+      });
     }
 
     return isValid;

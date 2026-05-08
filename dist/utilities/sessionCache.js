@@ -5,11 +5,9 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 class SessionCache {
-    constructor() {
-        this.cache = new Map();
-        this.TTL = 2 * 60 * 1000; // 2 minutes TTL
-        this.MAX_SIZE = 1000; // Maximum cache size
-    }
+    cache = new Map();
+    TTL = 2 * 60 * 1000; // 2 minutes TTL
+    MAX_SIZE = 1000; // Maximum cache size
     /**
      * Get cached session data
      */
@@ -38,7 +36,10 @@ class SessionCache {
                 this.cache.delete(firstKey);
             }
         }
-        this.cache.set(sessionId, Object.assign(Object.assign({}, data), { cachedAt: Date.now() }));
+        this.cache.set(sessionId, {
+            ...data,
+            cachedAt: Date.now(),
+        });
     }
     /**
      * Invalidate a specific session

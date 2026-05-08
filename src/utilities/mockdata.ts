@@ -35,13 +35,13 @@ export class MockContentFactory {
   }
 
   static createMultipleChoiceContent(
-    overrides?: Partial<ContentType>
+    overrides?: Partial<ContentType>,
   ): ContentType {
     const choices = this.createChoiceOptions(4);
     return {
       _id: new Types.ObjectId(),
       title: this.createContentTitle(
-        "What is your favorite programming language?"
+        "What is your favorite programming language?",
       ),
       type: QuestionType.MultipleChoice,
       qIdx: 0,
@@ -50,7 +50,7 @@ export class MockContentFactory {
       score: 10,
       answer: {
         _id: new Types.ObjectId(),
-        answer: [0, 2], // Correct options indices
+        answer: 0,
         isCorrect: true,
       },
       require: true,
@@ -66,7 +66,7 @@ export class MockContentFactory {
     return {
       _id: new Types.ObjectId(),
       title: this.createContentTitle(
-        "Select all programming languages you know"
+        "Select all programming languages you know",
       ),
       type: QuestionType.CheckBox,
       qIdx: 1,
@@ -94,7 +94,7 @@ export class MockContentFactory {
       qIdx: 2,
       formId: this.createFormId(),
       text: "",
-      score: 0, // Text questions usually don't have scores
+      score: 0,
       require: true,
       page: 1,
       hasAnswer: false,
@@ -104,7 +104,7 @@ export class MockContentFactory {
   }
 
   static createShortAnswerContent(
-    overrides?: Partial<ContentType>
+    overrides?: Partial<ContentType>,
   ): ContentType {
     return {
       _id: new Types.ObjectId(),
@@ -131,7 +131,7 @@ export class MockContentFactory {
     return {
       _id: new Types.ObjectId(),
       title: this.createContentTitle(
-        "How many years of programming experience do you have?"
+        "How many years of programming experience do you have?",
       ),
       type: QuestionType.Number,
       qIdx: 4,
@@ -139,7 +139,7 @@ export class MockContentFactory {
       score: 5,
       answer: {
         _id: new Types.ObjectId(),
-        answer: 5, // Exact number answer
+        answer: 5,
         isCorrect: true,
       },
       require: false,
@@ -173,7 +173,7 @@ export class MockContentFactory {
   }
 
   static createRangeNumberContent(
-    overrides?: Partial<ContentType>
+    overrides?: Partial<ContentType>,
   ): ContentType {
     return {
       _id: new Types.ObjectId(),
@@ -236,7 +236,7 @@ export class MockContentFactory {
       score: 5,
       answer: {
         _id: new Types.ObjectId(),
-        answer: [1], // Single selection
+        answer: 1, // Single selection
         isCorrect: true,
       },
       require: true,
@@ -251,7 +251,7 @@ export class MockContentFactory {
     return {
       _id: new Types.ObjectId(),
       title: this.createContentTitle(
-        "Describe your biggest programming project"
+        "Describe your biggest programming project",
       ),
       type: QuestionType.Paragraph,
       qIdx: 9,
@@ -274,7 +274,7 @@ export class MockContentFactory {
 
   static createConditionalContent(
     parentContentId: string,
-    overrides?: Partial<ContentType>
+    overrides?: Partial<ContentType>,
   ): ContentType {
     const conditionalData: ConditionalType = {
       _id: new Types.ObjectId(),
@@ -286,7 +286,7 @@ export class MockContentFactory {
     return {
       _id: new Types.ObjectId(),
       title: this.createContentTitle(
-        "Which JavaScript framework do you prefer? (Conditional)"
+        "Which JavaScript framework do you prefer? (Conditional)",
       ),
       type: QuestionType.MultipleChoice,
       qIdx: 10,
@@ -313,7 +313,6 @@ export class MockContentFactory {
     };
   }
 
-  // Helper method to create a complete form with various question types
   static createSampleForm(): ContentType[] {
     const formId = this.createFormId();
 
@@ -335,7 +334,7 @@ export class MockContentFactory {
       {
         formId,
         qIdx: 10,
-      }
+      },
     );
 
     return [
@@ -353,10 +352,10 @@ export class MockContentFactory {
     ];
   }
 
-  // Helper method to create minimal content for quick testing
+  // Helper method to create content for quick testing
   static createMinimalContent(
     type: QuestionType,
-    overrides?: Partial<ContentType>
+    overrides?: Partial<ContentType>,
   ): ContentType {
     return {
       _id: new Types.ObjectId(),

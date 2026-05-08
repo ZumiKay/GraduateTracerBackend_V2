@@ -5,9 +5,8 @@ import FormResponse, {
   ResponseAnswerReturnType,
   ResponseAnswerType,
 } from "../../model/Response.model";
-import Form, { createFormValidate, TypeForm } from "../../model/Form.model";
+import Form, { TypeForm } from "../../model/Form.model";
 import Content, {
-  AnswerKey,
   ChoiceQuestionType,
   ContentType,
   QuestionType,
@@ -71,7 +70,7 @@ const EMAIL_STYLES = {
  */
 const renderRangeResponse = (
   response: { start: any; end: any },
-  isDate: boolean
+  isDate: boolean,
 ): string => {
   const startValue =
     isDate && typeof response.start === "string"
@@ -116,7 +115,7 @@ const renderDateResponse = (date: string): string => {
  * Extract selected indices from response
  */
 const extractSelectedIndices = (
-  response: ResponseAnswerType | ResponseAnswerReturnType
+  response: ResponseAnswerType | ResponseAnswerReturnType,
 ) => {
   if (!response) return [];
 
@@ -139,7 +138,7 @@ const extractSelectedIndices = (
  */
 const renderChoiceOptions = (
   options: Array<ChoiceQuestionType>,
-  response: ResponseAnswerType | ResponseAnswerReturnType
+  response: ResponseAnswerType | ResponseAnswerReturnType,
 ): string => {
   const selectedIndices = extractSelectedIndices(response);
 
@@ -169,7 +168,7 @@ const renderChoiceOptions = (
  */
 const renderResponseValue = (
   response: ResponseAnswerType | ResponseAnswerReturnType,
-  question: ContentType
+  question: ContentType,
 ): string => {
   // Handle range types (RangeDate or RangeNumber)
   if (
@@ -180,7 +179,7 @@ const renderResponseValue = (
   ) {
     return renderRangeResponse(
       response,
-      question.type === QuestionType.RangeDate
+      question.type === QuestionType.RangeDate,
     );
   }
 
@@ -241,7 +240,7 @@ class FormResponseReturnController extends FormResponseController {
         formId: formResponse.formId,
       })
         .select(
-          "_id title type require qIdx checkbox multiple selection score answer parentcontent conditional"
+          "_id title type require qIdx checkbox multiple selection score answer parentcontent conditional",
         )
         .lean();
 
@@ -287,7 +286,7 @@ class FormResponseReturnController extends FormResponseController {
             ResponseQueryService.ResponsesetProcessQuestion(
               numberedContent,
               formResponse.responseset,
-              { filterHidden: true }
+              { filterHidden: true },
             );
           questionsHtml = `
             <div class="questions-section" style="margin: 30px 0;">
@@ -323,7 +322,7 @@ class FormResponseReturnController extends FormResponseController {
                         <div style="font-size: 12px; color: #6b7280; font-weight: 600; margin-bottom: 5px;">YOUR ANSWER:</div>
                         <div style="color: #111827; font-size: 14px;">${renderResponseValue(
                           resp.response,
-                          question
+                          question,
                         )}</div>
                       </div>`
                       }
@@ -340,7 +339,7 @@ class FormResponseReturnController extends FormResponseController {
                               "answer" in question.answer
                               ? question.answer.answer
                               : question.answer,
-                            question
+                            question,
                           )}</div>
                         </div>
                       `
@@ -483,7 +482,7 @@ class FormResponseReturnController extends FormResponseController {
 
         if (!emailSuccess) {
           console.warn(
-            "Failed to send return email, but continuing with response update"
+            "Failed to send return email, but continuing with response update",
           );
         }
 

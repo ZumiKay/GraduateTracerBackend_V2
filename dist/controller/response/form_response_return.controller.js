@@ -32,15 +32,6 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -180,7 +171,7 @@ const renderResponseValue = (response, question) => {
     }
     // Handle choice questions (checkbox, multiple, selection)
     const options = question[question.type];
-    if ((options === null || options === void 0 ? void 0 : options.length) > 0 &&
+    if (options?.length > 0 &&
         (question.checkbox || question.multiple || question.selection)) {
         return renderChoiceOptions(options, response);
     }
@@ -188,81 +179,79 @@ const renderResponseValue = (response, question) => {
     return (0, helper_1.convertResponseToString)(response);
 };
 class FormResponseReturnController extends form_response_controller_1.FormResponseController {
-    constructor() {
-        super(...arguments);
-        this.ReturnResponse = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            const { responseId, html, reason, feedback, includeQuestionsAndResponses } = req.body;
-            const user = req.user;
-            // Validate user authentication
-            if (!user) {
-                return res.status(401).json({ message: "Authentication required" });
+    ReturnResponse = async (req, res) => {
+        const { responseId, html, reason, feedback, includeQuestionsAndResponses } = req.body;
+        const user = req.user;
+        // Validate user authentication
+        if (!user) {
+            return res.status(401).json({ message: "Authentication required" });
+        }
+        if (!responseId) {
+            return res.status(400).json({ message: "Response ID is required" });
+        }
+        if (!html) {
+            return res.status(400).json({ message: "HTML content is required" });
+        }
+        try {
+            const formResponse = await Response_model_1.default.findById(responseId)
+                .select("responseset formId totalScore respondentEmail")
+                .lean();
+            if (!formResponse) {
+                return res.status(404).json({ message: "Response not found" });
             }
-            if (!responseId) {
-                return res.status(400).json({ message: "Response ID is required" });
+            const form = await Form_model_1.default.findById(formResponse.formId);
+            if (!form) {
+                return res.status(404).json({ message: "Form not found" });
             }
-            if (!html) {
-                return res.status(400).json({ message: "HTML content is required" });
+            // Fetch content/questions to use with ResponsesetProcessQuestion
+            const contents = await Content_model_1.default.find({
+                formId: formResponse.formId,
+            })
+                .select("_id title type require qIdx checkbox multiple selection score answer parentcontent conditional")
+                .lean();
+            if (!contents || contents.length === 0) {
+                return res.status(404).json({ message: "Form questions not found" });
+            }
+            if (!(0, formHelpers_1.hasFormAccess)(form, new mongoose_1.Types.ObjectId(user.sub))) {
+                return res.status(403).json({
+                    message: "You don't have permission to return responses for this form",
+                });
+            }
+            //Verify the form response totalscore
+            if (formResponse.totalScore === undefined) {
+                return res.status(400).json({
+                    message: "Response has no score to return",
+                });
+            }
+            const recipientEmail = formResponse.respondentEmail;
+            if (!recipientEmail) {
+                return res.status(400).json({
+                    message: "No email address found for this respondent",
+                });
             }
             try {
-                const formResponse = yield Response_model_1.default.findById(responseId)
-                    .select("responseset formId totalScore respondentEmail")
-                    .lean();
-                if (!formResponse) {
-                    return res.status(404).json({ message: "Response not found" });
-                }
-                const form = yield Form_model_1.default.findById(formResponse.formId);
-                if (!form) {
-                    return res.status(404).json({ message: "Form not found" });
-                }
-                // Fetch content/questions to use with ResponsesetProcessQuestion
-                const contents = yield Content_model_1.default.find({
-                    formId: formResponse.formId,
-                })
-                    .select("_id title type require qIdx checkbox multiple selection score answer parentcontent conditional")
-                    .lean();
-                if (!contents || contents.length === 0) {
-                    return res.status(404).json({ message: "Form questions not found" });
-                }
-                if (!(0, formHelpers_1.hasFormAccess)(form, new mongoose_1.Types.ObjectId(user.sub))) {
-                    return res.status(403).json({
-                        message: "You don't have permission to return responses for this form",
+                const emailService = new EmailService_1.default();
+                // Generate questions and responses HTML if requested
+                let questionsHtml = "";
+                if (includeQuestionsAndResponses && formResponse.responseset) {
+                    // Use ResponseQueryService to process responses (same as GetResponseById)
+                    //Add number to question
+                    const numberedContent = (0, helper_1.AddQuestionNumbering)({
+                        questions: contents,
                     });
-                }
-                //Verify the form response totalscore
-                if (formResponse.totalScore === undefined) {
-                    return res.status(400).json({
-                        message: "Response has no score to return",
-                    });
-                }
-                const recipientEmail = formResponse.respondentEmail;
-                if (!recipientEmail) {
-                    return res.status(400).json({
-                        message: "No email address found for this respondent",
-                    });
-                }
-                try {
-                    const emailService = new EmailService_1.default();
-                    // Generate questions and responses HTML if requested
-                    let questionsHtml = "";
-                    if (includeQuestionsAndResponses && formResponse.responseset) {
-                        // Use ResponseQueryService to process responses (same as GetResponseById)
-                        //Add number to question
-                        const numberedContent = (0, helper_1.AddQuestionNumbering)({
-                            questions: contents,
-                        });
-                        const processedResponseSet = ResponseQueryService_1.ResponseQueryService.ResponsesetProcessQuestion(numberedContent, formResponse.responseset, { filterHidden: true });
-                        questionsHtml = `
+                    const processedResponseSet = ResponseQueryService_1.ResponseQueryService.ResponsesetProcessQuestion(numberedContent, formResponse.responseset, { filterHidden: true });
+                    questionsHtml = `
             <div class="questions-section" style="margin: 30px 0;">
               <h3 style="color: #1f2937; font-size: 18px; margin-bottom: 20px; border-bottom: 2px solid #f59e0b; padding-bottom: 10px;">Your Questions and Responses</h3>
               ${processedResponseSet
-                            .map((resp) => {
-                            const question = resp.question;
-                            if (!question)
-                                return "";
-                            const questionTitle = question.title;
-                            const isTextType = question.type === Content_model_1.QuestionType.Text;
-                            const hasScore = question.score !== undefined && question.score > 0;
-                            return `
+                        .map((resp) => {
+                        const question = resp.question;
+                        if (!question)
+                            return "";
+                        const questionTitle = question.title;
+                        const isTextType = question.type === Content_model_1.QuestionType.Text;
+                        const hasScore = question.score !== undefined && question.score > 0;
+                        return `
                     <div class="question-item" style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 15px;">
                       <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
                         <span style="background-color: #dbeafe; color: #1e40af; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold;">Q${question.questionId}</span>
@@ -272,47 +261,47 @@ class FormResponseReturnController extends form_response_controller_1.FormRespon
                         <strong style="color: #374151; font-size: 14px;">${questionTitle}</strong>
                       </div>
                       ${isTextType
-                                ? ""
-                                : `
+                            ? ""
+                            : `
                       <div style="background-color: white; border-left: 3px solid #60a5fa; padding: 12px; margin-top: 10px; border-radius: 4px;">
                         <div style="font-size: 12px; color: #6b7280; font-weight: 600; margin-bottom: 5px;">YOUR ANSWER:</div>
                         <div style="color: #111827; font-size: 14px;">${renderResponseValue(resp.response, question)}</div>
                       </div>`}
                       ${!isTextType &&
-                                question.hasAnswer &&
-                                question.answer &&
-                                form.type === Form_model_1.TypeForm.Quiz
-                                ? `
+                            question.hasAnswer &&
+                            question.answer &&
+                            form.type === Form_model_1.TypeForm.Quiz
+                            ? `
                         <div style="background-color: #d1fae5; border-left: 3px solid #10b981; padding: 12px; margin-top: 10px; border-radius: 4px;">
                           <div style="font-size: 12px; color: #065f46; font-weight: 600; margin-bottom: 5px;">CORRECT ANSWER:</div>
                           <div style="color: #065f46; font-size: 14px;">${renderResponseValue(typeof question.answer === "object" &&
-                                    "answer" in question.answer
-                                    ? question.answer.answer
-                                    : question.answer, question)}</div>
+                                "answer" in question.answer
+                                ? question.answer.answer
+                                : question.answer, question)}</div>
                         </div>
                       `
-                                : ""}
+                            : ""}
                       ${hasScore && resp.score !== undefined
-                                ? `<div style="text-align: right; margin-top: 10px; color: #7c3aed; font-weight: bold;">Score: ${resp.score} / ${question.score || 0}</div>`
-                                : ""}
+                            ? `<div style="text-align: right; margin-top: 10px; color: #7c3aed; font-weight: bold;">Score: ${resp.score} / ${question.score || 0}</div>`
+                            : ""}
                       ${resp.comment
-                                ? `
+                            ? `
                         <div style="background-color: #fef3c7; border-left: 3px solid #f59e0b; padding: 12px; margin-top: 10px; border-radius: 4px;">
                           <div style="font-size: 12px; color: #92400e; font-weight: 600; margin-bottom: 5px;">INSTRUCTOR COMMENT:</div>
                           <div style="color: #78350f; font-size: 14px;">${resp.comment}</div>
                         </div>
                       `
-                                : ""}
+                            : ""}
                     </div>
                   `;
-                        })
-                            .filter(Boolean)
-                            .join("")}
+                    })
+                        .filter(Boolean)
+                        .join("")}
             </div>
           `;
-                    }
-                    // Create email content with score and custom HTML
-                    const emailHtml = `
+                }
+                // Create email content with score and custom HTML
+                const emailHtml = `
           <!DOCTYPE html>
           <html>
           <head>
@@ -347,7 +336,7 @@ class FormResponseReturnController extends form_response_controller_1.FormRespon
                         </table>
                 
                         ${reason
-                        ? `
+                    ? `
                         <!-- Reason Section -->
                         <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #fef3c7; border-left: 4px solid #f59e0b; margin: 20px 0;">
                           <tr>
@@ -358,10 +347,10 @@ class FormResponseReturnController extends form_response_controller_1.FormRespon
                           </tr>
                         </table>
                         `
-                        : ""}
+                    : ""}
                         
                         ${feedback
-                        ? `
+                    ? `
                         <!-- Feedback Section -->
                         <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #fef3c7; border-left: 4px solid #f59e0b; margin: 20px 0;">
                           <tr>
@@ -372,7 +361,7 @@ class FormResponseReturnController extends form_response_controller_1.FormRespon
                           </tr>
                         </table>
                         `
-                        : ""}
+                    : ""}
                         
                         <!-- Custom Content -->
                         <table width="100%" cellpadding="20" cellspacing="0" style="background-color: white; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0;">
@@ -403,31 +392,30 @@ class FormResponseReturnController extends form_response_controller_1.FormRespon
           </body>
           </html>
         `;
-                    const emailSuccess = yield emailService.sendEmail({
-                        to: [recipientEmail],
-                        subject: `Response Returned: ${form.title}`,
-                        html: emailHtml,
-                    });
-                    if (!emailSuccess) {
-                        console.warn("Failed to send return email, but continuing with response update");
-                    }
-                    return res
-                        .status(200)
-                        .json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { returnContent: questionsHtml }));
+                const emailSuccess = await emailService.sendEmail({
+                    to: [recipientEmail],
+                    subject: `Response Returned: ${form.title}`,
+                    html: emailHtml,
+                });
+                if (!emailSuccess) {
+                    console.warn("Failed to send return email, but continuing with response update");
                 }
-                catch (emailError) {
-                    console.error("Error sending return email:", emailError);
-                    return res.status(500).json({
-                        message: "Failed to send return email",
-                        error: emailError instanceof Error ? emailError.message : "Unknown error",
-                    });
-                }
+                return res
+                    .status(200)
+                    .json({ ...(0, helper_1.ReturnCode)(200), returnContent: questionsHtml });
             }
-            catch (error) {
-                console.error("Error returning response:", error);
-                return res.status(500).json({ message: "Internal server error" });
+            catch (emailError) {
+                console.error("Error sending return email:", emailError);
+                return res.status(500).json({
+                    message: "Failed to send return email",
+                    error: emailError instanceof Error ? emailError.message : "Unknown error",
+                });
             }
-        });
-    }
+        }
+        catch (error) {
+            console.error("Error returning response:", error);
+            return res.status(500).json({ message: "Internal server error" });
+        }
+    };
 }
 exports.default = new FormResponseReturnController();

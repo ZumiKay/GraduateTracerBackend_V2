@@ -119,7 +119,7 @@ export default class FormsessionMiddleware {
    */
   private static isSessionExpired(
     dbExpiredAt: Date,
-    isTokenExpired: boolean | undefined
+    isTokenExpired: boolean | undefined,
   ): boolean {
     return dbExpiredAt <= new Date() || !!isTokenExpired;
   }
@@ -127,7 +127,7 @@ export default class FormsessionMiddleware {
   public static VerifyFormsession = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     if (!this.validateCookieConfig())
       return res.status(500).json(RESPONSES.missingCookieConfig());
@@ -146,7 +146,7 @@ export default class FormsessionMiddleware {
       if (!form?.setting?.acceptResponses)
         return res.status(403).json(RESPONSES.formClosed());
 
-      if (form?.type === TypeForm.Normal && !form.setting.email) {
+      if (!form.setting.email) {
         return next();
       }
 
@@ -219,7 +219,7 @@ export default class FormsessionMiddleware {
             { session_id: sessionToken },
             {
               access_id: newAccessId,
-            }
+            },
           );
 
           const newExtractedAccessToken = FormsessionService.ExtractToken({
@@ -237,7 +237,7 @@ export default class FormsessionMiddleware {
             res,
             newAccessId,
             process.env.ACCESS_RESPONDENT_COOKIE as string,
-            getDateByMinute(30)
+            getDateByMinute(30),
           );
 
           return next();
@@ -264,7 +264,7 @@ export default class FormsessionMiddleware {
   public static VerifyRespondentFormSessionData = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     const { ty } = req.query as GetPublicFormDataType;
     const { formId } = req.params as { formId?: string };
@@ -303,7 +303,7 @@ export default class FormsessionMiddleware {
   public static VerifyUserRespondentLogin = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     if (!process.env.REFRESH_TOKEN_COOKIE)
       return res.status(500).json(RESPONSES.missingRefreshTokenConfig());

@@ -18,51 +18,49 @@ const form_response_scoring_controller_2 = __importDefault(require("./form_respo
 const form_response_submission_controller_2 = __importDefault(require("./form_response.submission.controller"));
 const form_response_utility_controller_2 = __importDefault(require("./form_response.utility.controller"));
 class FormResponseController {
-    constructor() {
-        // Query methods
-        this.GetResponseByFormId = form_response_query_controller_2.default.GetResponseByFormId;
-        this.GetResponseByUser = form_response_query_controller_2.default.GetResponseByUser;
-        this.GetResponsesInfo = form_response_query_controller_2.default.GetResponsesInfo;
-        this.GetResponsesWithFilters = form_response_query_controller_2.default.GetResponsesWithFilters;
-        this.GetResponseByID = form_response_query_controller_2.default.GetResponseByID;
-        this.GetUserResponses = form_response_query_controller_2.default.GetUserResponses;
-        this.DeleteResponse = form_response_query_controller_2.default.DeleteResponse;
-        this.BulkDeleteResponses = form_response_query_controller_2.default.BulkDeleteResponses;
-        this.GetResponseAnalytics = form_response_query_controller_2.default.GetResponseAnalytics;
-        this.GetChoiceQuestionAnalytics = form_response_query_controller_2.default.GetChoiceQuestionAnalytics;
-        this.GetFormAnalytics = form_response_query_controller_2.default.GetFormAnalytics;
-        this.ExportAnalytics = form_response_query_controller_2.default.ExportAnalytics;
-        // Scoring methods
-        this.UpdateResponseScore = form_response_scoring_controller_2.default.UpdateResponseScore;
-        this.UpdateQuestionScore = form_response_scoring_controller_2.default.UpdateQuestionScore;
-        this.BatchUpdateScores = form_response_scoring_controller_2.default.BatchUpdateScores;
-        this.RecalculateResponseScore = form_response_scoring_controller_2.default.RecalculateResponseScore;
-        // Submission methods
-        this.GetFormForRespondent = form_response_submission_controller_2.default.GetFormForRespondent;
-        this.SubmitFormResponse = form_response_submission_controller_2.default.SubmitFormResponse;
-        this.GetInititalFormData = form_response_submission_controller_2.default.GetInititalFormData;
-        this.GetPublicFormData = form_response_submission_controller_2.default.GetPublicFormData;
-        // Utility methods
-        this.ValidateFormForSubmission = form_response_utility_controller_2.default.ValidateFormForSubmission;
-        this.SendFormLinks = form_response_utility_controller_2.default.SendFormLinks;
-        this.GenerateFormLink = form_response_utility_controller_2.default.GenerateFormLink;
-        this.SendResponseCardEmail = form_response_utility_controller_2.default.SendResponseCardEmail;
-        this.ExportResponsePDF = form_response_utility_controller_2.default.ExportResponsePDF;
-    }
+    // Query methods
+    GetResponseByFormId = form_response_query_controller_2.default.GetResponseByFormId;
+    GetResponseByUser = form_response_query_controller_2.default.GetResponseByUser;
+    GetResponsesInfo = form_response_query_controller_2.default.GetResponsesInfo;
+    GetResponsesWithFilters = form_response_query_controller_2.default.GetResponsesWithFilters;
+    GetResponseByID = form_response_query_controller_2.default.GetResponseByID;
+    GetUserResponses = form_response_query_controller_2.default.GetUserResponses;
+    DeleteResponse = form_response_query_controller_2.default.DeleteResponse;
+    BulkDeleteResponses = form_response_query_controller_2.default.BulkDeleteResponses;
+    GetResponseAnalytics = form_response_query_controller_2.default.GetResponseAnalytics;
+    GetChoiceQuestionAnalytics = form_response_query_controller_2.default.GetChoiceQuestionAnalytics;
+    GetFormAnalytics = form_response_query_controller_2.default.GetFormAnalytics;
+    ExportAnalytics = form_response_query_controller_2.default.ExportAnalytics;
+    // Scoring methods
+    UpdateResponseScore = form_response_scoring_controller_2.default.UpdateResponseScore;
+    UpdateQuestionScore = form_response_scoring_controller_2.default.UpdateQuestionScore;
+    BatchUpdateScores = form_response_scoring_controller_2.default.BatchUpdateScores;
+    RecalculateResponseScore = form_response_scoring_controller_2.default.RecalculateResponseScore;
+    // Submission methods
+    GetFormForRespondent = form_response_submission_controller_2.default.GetFormForRespondent;
+    SubmitFormResponse = form_response_submission_controller_2.default.SubmitFormResponse;
+    GetInititalFormData = form_response_submission_controller_2.default.GetInititalFormData;
+    GetPublicFormData = form_response_submission_controller_2.default.GetPublicFormData;
+    // Utility methods
+    ValidateFormForSubmission = form_response_utility_controller_2.default.ValidateFormForSubmission;
+    SendFormLinks = form_response_utility_controller_2.default.SendFormLinks;
+    GenerateFormLink = form_response_utility_controller_2.default.GenerateFormLink;
+    SendResponseCardEmail = form_response_utility_controller_2.default.SendResponseCardEmail;
+    ExportResponsePDF = form_response_utility_controller_2.default.ExportResponsePDF;
+    // Static validators
+    static publicSubmitValidate = zod_1.default.object({
+        body: zod_1.default.object({
+            formId: zod_1.default.string().min(1, "Form is required"),
+            respondentEmail: zod_1.default.string().email().optional(),
+            respondentName: zod_1.default.string().optional(),
+        }),
+    });
+    static sendResponseCardEmailValidate = zod_1.default.object({
+        body: zod_1.default.object({
+            responseId: zod_1.default.string().min(1, "Response ID is required"),
+            recipientEmail: zod_1.default.string().email("Valid email is required"),
+        }),
+    });
 }
 exports.FormResponseController = FormResponseController;
-// Static validators
-FormResponseController.publicSubmitValidate = zod_1.default.object({
-    body: zod_1.default.object({
-        formId: zod_1.default.string().min(1, "Form is required"),
-        respondentEmail: zod_1.default.string().email().optional(),
-        respondentName: zod_1.default.string().optional(),
-    }),
-});
-FormResponseController.sendResponseCardEmailValidate = zod_1.default.object({
-    body: zod_1.default.object({
-        responseId: zod_1.default.string().min(1, "Response ID is required"),
-        recipientEmail: zod_1.default.string().email("Valid email is required"),
-    }),
-});
 exports.default = new FormResponseController();

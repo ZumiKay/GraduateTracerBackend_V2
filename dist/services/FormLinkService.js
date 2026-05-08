@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -15,20 +6,21 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const crypto_1 = __importDefault(require("crypto"));
 const Form_model_1 = __importDefault(require("../model/Form.model"));
 class FormLinkService {
+    baseUrl;
+    encryptionKey;
+    algorithm = "aes-256-gcm";
     constructor() {
-        this.algorithm = "aes-256-gcm";
         this.baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
         const secret = process.env.INVITE_LINK_SECRET || "default-invite-secret-key";
         this.encryptionKey = crypto_1.default.scryptSync(secret, "salt", 32);
     }
     // Encrypt data using AES-256-GCM
     encrypt(data) {
-        const iv = crypto_1.default.randomBytes(12); // GCM recommends 12 bytes IV
+        const iv = crypto_1.default.randomBytes(12);
         const cipher = crypto_1.default.createCipheriv(this.algorithm, this.encryptionKey, iv);
         let encrypted = cipher.update(data, "utf8", "hex");
         encrypted += cipher.final("hex");
         const authTag = cipher.getAuthTag();
-        // Combine iv + authTag + encrypted data, then base64url encode
         const combined = Buffer.concat([
             iv,
             authTag,
@@ -43,14 +35,12 @@ class FormLinkService {
     // Decrypt data using AES-256-GCM
     decrypt(encryptedData) {
         try {
-            // Restore base64 from base64url
             let restored = encryptedData.replace(/-/g, "+").replace(/_/g, "/");
             const paddingNeeded = 4 - (restored.length % 4);
             if (paddingNeeded !== 4) {
                 restored += "=".repeat(paddingNeeded);
             }
             const combined = Buffer.from(restored, "base64");
-            // Extract iv (12 bytes), authTag (16 bytes), and encrypted data
             const iv = combined.subarray(0, 12);
             const authTag = combined.subarray(12, 28);
             const encrypted = combined.subarray(28);
@@ -71,7 +61,7 @@ class FormLinkService {
     }
     // Generate invite link with encrypted invite code
     generateInviteLink(data, path = "/", expiresInHours) {
-        const payload = Object.assign({}, data);
+        const payload = { ...data };
         if (expiresInHours) {
             const expiresAt = new Date();
             expiresAt.setHours(expiresAt.getHours() + expiresInHours);
@@ -129,16 +119,14 @@ class FormLinkService {
         };
     }
     // Validate access token for secure forms
-    validateAccessToken(formId, token) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                return !!(token && token.length === 64); // Simple validation
-            }
-            catch (error) {
-                console.error("Error validating access token:", error);
-                return false;
-            }
-        });
+    async validateAccessToken(formId, token) {
+        try {
+            return !!(token && token.length === 64); // Simple validation
+        }
+        catch (error) {
+            console.error("Error validating access token:", error);
+            return false;
+        }
     }
     // Generate multiple links for batch sending
     generateBatchLinks(formId, count, secure = false) {
@@ -153,22 +141,19 @@ class FormLinkService {
         }
         return links;
     }
-    getValidatedFormLink(formId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            var _a;
-            try {
-                const form = yield Form_model_1.default.findById(formId);
-                const isFormActive = (_a = form === null || form === void 0 ? void 0 : form.setting) === null || _a === void 0 ? void 0 : _a.acceptResponses;
-                if (!form || !isFormActive) {
-                    throw new Error("Form is close");
-                }
-                return this.generateFormLink(formId);
+    async getValidatedFormLink(formId) {
+        try {
+            const form = await Form_model_1.default.findById(formId);
+            const isFormActive = form?.setting?.acceptResponses;
+            if (!form || !isFormActive) {
+                throw new Error("Form is close");
             }
-            catch (error) {
-                console.error("Error generating validated form link:", error);
-                return null;
-            }
-        });
+            return this.generateFormLink(formId);
+        }
+        catch (error) {
+            console.error("Error generating validated form link:", error);
+            return null;
+        }
     }
     // Extract form ID from a form URL
     extractFormIdFromUrl(url) {

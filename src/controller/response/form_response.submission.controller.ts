@@ -1,6 +1,5 @@
 import { Response } from "express";
 import { ReturnCode } from "../../utilities/helper";
-import { MongoErrorHandler } from "../../utilities/MongoErrorHandler";
 import Zod from "zod";
 import { Types } from "mongoose";
 import Form, { TypeForm } from "../../model/Form.model";
@@ -11,7 +10,7 @@ import {
 import { RespondentTrackingService } from "../../services/RespondentTrackingService";
 import { ResponseQueryService } from "../../services/ResponseQueryService";
 import Formsession from "../../model/Formsession.model";
-import {
+import FormResponse, {
   FormResponseType,
   ResponseSetType,
   SubmitionProcessionReturnType,
@@ -22,6 +21,7 @@ import {
 } from "../../middleware/User.middleware";
 import { CustomRequest } from "../../types/customType";
 import { NotificationController } from "../utils/notification.controller";
+import { FingerprintService } from "../../utilities/fingerprint";
 
 interface SubmitResponseBodyType {
   responseSet?: Array<ResponseSetType>;
@@ -43,6 +43,7 @@ export class FormResponseSubmissionController {
   };
 
   public SubmitFormResponse = async (req: CustomRequest, res: Response) => {
+    //Generate a unique Id with date and add random number to its
     const submissionId = `submission_${Date.now()}_${Math.random()
       .toString(36)
       .substring(2, 11)}`;
@@ -85,7 +86,7 @@ export class FormResponseSubmissionController {
       submissionDataWithTracking =
         RespondentTrackingService.createSubmissionWithTracking(
           baseSubmissionData,
-          req
+          req,
         );
 
       let result: Partial<SubmitionProcessionReturnType | undefined>;
@@ -94,25 +95,25 @@ export class FormResponseSubmissionController {
         if (form.type === TypeForm.Quiz) {
           result = await ResponseProcessingService.processFormSubmission(
             submissionDataWithTracking,
-            form
+            form,
           );
         }
         //Normal type process
         else {
           result = await ResponseProcessingService.processNormalFormSubmission(
-            submissionDataWithTracking
+            submissionDataWithTracking,
           );
         }
       } catch (processingError) {
         console.error(
           `[${submissionId}] Error during form processing:`,
-          processingError
+          processingError,
         );
 
         if (processingError instanceof Error) {
           const errorResponse = this.handleProcessingError(
             processingError,
-            submissionId
+            submissionId,
           );
           if (errorResponse) {
             return res.status(errorResponse.status).json(errorResponse.body);
@@ -143,7 +144,7 @@ export class FormResponseSubmissionController {
           {
             name: respondentName,
             email: respondentEmail,
-          }
+          },
         );
       }
 
@@ -158,39 +159,9 @@ export class FormResponseSubmissionController {
         },
       });
     } catch (error) {
-      console.error(
-        `[${submissionId}] Unexpected error in SubmitFormResponse:`,
-        {
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : error,
-          requestBody: req.body,
-          userAgent: req.headers["user-agent"],
-          ip: req.ip,
-        }
-      );
-
       if (error instanceof Error) {
-        const mongoErrorHandled = MongoErrorHandler.handleMongoError(
-          error,
-          res,
-          {
-            operationId: submissionId,
-            customMessage: "Database operation failed during form submission",
-            includeErrorDetails: true,
-          }
-        );
-
-        if (mongoErrorHandled.handled) {
-          return;
-        }
-
-        if (error.name === "ValidationError" || error.name === "CastError") {
+        //Catch validation error
+        if (error.name === "ValidationError") {
           return res.status(400).json({
             ...ReturnCode(400, "Invalid data provided"),
             submissionId,
@@ -198,6 +169,7 @@ export class FormResponseSubmissionController {
           });
         }
 
+        //Handle timeout error
         if (
           error.message.includes("timeout") ||
           error.name === "TimeoutError"
@@ -210,10 +182,11 @@ export class FormResponseSubmissionController {
         }
       }
 
+      //Critical Error
       return res.status(500).json({
         ...ReturnCode(
           500,
-          "An unexpected error occurred during form submission"
+          "An unexpected error occurred during form submission",
         ),
         submissionId,
         timestamp: new Date().toISOString(),
@@ -280,7 +253,7 @@ export class FormResponseSubmissionController {
 
   private handleProcessingError(
     error: Error,
-    submissionId: string
+    submissionId: string,
   ): {
     status: number;
     body: any;
@@ -448,7 +421,7 @@ export class FormResponseSubmissionController {
         case "initial": {
           const initialData = await Form.findById(formId)
             .select(
-              "_id title type totalpage totalscore setting.email setting.acceptResponses setting.acceptGuest setting.submitonce"
+              "_id title type totalpage totalscore setting.email setting.acceptResponses setting.acceptGuest setting.submitonce",
             )
             .lean();
 
@@ -458,9 +431,37 @@ export class FormResponseSubmissionController {
               .json(
                 ReturnCode(
                   404,
-                  initialData ? "Form is closed" : "Form not found"
-                )
+                  initialData ? "Form is closed" : "Form not found",
+                ),
               );
+          }
+
+          //Check if the respondent already response
+          if (initialData.setting.submitonce && !initialData.setting.email) {
+            const respondentFingerPrint =
+              FingerprintService.extractFingerprintFromRequest(req);
+            const fingerprintHash = FingerprintService.generateFingerprint(
+              respondentFingerPrint,
+            );
+            const trackingResult =
+              await RespondentTrackingService.checkRespondentExists({
+                respondentFingerprint: fingerprintHash,
+                respondentIP: FingerprintService.getClientIP(req),
+                fingerprintStrength: FingerprintService.getFingerprintStrength(
+                  respondentFingerPrint,
+                ),
+              });
+
+            if (trackingResult.hasResponded) {
+              return res.status(200).json({
+                ...ReturnCode(200),
+                data: {
+                  ...initialData,
+                  isAuthenticated: true,
+                  isResponsed: trackingResult.hasResponded,
+                },
+              });
+            }
           }
 
           let isAuthenticated = false;
@@ -472,7 +473,7 @@ export class FormResponseSubmissionController {
                   formId,
                   page,
                   req,
-                  res
+                  res,
                 );
 
                 return res.status(200).json({
@@ -487,7 +488,7 @@ export class FormResponseSubmissionController {
               } catch (error) {
                 console.warn(
                   "Failed to fetch form content for authenticated user:",
-                  error
+                  error,
                 );
                 return res.status(200).json(ReturnCode(500));
               }
@@ -512,7 +513,7 @@ export class FormResponseSubmissionController {
             formId,
             page,
             req,
-            res
+            res,
           );
 
           return res.status(200).json({

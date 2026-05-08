@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MongoErrorHandler = void 0;
 exports.handleMongoError = handleMongoError;
@@ -37,7 +28,12 @@ class MongoErrorHandler {
         // Log based on specified level
         switch (logLevel) {
             case "error":
-                console.error(logMessage, Object.assign({ errorCode: error.code, errorName: error.name, operationId }, (includeErrorDetails && { stack: error.stack })));
+                console.error(logMessage, {
+                    errorCode: error.code,
+                    errorName: error.name,
+                    operationId,
+                    ...(includeErrorDetails && { stack: error.stack }),
+                });
                 break;
             case "warn":
                 console.warn(logMessage);
@@ -48,10 +44,16 @@ class MongoErrorHandler {
         }
         // Prepare response
         const baseResponse = this.getBaseResponse(errorInfo.statusCode, customMessage || errorInfo.message);
-        const response = Object.assign(Object.assign(Object.assign(Object.assign({}, baseResponse), { operationId, errorCategory: errorInfo.category }), (includeErrorDetails && {
-            errorCode: error.code,
-            mongoErrorName: error.name,
-        })), (errorInfo.retryAfter && { retryAfter: errorInfo.retryAfter }));
+        const response = {
+            ...baseResponse,
+            operationId,
+            errorCategory: errorInfo.category,
+            ...(includeErrorDetails && {
+                errorCode: error.code,
+                mongoErrorName: error.name,
+            }),
+            ...(errorInfo.retryAfter && { retryAfter: errorInfo.retryAfter }),
+        };
         res.status(errorInfo.statusCode).json(response);
         return {
             handled: true,
@@ -79,7 +81,6 @@ class MongoErrorHandler {
      * Check if an error is a MongoDB-related error
      */
     static isMongoError(error) {
-        var _a;
         if (!error)
             return false;
         const mongoErrorNames = [
@@ -98,17 +99,16 @@ class MongoErrorHandler {
             "MissingSchemaError",
         ];
         return (mongoErrorNames.includes(error.name) ||
-            ((_a = error.name) === null || _a === void 0 ? void 0 : _a.startsWith("Mongo")) ||
+            error.name?.startsWith("Mongo") ||
             error.code !== undefined); // MongoDB errors typically have error codes
     }
     /**
      * Categorize MongoDB errors and determine appropriate response
      */
     static categorizeMongoError(error) {
-        var _a;
         const errorCode = error.code;
         const errorName = error.name;
-        const errorMessage = ((_a = error.message) === null || _a === void 0 ? void 0 : _a.toLowerCase()) || "";
+        const errorMessage = error.message?.toLowerCase() || "";
         // Network and connection errors (503 - Service Unavailable)
         if (errorName === "MongoNetworkError" ||
             errorName === "MongoTimeoutError" ||
@@ -233,20 +233,18 @@ class MongoErrorHandler {
      * @param options - Error handling options
      * @returns Promise that resolves to operation result or null if error occurred
      */
-    static executeWithErrorHandling(operation_1, res_1) {
-        return __awaiter(this, arguments, void 0, function* (operation, res, options = {}) {
-            try {
-                return yield operation();
+    static async executeWithErrorHandling(operation, res, options = {}) {
+        try {
+            return await operation();
+        }
+        catch (error) {
+            const result = this.handleMongoError(error, res, options);
+            if (result.handled) {
+                return null;
             }
-            catch (error) {
-                const result = this.handleMongoError(error, res, options);
-                if (result.handled) {
-                    return null;
-                }
-                // Re-throw if not a MongoDB error
-                throw error;
-            }
-        });
+            // Re-throw if not a MongoDB error
+            throw error;
+        }
     }
 }
 exports.MongoErrorHandler = MongoErrorHandler;

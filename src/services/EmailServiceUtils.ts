@@ -5,13 +5,6 @@ import EmailService, {
 import { ContentTitle } from "../model/Content.model";
 import { contentTitleToString } from "../utilities/helper";
 
-/**
- * Utility functions for working with EmailService and ContentTitle
- */
-
-/**
- * Create a ResponseEmailData object with ContentTitle support
- */
 export function createResponseEmailData(
   recipient: string,
   formTitle: string | ContentTitle,
@@ -31,7 +24,7 @@ export function createResponseEmailData(
     }>;
     respondentName?: string;
     submittedAt?: Date;
-  }
+  },
 ): ResponseEmailData {
   return {
     to: recipient,
@@ -48,7 +41,7 @@ export function createFormLinkEmailData(
   formTitle: string | ContentTitle,
   formOwner: string,
   recipientEmails: string[],
-  message?: string
+  message?: string,
 ): FormLinkEmailData {
   return {
     formId,
@@ -63,7 +56,7 @@ export function createFormLinkEmailData(
  * Preview email content by converting ContentTitle to string
  */
 export function previewEmailContent(
-  emailData: ResponseEmailData | FormLinkEmailData
+  emailData: ResponseEmailData | FormLinkEmailData,
 ): {
   formTitle: string;
   questionTitles?: string[];
@@ -76,7 +69,7 @@ export function previewEmailContent(
   let questionTitles: string[] | undefined;
   if ("questions" in emailData && emailData.questions) {
     questionTitles = emailData.questions.map((q: any) =>
-      typeof q.title === "string" ? q.title : contentTitleToString(q.title)
+      typeof q.title === "string" ? q.title : contentTitleToString(q.title),
     );
   }
 
@@ -90,7 +83,7 @@ export function previewEmailContent(
  * Validate ContentTitle content before sending email
  */
 export function validateEmailContentTitle(
-  contentTitle: ContentTitle | string
+  contentTitle: ContentTitle | string,
 ): boolean {
   if (typeof contentTitle === "string") {
     return contentTitle.trim().length > 0;

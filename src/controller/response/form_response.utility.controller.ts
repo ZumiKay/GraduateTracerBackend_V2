@@ -5,11 +5,7 @@ import EmailService from "../../services/EmailService";
 import FormLinkService from "../../services/FormLinkService";
 import User from "../../model/User.model";
 import { Types } from "mongoose";
-import Form, {
-  CollaboratorType,
-  FormType,
-  TypeForm,
-} from "../../model/Form.model";
+import Form, { FormType, TypeForm } from "../../model/Form.model";
 import FormResponse, {
   FormResponseType,
   ResponseAnswerType,
@@ -24,7 +20,7 @@ import { generateResponseHTML } from "../../utilities/EmailTemplate/SendResponse
 export class FormResponseUtilityController {
   public ValidateFormForSubmission = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ) => {
     const { formId } = req.query;
 
@@ -33,12 +29,10 @@ export class FormResponseUtilityController {
     }
 
     try {
-      const validationSummary = await SolutionValidationService.validateForm(
-        formId
-      );
-      const errors = await SolutionValidationService.getFormValidationErrors(
-        formId
-      );
+      const validationSummary =
+        await SolutionValidationService.validateForm(formId);
+      const errors =
+        await SolutionValidationService.getFormValidationErrors(formId);
 
       res.status(200).json({
         ...ReturnCode(200),
@@ -81,7 +75,7 @@ export class FormResponseUtilityController {
 
       const emailService = new EmailService();
       const userDetails = await User.findById(
-        new Types.ObjectId(validation.user.sub)
+        new Types.ObjectId(validation.user.sub),
       );
 
       const success = await emailService.sendFormLinks({
@@ -99,8 +93,8 @@ export class FormResponseUtilityController {
             200,
             success
               ? "Form links sent successfully"
-              : "Failed to send form links"
-          )
+              : "Failed to send form links",
+          ),
         );
     } catch (error) {
       console.error("Send Form Links Error:", error);
@@ -117,7 +111,7 @@ export class FormResponseUtilityController {
       }
 
       const form = await Form.findById(formId).select(
-        "_id user owners editors"
+        "_id user owners editors",
       );
       if (!form) {
         return res.status(404).json(ReturnCode(404, "Form not found"));
@@ -149,7 +143,7 @@ export class FormResponseUtilityController {
         return res
           .status(400)
           .json(
-            ReturnCode(400, "Response ID and recipient email are required")
+            ReturnCode(400, "Response ID and recipient email are required"),
           );
       }
 
@@ -262,7 +256,7 @@ export class FormResponseUtilityController {
 
       // Only count questions that have a score (maxScore > 0) for totalQuestions
       const scorableQuestionsCount = questions.filter(
-        (q) => q.maxScore > 0
+        (q) => q.maxScore > 0,
       ).length;
 
       const emailData = {
@@ -325,7 +319,7 @@ export class FormResponseUtilityController {
       const form = await ResponseValidationService.validateFormAccess(
         formId,
         validation.user.sub,
-        res
+        res,
       );
       if (!form) return;
 
@@ -349,7 +343,7 @@ export class FormResponseUtilityController {
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${filename}"`
+        `attachment; filename="${filename}"`,
       );
       res.send(pdfBuffer);
     } catch (error) {
@@ -360,7 +354,7 @@ export class FormResponseUtilityController {
 
   private async generateResponsePDF(
     form: FormType,
-    response: FormResponseType
+    response: FormResponseType,
   ): Promise<Buffer> {
     const puppeteer = require("puppeteer");
 

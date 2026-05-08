@@ -63,7 +63,7 @@ class QuestionController {
       // Step 5: Validate child question scores
       const scoreValidationError = this.validateChildQuestionScores(
         data,
-        existingContent
+        existingContent,
       );
       if (scoreValidationError) {
         return res.status(400).json(ReturnCode(400, scoreValidationError));
@@ -74,7 +74,7 @@ class QuestionController {
         data,
         questionIdMap,
         formId,
-        page!
+        page!,
       );
 
       // Step 7: Handle deletions
@@ -83,7 +83,7 @@ class QuestionController {
         formId,
         page!,
         idsToKeep,
-        existingContent
+        existingContent,
       );
 
       // Step 8: Execute all database operations
@@ -91,20 +91,20 @@ class QuestionController {
         bulkOps,
         newIds,
         formId,
-        deleteResult.operations
+        deleteResult.operations,
       );
 
       // Step 9: Initialize totalscore
       const form = await Form.findById(formId).select("totalscore");
       const isScoreChange = data.some(
-        (i) => i.score !== existingContent.find((j) => j._id === i._id)?.score
+        (i) => i.score !== existingContent.find((j) => j._id === i._id)?.score,
       );
 
       if (isScoreChange || !form?.totalscore) {
         const computedTotalScore = await this.calculateFormTotalScore(formId);
         await Form.updateOne(
           { _id: formId },
-          { totalscore: computedTotalScore }
+          { totalscore: computedTotalScore },
         );
       }
       // Step 10: Return updated content
@@ -131,7 +131,7 @@ class QuestionController {
    * Validates the request payload for SaveQuestion
    */
   private validateSaveQuestionPayload(
-    payload: SaveQuestionPayload
+    payload: SaveQuestionPayload,
   ): string | null {
     const { data, formId, page } = payload;
 
@@ -174,7 +174,7 @@ class QuestionController {
    */
   private async fetchExistingContent(
     formId: string,
-    page?: number
+    page?: number,
   ): Promise<ContentType[]> {
     return Content.find({ formId, ...(page ? { page } : {}) }, null, {
       lean: true,
@@ -208,7 +208,7 @@ class QuestionController {
    */
   private validateChildQuestionScores(
     data: ContentType[],
-    existingContent: ContentType[]
+    existingContent: ContentType[],
   ): string | null {
     for (const item of data) {
       if (!item.parentcontent || !item.score) continue;
@@ -216,7 +216,7 @@ class QuestionController {
       const parent = existingContent.find(
         (par) =>
           (par._id?.toString() || par.qIdx) ===
-          (item.parentcontent?.qId || item.parentcontent?.qIdx)
+          (item.parentcontent?.qId || item.parentcontent?.qIdx),
       );
 
       if (parent?.score && item.score > parent.score) {
@@ -233,7 +233,7 @@ class QuestionController {
   private processConditionals(
     conditional: ConditionalType[] | undefined,
     data: ContentType[],
-    questionIdMap: Map<number, Types.ObjectId>
+    questionIdMap: Map<number, Types.ObjectId>,
   ): ConditionalType[] | undefined {
     if (!conditional) return undefined;
 
@@ -250,7 +250,7 @@ class QuestionController {
         return cond;
       })
       .filter(
-        (cond) => cond.contentId || cond.contentIdx !== undefined
+        (cond) => cond.contentId || cond.contentIdx !== undefined,
       ) as ConditionalType[];
   }
 
@@ -261,7 +261,7 @@ class QuestionController {
   private processParentContent(
     parentcontent: ContentType["parentcontent"],
     data: ContentType[],
-    questionIdMap: Map<number, Types.ObjectId>
+    questionIdMap: Map<number, Types.ObjectId>,
   ): ContentType["parentcontent"] {
     if (!parentcontent) return undefined;
 
@@ -299,7 +299,7 @@ class QuestionController {
     data: ContentType[],
     questionIdMap: Map<number, Types.ObjectId>,
     formId: string,
-    page: number
+    page: number,
   ): any[] {
     return data.map((item, index) => {
       const { _id, ...rest } = item;
@@ -307,12 +307,12 @@ class QuestionController {
       const processedConditional = this.processConditionals(
         rest.conditional,
         data,
-        questionIdMap
+        questionIdMap,
       );
       const processedParentContent = this.processParentContent(
         rest.parentcontent,
         data,
-        questionIdMap
+        questionIdMap,
       );
 
       return {
@@ -354,7 +354,7 @@ class QuestionController {
     formId: string,
     page: number,
     idsToKeep: (Types.ObjectId | string)[],
-    existingContent: ContentType[]
+    existingContent: ContentType[],
   ): Promise<DeleteOperationResult> {
     const operations: Promise<any>[] = [];
     const deletedIds: Types.ObjectId[] = [];
@@ -362,7 +362,7 @@ class QuestionController {
     const toBeDeleted = await Content.find(
       { formId, page, _id: { $nin: idsToKeep } },
       { _id: 1, score: 1, conditional: 1, qIdx: 1, parentcontent: 1 },
-      { lean: true }
+      { lean: true },
     );
 
     if (toBeDeleted.length === 0) {
@@ -389,12 +389,12 @@ class QuestionController {
         {
           $pull: { contentIds: { $in: allDeleteIds } },
           ...(deletedScore && { $inc: { totalscore: -deletedScore } }),
-        }
+        },
       ),
       Content.updateMany(
         { "conditional.contentId": { $in: allDeleteIds } },
-        { $pull: { conditional: { contentId: { $in: allDeleteIds } } } }
-      )
+        { $pull: { conditional: { contentId: { $in: allDeleteIds } } } },
+      ),
     );
 
     // Update qIdx for remaining questions
@@ -404,7 +404,7 @@ class QuestionController {
     const qIdxUpdateOps = this.buildQIdxUpdateOperations(
       existingContent,
       idsToKeep,
-      deletedIdx
+      deletedIdx,
     );
     operations.push(...qIdxUpdateOps);
 
@@ -417,24 +417,24 @@ class QuestionController {
   private buildQIdxUpdateOperations(
     existingContent: ContentType[],
     idsToKeep: (Types.ObjectId | string)[],
-    deletedIdx: number[]
+    deletedIdx: number[],
   ): Promise<any>[] {
     const operations: Promise<any>[] = [];
 
     const remainingQuestions = existingContent.filter(
-      (item) => item._id && idsToKeep.includes(item._id)
+      (item) => item._id && idsToKeep.includes(item._id),
     );
 
     for (const item of remainingQuestions) {
       const currentIdx = item.qIdx || 0;
       const deletedBeforeCurrent = deletedIdx.filter(
-        (delIdx) => delIdx < currentIdx
+        (delIdx) => delIdx < currentIdx,
       ).length;
 
       if (deletedBeforeCurrent > 0) {
         const newIdx = currentIdx - deletedBeforeCurrent;
         operations.push(
-          Content.updateOne({ _id: item._id }, { $set: { qIdx: newIdx } })
+          Content.updateOne({ _id: item._id }, { $set: { qIdx: newIdx } }),
         );
       }
     }
@@ -449,7 +449,7 @@ class QuestionController {
     bulkOps: any[],
     newIds: Types.ObjectId[],
     formId: string,
-    deleteOperations: Promise<any>[]
+    deleteOperations: Promise<any>[],
   ): Promise<void> {
     const operations = [...deleteOperations];
 
@@ -464,39 +464,17 @@ class QuestionController {
           {
             $addToSet: { contentIds: { $each: newIds } },
             $set: { updatedAt: new Date() },
-          }
-        )
+          },
+        ),
       );
     }
 
     await Promise.all(operations);
   }
 
-  /**
-   * Updates total score if it has changed
-   * Calculates the score difference for current page and applies it to form's totalscore
-   */
-  private async updateTotalScoreIfChanged(
-    data: ContentType[],
-    existingContent: ContentType[],
-    formId: string
-  ): Promise<void> {
-    const scoreDiff = this.calculateScoreDifference(data, existingContent);
-
-    if (scoreDiff !== 0) {
-      await Form.updateOne(
-        { _id: formId },
-        { $inc: { totalscore: scoreDiff } }
-      );
-    }
-  }
-
-  /**
-   * Fetches the updated content after save
-   */
   private async fetchUpdatedContent(
     formId: string,
-    page: number
+    page: number,
   ): Promise<ContentType[]> {
     return Content.find({ formId, page }, null, {
       lean: true,
@@ -504,9 +482,6 @@ class QuestionController {
     });
   }
 
-  /**
-   * Handles errors from SaveQuestion
-   */
   private handleSaveQuestionError(error: unknown, res: Response) {
     console.error("SaveQuestion Error:", error);
 
@@ -520,9 +495,6 @@ class QuestionController {
     return res.status(500).json(ReturnCode(500, "Internal Server Error"));
   }
 
-  /**
-   * Logs message only in development environment
-   */
   private logDev(message: string): void {
     if (process.env.NODE_ENV === "DEV") {
       console.log(message);
@@ -556,15 +528,15 @@ class QuestionController {
           {
             $pull: { contentIds: id },
             $inc: { totalscore: -(tobeDelete.score || 0) },
-          }
+          },
         ),
       ];
 
       operations.push(
         Content.updateMany(
           { "conditional.contentId": id },
-          { $pull: { conditional: { contentId: id } } }
-        ) as never
+          { $pull: { conditional: { contentId: id } } },
+        ) as never,
       );
 
       if (conditionalIds.length > 0) {
@@ -572,8 +544,8 @@ class QuestionController {
           Content.deleteMany({ _id: { $in: conditionalIds } }),
           Form.updateOne(
             { _id: formId },
-            { $pull: { contentIds: { $in: conditionalIds } } }
-          ) as never
+            { $pull: { contentIds: { $in: conditionalIds } } },
+          ) as never,
         );
       }
 
@@ -613,7 +585,7 @@ class QuestionController {
 
       const questions = await Content.find(query)
         .select(
-          "_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent qIdx"
+          "_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent qIdx",
         )
         .lean()
         .sort({ page: 1, qIdx: 1 }); // Sort by page first, then by question index
@@ -654,7 +626,7 @@ class QuestionController {
             update: { $set: { answer: solution } },
             upsert: true,
           },
-        }))
+        })),
       );
 
       return res.status(200).json(ReturnCode(200, "Solution Saved"));
@@ -676,7 +648,7 @@ class QuestionController {
   //Check for changed key of content
   private efficientChangeDetection(
     existing: ContentType[],
-    incoming: ContentType[]
+    incoming: ContentType[],
   ): boolean {
     if (existing.length !== incoming.length) {
       if (process.env.NODE_ENV === "DEV") {
@@ -684,7 +656,7 @@ class QuestionController {
           "⚡ Length difference detected:",
           existing.length,
           "vs",
-          incoming.length
+          incoming.length,
         );
       }
       return false; // Changes detected
@@ -851,38 +823,25 @@ class QuestionController {
     return true;
   }
 
-  /**
-   * Calculate the total score for a set of questions
-   * Excludes conditional/child questions (parentcontent) to avoid double counting
-   */
   private calculateTotalScore(items: Array<ContentType>): number {
     return items
       .filter((ques) => !ques.parentcontent)
       .reduce((total, { score = 0 }) => total + score, 0);
   }
 
-  /**
-   * Calculate the total score for all questions in a form
-   * Fetches all content from the database and calculates total
-   * Excludes conditional/child questions to avoid double counting
-   */
   private async calculateFormTotalScore(formId: string): Promise<number> {
     const allContent = await Content.find(
       { formId, parentcontent: { $exists: false } },
       { score: 1 },
-      { lean: true }
+      { lean: true },
     );
 
     return allContent.reduce((total, { score = 0 }) => total + score, 0);
   }
 
-  /**
-   * Calculate the difference in score between incoming and existing content
-   * @Returns the difference (positive if score increased, negative if decreased)
-   */
   private calculateScoreDifference(
     incoming: ContentType[],
-    prevContent: ContentType[]
+    prevContent: ContentType[],
   ): number {
     const incomingTotal = this.calculateTotalScore(incoming);
     const prevTotal = this.calculateTotalScore(prevContent);

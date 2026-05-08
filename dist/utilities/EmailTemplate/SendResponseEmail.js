@@ -10,11 +10,10 @@ const generateResponseHTML = (form, response) => {
     let questionsHTML = "";
     if (response.responseset && Array.isArray(response.responseset)) {
         response.responseset.forEach((responseItem, index) => {
-            var _a;
             const question = responseItem.questionId;
             if (!question)
                 return;
-            const questionTitle = ((_a = question.title) === null || _a === void 0 ? void 0 : _a.text) || `Question ${index + 1}`;
+            const questionTitle = question.title?.text || `Question ${index + 1}`;
             const questionType = question.type;
             let answerHTML = "";
             switch (questionType) {

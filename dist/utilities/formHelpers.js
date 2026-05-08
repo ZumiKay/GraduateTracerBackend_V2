@@ -32,15 +32,6 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.projections = void 0;
 exports.isValidObjectIdString = isValidObjectIdString;
@@ -60,12 +51,11 @@ function isValidObjectIdString(id) {
     return (typeof id === "string" && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id));
 }
 function hasFormAccess(form, userId) {
-    var _a, _b;
     try {
         const userIdStr = userId.toString();
         const HaveAccessID = new Set();
-        (_a = form.editors) === null || _a === void 0 ? void 0 : _a.forEach((i) => HaveAccessID.add(i._id.toString()));
-        (_b = form.owners) === null || _b === void 0 ? void 0 : _b.forEach((i) => HaveAccessID.add(i._id.toString()));
+        form.editors?.forEach((i) => HaveAccessID.add(i._id.toString()));
+        form.owners?.forEach((i) => HaveAccessID.add(i._id.toString()));
         //Verify creator
         form.user.equals(userId) && HaveAccessID.add(userId.toString());
         return HaveAccessID.has(userIdStr);
@@ -96,18 +86,17 @@ function isPrimaryOwner(form, userId) {
     }
 }
 function verifyRole(role, form, userId) {
-    var _a, _b, _c, _d;
     const user_id = userId.toString();
     if (role === Form_model_1.CollaboratorType.creator) {
         return user_id === form.user.toString();
     }
     return role === Form_model_1.CollaboratorType.editor
-        ? (_b = (_a = form.editors) === null || _a === void 0 ? void 0 : _a.some((i) => i.toString() === user_id)) !== null && _b !== void 0 ? _b : false
-        : (_d = (_c = form.owners) === null || _c === void 0 ? void 0 : _c.some((i) => i.toString() === user_id)) !== null && _d !== void 0 ? _d : false;
+        ? form.editors?.some((i) => i.toString() === user_id) ?? false
+        : form.owners?.some((i) => i.toString() === user_id) ?? false;
 }
 // Centralized access validation helper
 function validateAccess(form, userId) {
-    const userIdStr = userId === null || userId === void 0 ? void 0 : userId.toString();
+    const userIdStr = userId?.toString();
     const isCreator = isPrimaryOwner(form, userIdStr);
     const isOwner = verifyRole(Form_model_1.CollaboratorType.owner, form, userId);
     const isEditor = verifyRole(Form_model_1.CollaboratorType.editor, form, userId);
@@ -144,16 +133,14 @@ function validateFormRequest(formId, userId) {
  * @param page - Current page number
  * @returns The count of questions from previous pages
  */
-function getLastQuestionIdx(formId, page) {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!page || page <= 1) {
-            return 0;
-        }
-        return Content_model_1.default.countDocuments({
-            formId,
-            page: { $lt: page },
-            $or: [{ parentcontent: { $exists: false } }, { parentcontent: null }],
-        });
+async function getLastQuestionIdx(formId, page) {
+    if (!page || page <= 1) {
+        return 0;
+    }
+    return Content_model_1.default.countDocuments({
+        formId,
+        page: { $lt: page },
+        $or: [{ parentcontent: { $exists: false } }, { parentcontent: null }],
     });
 }
 /**

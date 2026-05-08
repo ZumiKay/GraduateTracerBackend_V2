@@ -58,7 +58,6 @@ exports.getRespondentDisplayName = getRespondentDisplayName;
  * @returns The best available name or "Anonymous"
  */
 const getResponseDisplayName = (response) => {
-    var _a, _b;
-    return (0, exports.getRespondentDisplayName)(response.respondentName, response.respondentEmail, (_a = response.guest) === null || _a === void 0 ? void 0 : _a.name, (_b = response.guest) === null || _b === void 0 ? void 0 : _b.email);
+    return (0, exports.getRespondentDisplayName)(response.respondentName, response.respondentEmail, response.guest?.name, response.guest?.email);
 };
 exports.getResponseDisplayName = getResponseDisplayName;

@@ -12,10 +12,7 @@ configDotenv();
 
 const encryptRoute = Router();
 
-// Log key initialization (remove in production)
-console.log("✅ RSA keys loaded from .env successfully");
-
-// RSA Encryption function (for backend testing)
+// RSA Encryption function
 const encryptWithPublicKey = (data: string): string => {
   try {
     const buffer = Buffer.from(data, "utf8");
@@ -25,7 +22,7 @@ const encryptWithPublicKey = (data: string): string => {
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: "sha256",
       },
-      buffer
+      buffer,
     );
     return encrypted
       .toString("base64")
@@ -55,7 +52,7 @@ const decryptWithPrivateKey = (encryptedData: string): string => {
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: "sha256",
       },
-      buffer
+      buffer,
     );
     return decrypted.toString("utf8");
   } catch (error) {
@@ -83,7 +80,7 @@ const hybridEncrypt = (data: string): string => {
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: "sha256",
       },
-      aesKey
+      aesKey,
     );
 
     // Combine encrypted key + iv + encrypted data
@@ -125,7 +122,7 @@ const hybridDecrypt = (encryptedData: string): string => {
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: "sha256",
       },
-      Buffer.from(encryptedKey, "base64")
+      Buffer.from(encryptedKey, "base64"),
     );
 
     // Decrypt content with AES
@@ -189,7 +186,7 @@ encryptRoute.get(
         error: "PUBLIC_KEY_ERROR",
       });
     }
-  }
+  },
 );
 
 // POST /encrypt - Encrypt a value

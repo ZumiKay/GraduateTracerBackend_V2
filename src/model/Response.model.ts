@@ -1,6 +1,7 @@
 import { model, Schema, Types } from "mongoose";
 import { ContentType, RangeType } from "./Content.model";
 
+//Type for multiple choice, checkbox and more
 export type ResponseAnswerType =
   | string
   | number
@@ -9,6 +10,7 @@ export type ResponseAnswerType =
   | RangeType<string>
   | Array<number>;
 
+//Type for selection question type
 export type ResponseAnswerReturnType = {
   key: number | Array<number>;
   val: ResponseAnswerType | Array<string>;
@@ -97,6 +99,7 @@ export interface SubmitionProcessionReturnType {
   respondentEmail?: string;
   isComplete?: boolean;
   isNonScore?: boolean;
+  hasUnansweredScoredQuestion?: boolean;
 }
 
 //Sub Doc

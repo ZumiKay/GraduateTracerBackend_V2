@@ -1,16 +1,16 @@
 import { Request } from "express";
 import { FingerprintService } from "../utilities/fingerprint";
-import FormResponse, {
-  FormResponseType,
-  ResponseSetType,
-} from "../model/Response.model";
+import FormResponse, { FormResponseType } from "../model/Response.model";
 import { hashedPassword } from "../utilities/helper";
-import { Types } from "mongoose";
 import { ProcessNormalFormSubmissionType } from "./ResponseProcessingService";
-import { compare } from "bcrypt";
 
 export interface RespondentTrackingResult {
-  hasResponded: boolean;
+  hasResponded?: {
+    message: string;
+    responseId: string;
+    maxScore?: number;
+    totalScore?: number;
+  };
   trackingMethod: "fingerprint" | "ip" | "none";
   responseId?: string;
   fingerprint?: string;
@@ -19,24 +19,26 @@ export interface RespondentTrackingResult {
   respondentEmail?: string;
 }
 
+export interface DeviceInfoType {
+  userAgent: string;
+  platform: string;
+  screen: string;
+  timezone: string;
+  acceptLanguage: string;
+  acceptEncoding: string;
+}
+
 export interface TrackingData {
   fingerprint: string;
   ip: string;
-  deviceInfo: {
-    userAgent: string;
-    platform: string;
-    screen: string;
-    timezone: string;
-    acceptLanguage: string;
-    acceptEncoding: string;
-  };
+  deviceInfo: DeviceInfoType;
   sessionId?: string;
   fingerprintStrength: number;
 }
 
 export class RespondentTrackingService {
   static async checkRespondentExists(
-    respondentData: Partial<ProcessNormalFormSubmissionType>
+    respondentData: Partial<ProcessNormalFormSubmissionType>,
   ): Promise<RespondentTrackingResult> {
     const {
       formId,
@@ -58,12 +60,17 @@ export class RespondentTrackingService {
     if (respondentFingerprint) {
       const existingResponse = await FormResponse.findOne(
         { formId, respondentFingerprint },
-        { _id: 1 }
+        { _id: 1 },
       ).lean();
 
       if (existingResponse) {
         return {
-          hasResponded: true,
+          hasResponded: {
+            message: "You already submitted response",
+            responseId: existingResponse._id.toString(),
+            maxScore: existingResponse.maxScore,
+            totalScore: existingResponse.totalScore,
+          },
           trackingMethod: "fingerprint",
           responseId: existingResponse._id.toString(),
           ...baseResult,
@@ -75,12 +82,17 @@ export class RespondentTrackingService {
     if (respondentIP && respondentEmail) {
       const existingResponse = await FormResponse.findOne(
         { formId, respondentIP, respondentEmail },
-        { _id: 1 }
+        { _id: 1 },
       ).lean();
 
       if (existingResponse) {
         return {
-          hasResponded: true,
+          hasResponded: {
+            message: "You already submitted response",
+            responseId: existingResponse._id.toString(),
+            maxScore: existingResponse.maxScore,
+            totalScore: existingResponse.totalScore,
+          },
           trackingMethod: "ip",
           responseId: existingResponse._id.toString(),
           ...baseResult,
@@ -90,7 +102,7 @@ export class RespondentTrackingService {
 
     // No existing response found
     return {
-      hasResponded: false,
+      hasResponded: undefined,
       trackingMethod: "none",
       ...baseResult,
     };
@@ -146,7 +158,7 @@ export class RespondentTrackingService {
 
   static createSubmissionWithTracking(
     baseData: Partial<FormResponseType>,
-    req: Request
+    req: Request,
   ): any {
     const trackingData = this.generateTrackingData(req);
     const hashedIP = hashedPassword(trackingData.ip);

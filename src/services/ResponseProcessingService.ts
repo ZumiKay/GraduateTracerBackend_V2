@@ -14,10 +14,7 @@ import Form, { FormType, returnscore } from "../model/Form.model";
 import SolutionValidationService from "./SolutionValidationService";
 import EmailService from "./EmailService";
 import User from "../model/User.model";
-import { FingerprintService } from "../utilities/fingerprint";
-import { Request } from "express";
 import { RespondentTrackingService } from "./RespondentTrackingService";
-import { hashedPassword } from "../utilities/helper";
 import { CustomRequest } from "../types/customType";
 
 interface ValidateResultReturnType {
@@ -28,6 +25,8 @@ interface ValidateResultReturnType {
 interface AddScoreReturnType {
   response: Array<ResponseSetType>;
   isNonScore?: boolean;
+  isNeedManuallyScore?: boolean;
+  hasUnansweredScoredQuestion?: boolean;
 }
 
 export interface ProcessNormalFormSubmissionType extends FormResponseType {
@@ -36,7 +35,7 @@ export interface ProcessNormalFormSubmissionType extends FormResponseType {
 
 export class ResponseProcessingService {
   static async processNormalFormSubmission(
-    responseData: ProcessNormalFormSubmissionType
+    responseData: ProcessNormalFormSubmissionType,
   ) {
     const { formId, responseset, respondentEmail, respondentName } =
       responseData;
@@ -69,7 +68,7 @@ export class ResponseProcessingService {
 
     contents.forEach((question) => {
       const response = responseset.find(
-        (i) => i.question === question._id.toString()
+        (i) => i.question === question._id.toString(),
       );
 
       //Verify required question
@@ -77,7 +76,7 @@ export class ResponseProcessingService {
         if (
           !response ||
           SolutionValidationService.isAnswerisempty(
-            response.response as ResponseAnswerType
+            response.response as ResponseAnswerType,
           )
         )
           throw new Error("Require");
@@ -89,7 +88,7 @@ export class ResponseProcessingService {
       const toverify = SolutionValidationService.validateAnswerFormat(
         question.type,
         response.response as ResponseAnswerType,
-        question
+        question,
       );
 
       if (!toverify.isValid) throw new Error("Format");
@@ -119,9 +118,16 @@ export class ResponseProcessingService {
     };
   }
 
+  /** Process Quiz Type Form
+   * @description
+   * - Validate Responses
+   * - Add Score
+   * - Send Copy of Response
+   * - Save Response to DB
+   */
   static async processFormSubmission(
     submissionData: Partial<FormResponseType>,
-    form: FormType
+    form: FormType,
   ): Promise<SubmitionProcessionReturnType> {
     const { formId, responseset, respondentEmail, respondentName } =
       submissionData;
@@ -136,13 +142,13 @@ export class ResponseProcessingService {
 
     //Verify if user alr respond for single response form
     if (form.setting?.submitonce) {
-      const hasResponse = await FormResponse.findOne({
-        respondentEmail,
-        formId,
-      });
+      const trackingResult =
+        await RespondentTrackingService.checkRespondentExists(
+          submissionData as Partial<ProcessNormalFormSubmissionType>,
+        );
 
-      if (hasResponse) {
-        throw new Error("Form already exisited");
+      if (trackingResult.hasResponded) {
+        throw new Error("Form already submitted");
       }
     }
 
@@ -160,18 +166,22 @@ export class ResponseProcessingService {
     let isNonScore = false;
 
     // Auto-score
+    let hasUnansweredScoredQuestion = false;
+
     if (form.setting?.returnscore === returnscore.partial) {
       const addscore = await this.addScore(responseset);
       isAutoScored = true;
       // Check if all questions have no score
       isNonScore = addscore.isNonScore || false;
+      hasUnansweredScoredQuestion =
+        addscore.hasUnansweredScoredQuestion || false;
       scoredResponses = addscore.response;
     } else {
       const contents = await Content.find({ formId: formId }).lean();
 
       contents.forEach((question) => {
         const response = responseset?.find((i) =>
-          question._id.equals(i.question as never)
+          question._id.equals(i.question as never),
         );
 
         //Verify required question
@@ -179,7 +189,7 @@ export class ResponseProcessingService {
           if (
             !response ||
             SolutionValidationService.isAnswerisempty(
-              response.response as ResponseAnswerType
+              response.response as ResponseAnswerType,
             )
           )
             throw new Error("Require");
@@ -191,25 +201,22 @@ export class ResponseProcessingService {
         const toverify = SolutionValidationService.validateAnswerFormat(
           question.type,
           response.response as ResponseAnswerType,
-          question
+          question,
         );
 
         if (!toverify.isValid) throw new Error("Format");
       });
     }
 
-    // Calculate total score
     totalScore =
       SolutionValidationService.calcualteResponseTotalScore(scoredResponses);
 
-    // Determine completion status based on auto-scoring and scoring method
     let completionStatus = ResponseCompletionStatus.submitted;
     if (isNonScore) {
       completionStatus = ResponseCompletionStatus.noscore;
     } else if (isAutoScored) {
-      // Check if there are any manual scoring responses
       const hasManualScoring = scoredResponses.some(
-        (i) => i.scoringMethod === ScoringMethod.MANUAL
+        (i) => i.scoringMethod === ScoringMethod.MANUAL,
       );
       completionStatus = hasManualScoring
         ? ResponseCompletionStatus.partial
@@ -227,6 +234,10 @@ export class ResponseProcessingService {
       respondentType: user ? RespondentType.user : RespondentType.guest,
       respondentEmail: user ? user.email : respondentEmail,
       respondentName: respondentName,
+      respondentFingerprint: submissionData.respondentFingerprint,
+      deviceInfo: submissionData.deviceInfo,
+      respondentIP: submissionData.respondentIP,
+      fingerprintStrength: submissionData.fingerprintStrength,
       userId: user?._id,
     };
 
@@ -252,9 +263,22 @@ export class ResponseProcessingService {
       }
     }
 
-    const isHavePartialScore =
-      scoredResponses.some((i) => i.scoringMethod === ScoringMethod.MANUAL) ||
-      isNonScore;
+    const isHavePartialScore = scoredResponses.some(
+      (i) => i.scoringMethod === ScoringMethod.MANUAL,
+    );
+
+    let message: string;
+    if (!isAutoScored) {
+      message = "Score will be return by form owner";
+    } else if (isHavePartialScore && hasUnansweredScoredQuestion) {
+      message =
+        "Some questions were left unanswered and could not be auto-scored. This is not your final score — the form owner will review and complete your score.";
+    } else if (isHavePartialScore) {
+      message =
+        "Totalscore is partial only might change when form owner return your score.";
+    } else {
+      message = "This your final score";
+    }
 
     return {
       isNonScore,
@@ -262,23 +286,20 @@ export class ResponseProcessingService {
       respondentEmail,
       responseId: savedResponse._id.toString(),
       maxScore: form.totalscore || 0,
-      message: !isAutoScored
-        ? "Score will be return by form owner"
-        : isHavePartialScore
-        ? "Totalscore is partial only might change when form owner return your score."
-        : "This your final score",
+      message,
+      hasUnansweredScoredQuestion,
     };
   }
 
   /**
    *Add Score Method
-   *@Feature
+   *@description
    * - Verify answer format
-   * - If all question have no score return isNonScore
+   * - All questions must have score and answer key to autoscored else isNonScore will be true
    * - Only avaliable if form returntype is PARTIAL
    */
   static async addScore(
-    response: Array<ResponseSetType>
+    response: Array<ResponseSetType>,
   ): Promise<AddScoreReturnType> {
     if (response.length === 0) {
       return { response };
@@ -297,12 +318,13 @@ export class ResponseProcessingService {
 
       let result: Array<ResponseSetType> = [];
       let hasAnyScore = false;
+      let hasUnansweredScoredQuestion = false;
 
       //Scoring process
       for (let i = 0; i < content.length; i++) {
         const question = content[i];
         const userresponse = response.find((resp) =>
-          question._id.equals(resp.question as string)
+          question._id.equals(resp.question as string),
         );
 
         if (!userresponse) {
@@ -314,22 +336,28 @@ export class ResponseProcessingService {
           if (
             !userresponse ||
             SolutionValidationService.isAnswerisempty(
-              userresponse.response as ResponseAnswerType
+              userresponse.response as ResponseAnswerType,
             )
           ) {
             throw new Error("Require");
           }
         }
 
-        //Verify answer format and validity
-        const isVerify = SolutionValidationService.validateAnswerFormat(
-          question.type,
+        const isEmpty = SolutionValidationService.isAnswerisempty(
           userresponse.response as ResponseAnswerType,
-          question
         );
 
-        if (!isVerify.isValid) {
-          throw new Error(isVerify.errors.join("||"));
+        // Only validate format when there is an answer
+        if (!isEmpty) {
+          const isVerify = SolutionValidationService.validateAnswerFormat(
+            question.type,
+            userresponse.response as ResponseAnswerType,
+            question,
+          );
+
+          if (!isVerify.isValid) {
+            throw new Error(isVerify.errors.join("||"));
+          }
         }
 
         const maxScore = question.score || 0;
@@ -339,14 +367,22 @@ export class ResponseProcessingService {
           hasAnyScore = true;
         }
 
+        if (isEmpty && maxScore > 0 && question.answer?.answer) {
+          hasUnansweredScoredQuestion = true;
+          result.push({
+            ...userresponse,
+            score: 0,
+            scoringMethod: ScoringMethod.MANUAL,
+          });
+        }
         //Automically Score All Scoreable Questions
-        if (question.answer && question.answer?.answer) {
+        else if (!isEmpty && question.answer && question.answer?.answer) {
           const partialScored =
             SolutionValidationService.calculateResponseScore(
               userresponse.response as ResponseAnswerType,
               question.answer.answer,
               question.type,
-              maxScore
+              maxScore,
             );
 
           result.push({
@@ -365,10 +401,18 @@ export class ResponseProcessingService {
 
       // isNonScore is true when NO questions have scores (all maxScore = 0)
       const isNonScore = !hasAnyScore;
-      return { response: result, isNonScore };
+      const isNeedManuallyScore = result.some(
+        (i) => i.scoringMethod === ScoringMethod.MANUAL,
+      );
+      return {
+        response: result,
+        isNonScore,
+        isNeedManuallyScore,
+        hasUnansweredScoredQuestion,
+      };
     } catch (error) {
       console.error("AddScore Error:", error);
-      return { response };
+      throw error;
     }
   }
 
@@ -381,16 +425,14 @@ export class ResponseProcessingService {
       throw new Error("Invalid scores data");
     }
 
-    // Find response - not using lean() to maintain _id on subdocuments
     const response = await FormResponse.findById(responseId).select(
-      "responseset totalScore maxScore formId"
+      "responseset totalScore maxScore formId",
     );
 
     if (!response) {
       throw new Error("Response not found");
     }
 
-    // Create a map for efficient lookup
     const [questionScoreMap, questionCommentMap] = [
       new Map(scores.map((s) => [s.questionId.toString(), s.score])),
       new Map(scores.map((c) => [c.questionId.toString(), c.comment])),
@@ -399,7 +441,6 @@ export class ResponseProcessingService {
     let updatedTotalScore = 0;
     let updatedCount = 0;
 
-    // Update scores and comment in the responseset array
     response.responseset.forEach((responseItem) => {
       const questionId =
         typeof responseItem.question === "string"
@@ -429,11 +470,9 @@ export class ResponseProcessingService {
       };
     }
 
-    // Update totalScore and completionStatus
     response.totalScore = updatedTotalScore;
     response.completionStatus = ResponseCompletionStatus.completed;
 
-    // Save all changes in a single operation with optimized write concern
     await response.save({ validateBeforeSave: false });
 
     return {
@@ -443,23 +482,19 @@ export class ResponseProcessingService {
     };
   }
 
-  /**
-   * Batch update scores for multiple responses
-   * More efficient when updating multiple responses at once
-   */
   static async batchUpdateResponseScores(
     updates: Array<{
       responseId: string;
       scores: Array<{ questionId: string; score: number }>;
-    }>
+    }>,
   ) {
     const results = await Promise.allSettled(
       updates.map((update) =>
         this.updateResponseScores({
           responseId: update.responseId,
           scores: update.scores,
-        })
-      )
+        }),
+      ),
     );
 
     const successful = results.filter((r) => r.status === "fulfilled").length;
@@ -479,13 +514,9 @@ export class ResponseProcessingService {
     };
   }
 
-  /**
-   * Recalculate total score for a response
-   * Useful for fixing inconsistencies or after data migration
-   */
   static async recalculateResponseTotalScore(responseId: string) {
     const response = await FormResponse.findById(responseId).select(
-      "responseset totalScore"
+      "responseset totalScore",
     );
 
     if (!response) {
@@ -494,7 +525,7 @@ export class ResponseProcessingService {
 
     const calculatedTotal = response.responseset.reduce(
       (sum, item) => sum + (item.score || 0),
-      0
+      0,
     );
 
     if (calculatedTotal !== response.totalScore) {
@@ -529,7 +560,7 @@ export class ResponseProcessingService {
     return keysA.every(
       (key) =>
         Object.prototype.hasOwnProperty.call(b, key) &&
-        this.deepEqual(a[key], b[key])
+        this.deepEqual(a[key], b[key]),
     );
   }
 
@@ -547,7 +578,7 @@ export class ResponseProcessingService {
     for (let i = 0; i < responseSet.length; i++) {
       const response = responseSet[i];
       const question = questionSet.find(
-        (i) => i._id?.toString() === response.question.toString()
+        (i) => i._id?.toString() === response.question.toString(),
       );
 
       //If one of the response question is not found in the question set, return error reponse should alway have response question
@@ -584,7 +615,7 @@ export class ResponseProcessingService {
 
   private static validateResponseType(
     response: ResponseSetType,
-    question: ContentType
+    question: ContentType,
   ): ValidateResultReturnType | boolean {
     const { type } = question;
     const responseValue = response.response;
@@ -635,7 +666,8 @@ export class ResponseProcessingService {
           !Array.isArray(responseValue) ||
           responseValue.length !== 2 ||
           !responseValue.every(
-            (val) => typeof val === "string" || (val && typeof val === "object")
+            (val) =>
+              typeof val === "string" || (val && typeof val === "object"),
           )
         ) {
           return {
@@ -678,18 +710,15 @@ export class ResponseProcessingService {
   }): Promise<ValidateResultReturnType | boolean> {
     const { formId, responseset } = submissionData;
 
-    // Check if form exists
     const form = await Form.findById(formId);
     if (!form) {
       return { errormess: "Form not found" };
     }
 
-    // Check if form accepts responses
     if (!form.setting?.acceptResponses) {
       return { errormess: "Form is no longer accepting responses" };
     }
 
-    // Get form questions
     const questions = await Content.find({ formId }).lean();
     if (!questions || questions.length === 0) {
       return { errormess: "No questions found for this form" };
@@ -704,13 +733,10 @@ export class ResponseProcessingService {
     return validationResult;
   }
 
-  /**
-   * Checks if a response already exists for a user/form combination
-   */
   static async checkExistingResponse(
     formId: string,
     userId?: string,
-    guestEmail?: string
+    guestEmail?: string,
   ): Promise<any> {
     const query: any = { formId };
 
@@ -725,20 +751,14 @@ export class ResponseProcessingService {
     return await FormResponse.findOne(query).lean();
   }
 
-  /**
-   * Calculates the maximum possible score for a form
-   */
   static async getFormMaxScore(formId: string): Promise<number> {
     const questions = await Content.find({ formId }).select("score").lean();
     return questions.reduce(
       (total, question) => total + (question.score || 0),
-      0
+      0,
     );
   }
 
-  /**
-   * Gets response statistics for a specific form
-   */
   static async getResponseStatistics(formId: string) {
     const totalResponses = await FormResponse.countDocuments({ formId });
     const completedResponses = await FormResponse.countDocuments({

@@ -32,26 +32,6 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-var __rest = (this && this.__rest) || function (s, e) {
-    var t = {};
-    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
-        t[p] = s[p];
-    if (s != null && typeof Object.getOwnPropertySymbols === "function")
-        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
-            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
-                t[p[i]] = s[p[i]];
-        }
-    return t;
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -62,71 +42,72 @@ const Content_model_1 = __importDefault(require("../../model/Content.model"));
 const Form_model_1 = __importDefault(require("../../model/Form.model"));
 const mongoose_1 = __importStar(require("mongoose"));
 class QuestionController {
-    constructor() {
-        this.comparisonCache = new Map();
-        this.CACHE_SIZE_LIMIT = 1000;
-        /**
-         * Save Question Handler
-         *
-         * Features:
-         * - Question creation and update
-         * - Conditional question processing
-         * - Score calculation
-         * - Automatic cleanup of deleted questions
-         */
-        this.SaveQuestion = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            try {
-                const payload = req.body;
-                // Step 1: Validate request
-                const validationError = this.validateSaveQuestionPayload(payload);
-                if (validationError) {
-                    return res.status(400).json((0, helper_1.ReturnCode)(400, validationError));
-                }
-                const { formId, page } = payload;
-                let { data } = payload;
-                // Step 2: Normalize date fields
-                data = this.normalizeDateFields(data);
-                // Step 3: Fetch existing content and check for changes
-                const existingContent = yield this.fetchExistingContent(formId, page);
-                if (this.efficientChangeDetection(existingContent, data)) {
-                    this.logDev("⚡ No changes detected - skipping database operations");
-                    return res.status(200).json((0, helper_1.ReturnCode)(200, "No changes detected"));
-                }
-                // Step 4: Generate IDs for new questions
-                const { questionIdMap, newIds } = this.generateNewQuestionIds(data);
-                // Step 5: Validate child question scores
-                const scoreValidationError = this.validateChildQuestionScores(data, existingContent);
-                if (scoreValidationError) {
-                    return res.status(400).json((0, helper_1.ReturnCode)(400, scoreValidationError));
-                }
-                // Step 6: Build bulk operations for upsert
-                const bulkOps = this.buildBulkOperations(data, questionIdMap, formId, page);
-                // Step 7: Handle deletions
-                const idsToKeep = this.extractIdsToKeep(data);
-                const deleteResult = yield this.handleDeletions(formId, page, idsToKeep, existingContent);
-                // Step 8: Execute all database operations
-                yield this.executeOperations(bulkOps, newIds, formId, deleteResult.operations);
-                // Step 9: Initialize totalscore
-                const form = yield Form_model_1.default.findById(formId).select("totalscore");
-                const isScoreChange = data.some((i) => { var _a; return i.score !== ((_a = existingContent.find((j) => j._id === i._id)) === null || _a === void 0 ? void 0 : _a.score); });
-                if (isScoreChange || !(form === null || form === void 0 ? void 0 : form.totalscore)) {
-                    const computedTotalScore = yield this.calculateFormTotalScore(formId);
-                    yield Form_model_1.default.updateOne({ _id: formId }, { totalscore: computedTotalScore });
-                }
-                // Step 10: Return updated content
-                const updatedContent = yield this.fetchUpdatedContent(formId, page);
-                // Get cumulative question count from previous pages for proper numbering
-                const lastQuestionIdx = yield (0, formHelpers_1.getLastQuestionIdx)(formId, page);
-                return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200, "Saved successfully")), { data: (0, helper_1.AddQuestionNumbering)({
-                        questions: updatedContent,
-                        lastIdx: lastQuestionIdx,
-                    }) }));
+    comparisonCache = new Map();
+    CACHE_SIZE_LIMIT = 1000;
+    /**
+     * Save Question Handler
+     *
+     * Features:
+     * - Question creation and update
+     * - Conditional question processing
+     * - Score calculation
+     * - Automatic cleanup of deleted questions
+     */
+    SaveQuestion = async (req, res) => {
+        try {
+            const payload = req.body;
+            // Step 1: Validate request
+            const validationError = this.validateSaveQuestionPayload(payload);
+            if (validationError) {
+                return res.status(400).json((0, helper_1.ReturnCode)(400, validationError));
             }
-            catch (error) {
-                return this.handleSaveQuestionError(error, res);
+            const { formId, page } = payload;
+            let { data } = payload;
+            // Step 2: Normalize date fields
+            data = this.normalizeDateFields(data);
+            // Step 3: Fetch existing content and check for changes
+            const existingContent = await this.fetchExistingContent(formId, page);
+            if (this.efficientChangeDetection(existingContent, data)) {
+                this.logDev("⚡ No changes detected - skipping database operations");
+                return res.status(200).json((0, helper_1.ReturnCode)(200, "No changes detected"));
             }
-        });
-    }
+            // Step 4: Generate IDs for new questions
+            const { questionIdMap, newIds } = this.generateNewQuestionIds(data);
+            // Step 5: Validate child question scores
+            const scoreValidationError = this.validateChildQuestionScores(data, existingContent);
+            if (scoreValidationError) {
+                return res.status(400).json((0, helper_1.ReturnCode)(400, scoreValidationError));
+            }
+            // Step 6: Build bulk operations for upsert
+            const bulkOps = this.buildBulkOperations(data, questionIdMap, formId, page);
+            // Step 7: Handle deletions
+            const idsToKeep = this.extractIdsToKeep(data);
+            const deleteResult = await this.handleDeletions(formId, page, idsToKeep, existingContent);
+            // Step 8: Execute all database operations
+            await this.executeOperations(bulkOps, newIds, formId, deleteResult.operations);
+            // Step 9: Initialize totalscore
+            const form = await Form_model_1.default.findById(formId).select("totalscore");
+            const isScoreChange = data.some((i) => i.score !== existingContent.find((j) => j._id === i._id)?.score);
+            if (isScoreChange || !form?.totalscore) {
+                const computedTotalScore = await this.calculateFormTotalScore(formId);
+                await Form_model_1.default.updateOne({ _id: formId }, { totalscore: computedTotalScore });
+            }
+            // Step 10: Return updated content
+            const updatedContent = await this.fetchUpdatedContent(formId, page);
+            // Get cumulative question count from previous pages for proper numbering
+            const lastQuestionIdx = await (0, formHelpers_1.getLastQuestionIdx)(formId, page);
+            return res.status(200).json({
+                ...(0, helper_1.ReturnCode)(200, "Saved successfully"),
+                data: (0, helper_1.AddQuestionNumbering)({
+                    questions: updatedContent,
+                    lastIdx: lastQuestionIdx,
+                }),
+            });
+        }
+        catch (error) {
+            return this.handleSaveQuestionError(error, res);
+        }
+    };
     // ==================== Helper Methods for SaveQuestion ====================
     /**
      * Validates the request payload for SaveQuestion
@@ -157,18 +138,16 @@ class QuestionController {
                     rangedate = { start, end };
                 }
             }
-            return Object.assign(Object.assign({}, item), { date, rangedate });
+            return { ...item, date, rangedate };
         });
     }
     /**
      * Fetches existing content from the database
      */
-    fetchExistingContent(formId, page) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return Content_model_1.default.find(Object.assign({ formId }, (page ? { page } : {})), null, {
-                lean: true,
-                maxTimeMS: 5000, //Max timeout (MS)
-            });
+    async fetchExistingContent(formId, page) {
+        return Content_model_1.default.find({ formId, ...(page ? { page } : {}) }, null, {
+            lean: true,
+            maxTimeMS: 5000, //Max timeout (MS)
         });
     }
     /**
@@ -193,12 +172,9 @@ class QuestionController {
         for (const item of data) {
             if (!item.parentcontent || !item.score)
                 continue;
-            const parent = existingContent.find((par) => {
-                var _a, _b, _c;
-                return (((_a = par._id) === null || _a === void 0 ? void 0 : _a.toString()) || par.qIdx) ===
-                    (((_b = item.parentcontent) === null || _b === void 0 ? void 0 : _b.qId) || ((_c = item.parentcontent) === null || _c === void 0 ? void 0 : _c.qIdx));
-            });
-            if ((parent === null || parent === void 0 ? void 0 : parent.score) && item.score > parent.score) {
+            const parent = existingContent.find((par) => (par._id?.toString() || par.qIdx) ===
+                (item.parentcontent?.qId || item.parentcontent?.qIdx));
+            if (parent?.score && item.score > parent.score) {
                 return `Condition of ${parent.qIdx} has wrong score`;
             }
         }
@@ -212,11 +188,10 @@ class QuestionController {
             return undefined;
         return conditional
             .map((cond) => {
-            var _a;
             if (!cond.contentId && cond.contentIdx !== undefined) {
-                const referencedId = ((_a = data[cond.contentIdx]) === null || _a === void 0 ? void 0 : _a._id) || questionIdMap.get(cond.contentIdx);
+                const referencedId = data[cond.contentIdx]?._id || questionIdMap.get(cond.contentIdx);
                 if (referencedId) {
-                    return Object.assign(Object.assign({}, cond), { contentId: referencedId });
+                    return { ...cond, contentId: referencedId };
                 }
             }
             return cond;
@@ -243,7 +218,10 @@ class QuestionController {
                 // Get parent's _id (either existing or newly generated)
                 const parentId = parentQuestion._id || questionIdMap.get(parentIndex);
                 if (parentId) {
-                    return Object.assign(Object.assign({}, parentcontent), { qId: parentId.toString() });
+                    return {
+                        ...parentcontent,
+                        qId: parentId.toString(),
+                    };
                 }
             }
         }
@@ -254,7 +232,7 @@ class QuestionController {
      */
     buildBulkOperations(data, questionIdMap, formId, page) {
         return data.map((item, index) => {
-            const { _id } = item, rest = __rest(item, ["_id"]);
+            const { _id, ...rest } = item;
             const documentId = _id || questionIdMap.get(index);
             const processedConditional = this.processConditionals(rest.conditional, data, questionIdMap);
             const processedParentContent = this.processParentContent(rest.parentcontent, data, questionIdMap);
@@ -262,8 +240,14 @@ class QuestionController {
                 updateOne: {
                     filter: { _id: documentId },
                     update: {
-                        $set: Object.assign(Object.assign({}, rest), { conditional: processedConditional, parentcontent: processedParentContent, formId,
-                            page, updatedAt: new Date() }),
+                        $set: {
+                            ...rest,
+                            conditional: processedConditional,
+                            parentcontent: processedParentContent,
+                            formId,
+                            page,
+                            updatedAt: new Date(),
+                        },
                     },
                     upsert: true,
                     setDefaultsOnInsert: true,
@@ -282,34 +266,35 @@ class QuestionController {
     /**
      * Handles deletion of questions that are no longer in the data
      */
-    handleDeletions(formId, page, idsToKeep, existingContent) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const operations = [];
-            const deletedIds = [];
-            const toBeDeleted = yield Content_model_1.default.find({ formId, page, _id: { $nin: idsToKeep } }, { _id: 1, score: 1, conditional: 1, qIdx: 1, parentcontent: 1 }, { lean: true });
-            if (toBeDeleted.length === 0) {
-                return { operations, deletedIds };
-            }
-            // Collect all IDs to delete (including conditional children)
-            const deleteIds = toBeDeleted.map(({ _id }) => _id);
-            const conditionalIds = toBeDeleted
-                .flatMap((item) => { var _a; return ((_a = item.conditional) === null || _a === void 0 ? void 0 : _a.map((con) => con.contentId)) || []; })
-                .filter(Boolean);
-            const allDeleteIds = [...deleteIds, ...conditionalIds];
-            // Calculate deleted score
-            const deletedScore = toBeDeleted
-                .filter((i) => !i.parentcontent)
-                .reduce((sum, { score = 0 }) => sum + score, 0);
-            // Add delete operations
-            operations.push(Content_model_1.default.deleteMany({ _id: { $in: allDeleteIds } }), Form_model_1.default.updateOne({ _id: formId }, Object.assign({ $pull: { contentIds: { $in: allDeleteIds } } }, (deletedScore && { $inc: { totalscore: -deletedScore } }))), Content_model_1.default.updateMany({ "conditional.contentId": { $in: allDeleteIds } }, { $pull: { conditional: { contentId: { $in: allDeleteIds } } } }));
-            // Update qIdx for remaining questions
-            const deletedIdx = toBeDeleted
-                .map((i) => i.qIdx || 0)
-                .sort((a, b) => a - b);
-            const qIdxUpdateOps = this.buildQIdxUpdateOperations(existingContent, idsToKeep, deletedIdx);
-            operations.push(...qIdxUpdateOps);
-            return { operations, deletedIds: allDeleteIds };
-        });
+    async handleDeletions(formId, page, idsToKeep, existingContent) {
+        const operations = [];
+        const deletedIds = [];
+        const toBeDeleted = await Content_model_1.default.find({ formId, page, _id: { $nin: idsToKeep } }, { _id: 1, score: 1, conditional: 1, qIdx: 1, parentcontent: 1 }, { lean: true });
+        if (toBeDeleted.length === 0) {
+            return { operations, deletedIds };
+        }
+        // Collect all IDs to delete (including conditional children)
+        const deleteIds = toBeDeleted.map(({ _id }) => _id);
+        const conditionalIds = toBeDeleted
+            .flatMap((item) => item.conditional?.map((con) => con.contentId) || [])
+            .filter(Boolean);
+        const allDeleteIds = [...deleteIds, ...conditionalIds];
+        // Calculate deleted score
+        const deletedScore = toBeDeleted
+            .filter((i) => !i.parentcontent)
+            .reduce((sum, { score = 0 }) => sum + score, 0);
+        // Add delete operations
+        operations.push(Content_model_1.default.deleteMany({ _id: { $in: allDeleteIds } }), Form_model_1.default.updateOne({ _id: formId }, {
+            $pull: { contentIds: { $in: allDeleteIds } },
+            ...(deletedScore && { $inc: { totalscore: -deletedScore } }),
+        }), Content_model_1.default.updateMany({ "conditional.contentId": { $in: allDeleteIds } }, { $pull: { conditional: { contentId: { $in: allDeleteIds } } } }));
+        // Update qIdx for remaining questions
+        const deletedIdx = toBeDeleted
+            .map((i) => i.qIdx || 0)
+            .sort((a, b) => a - b);
+        const qIdxUpdateOps = this.buildQIdxUpdateOperations(existingContent, idsToKeep, deletedIdx);
+        operations.push(...qIdxUpdateOps);
+        return { operations, deletedIds: allDeleteIds };
     }
     /**
      * Builds operations to update qIdx after deletions
@@ -330,42 +315,36 @@ class QuestionController {
     /**
      * Executes all database operations in parallel
      */
-    executeOperations(bulkOps, newIds, formId, deleteOperations) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const operations = [...deleteOperations];
-            if (bulkOps.length > 0) {
-                operations.push(Content_model_1.default.bulkWrite(bulkOps, { ordered: false }));
-            }
-            if (newIds.length > 0) {
-                operations.push(Form_model_1.default.updateOne({ _id: formId }, {
-                    $addToSet: { contentIds: { $each: newIds } },
-                    $set: { updatedAt: new Date() },
-                }));
-            }
-            yield Promise.all(operations);
-        });
+    async executeOperations(bulkOps, newIds, formId, deleteOperations) {
+        const operations = [...deleteOperations];
+        if (bulkOps.length > 0) {
+            operations.push(Content_model_1.default.bulkWrite(bulkOps, { ordered: false }));
+        }
+        if (newIds.length > 0) {
+            operations.push(Form_model_1.default.updateOne({ _id: formId }, {
+                $addToSet: { contentIds: { $each: newIds } },
+                $set: { updatedAt: new Date() },
+            }));
+        }
+        await Promise.all(operations);
     }
     /**
      * Updates total score if it has changed
      * Calculates the score difference for current page and applies it to form's totalscore
      */
-    updateTotalScoreIfChanged(data, existingContent, formId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const scoreDiff = this.calculateScoreDifference(data, existingContent);
-            if (scoreDiff !== 0) {
-                yield Form_model_1.default.updateOne({ _id: formId }, { $inc: { totalscore: scoreDiff } });
-            }
-        });
+    async updateTotalScoreIfChanged(data, existingContent, formId) {
+        const scoreDiff = this.calculateScoreDifference(data, existingContent);
+        if (scoreDiff !== 0) {
+            await Form_model_1.default.updateOne({ _id: formId }, { $inc: { totalscore: scoreDiff } });
+        }
     }
     /**
      * Fetches the updated content after save
      */
-    fetchUpdatedContent(formId, page) {
-        return __awaiter(this, void 0, void 0, function* () {
-            return Content_model_1.default.find({ formId, page }, null, {
-                lean: true,
-                sort: { qIdx: 1 },
-            });
+    async fetchUpdatedContent(formId, page) {
+        return Content_model_1.default.find({ formId, page }, null, {
+            lean: true,
+            sort: { qIdx: 1 },
         });
     }
     /**
@@ -389,108 +368,101 @@ class QuestionController {
             console.log(message);
         }
     }
-    DeleteQuestion(req, res) {
-        return __awaiter(this, void 0, void 0, function* () {
-            var _a;
-            try {
-                const { id, formId } = req.body;
-                if (!id || !formId) {
-                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid request payload"));
-                }
-                const tobeDelete = yield Content_model_1.default.findById(id)
-                    .select("conditional score")
-                    .lean();
-                if (!tobeDelete) {
-                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Content not found"));
-                }
-                const conditionalIds = ((_a = tobeDelete.conditional) === null || _a === void 0 ? void 0 : _a.map((con) => con.contentId)) || [];
-                const operations = [
-                    Content_model_1.default.deleteOne({ _id: id }),
-                    Form_model_1.default.updateOne({ _id: formId }, {
-                        $pull: { contentIds: id },
-                        $inc: { totalscore: -(tobeDelete.score || 0) },
-                    }),
-                ];
-                operations.push(Content_model_1.default.updateMany({ "conditional.contentId": id }, { $pull: { conditional: { contentId: id } } }));
-                if (conditionalIds.length > 0) {
-                    operations.push(Content_model_1.default.deleteMany({ _id: { $in: conditionalIds } }), Form_model_1.default.updateOne({ _id: formId }, { $pull: { contentIds: { $in: conditionalIds } } }));
-                }
-                yield Promise.all(operations);
-                return res.status(200).json((0, helper_1.ReturnCode)(200, "Question Deleted"));
+    async DeleteQuestion(req, res) {
+        try {
+            const { id, formId } = req.body;
+            if (!id || !formId) {
+                return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid request payload"));
             }
-            catch (error) {
-                console.error("Delete Question Error:", error);
-                return res
-                    .status(500)
-                    .json((0, helper_1.ReturnCode)(500, "Error occurred while deleting question"));
+            const tobeDelete = await Content_model_1.default.findById(id)
+                .select("conditional score")
+                .lean();
+            if (!tobeDelete) {
+                return res.status(400).json((0, helper_1.ReturnCode)(400, "Content not found"));
             }
-        });
+            const conditionalIds = tobeDelete.conditional?.map((con) => con.contentId) || [];
+            const operations = [
+                Content_model_1.default.deleteOne({ _id: id }),
+                Form_model_1.default.updateOne({ _id: formId }, {
+                    $pull: { contentIds: id },
+                    $inc: { totalscore: -(tobeDelete.score || 0) },
+                }),
+            ];
+            operations.push(Content_model_1.default.updateMany({ "conditional.contentId": id }, { $pull: { conditional: { contentId: id } } }));
+            if (conditionalIds.length > 0) {
+                operations.push(Content_model_1.default.deleteMany({ _id: { $in: conditionalIds } }), Form_model_1.default.updateOne({ _id: formId }, { $pull: { contentIds: { $in: conditionalIds } } }));
+            }
+            await Promise.all(operations);
+            return res.status(200).json((0, helper_1.ReturnCode)(200, "Question Deleted"));
+        }
+        catch (error) {
+            console.error("Delete Question Error:", error);
+            return res
+                .status(500)
+                .json((0, helper_1.ReturnCode)(500, "Error occurred while deleting question"));
+        }
     }
-    GetAllQuestion(req, res) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const { formid, page } = req.query;
-                if (!formid) {
-                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-                }
-                // Validate formid is a valid ObjectId
-                if (!mongoose_1.Types.ObjectId.isValid(formid)) {
-                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
-                }
-                // Build query - if page is provided, filter by page, otherwise get all
-                const query = { formId: new mongoose_1.Types.ObjectId(formid) };
-                if (page !== undefined && page !== null && page !== "") {
-                    const pageNum = Number(page);
-                    if (!isNaN(pageNum) && pageNum > 0) {
-                        query.page = pageNum;
-                    }
-                }
-                const questions = yield Content_model_1.default.find(query)
-                    .select("_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent qIdx")
-                    .lean()
-                    .sort({ page: 1, qIdx: 1 }); // Sort by page first, then by question index
-                if (process.env.NODE_ENV === "DEV") {
-                    console.log("GetAllQuestion:", {
-                        formid,
-                        page,
-                        query,
-                        questionsFound: questions.length,
-                    });
-                }
-                return res.status(200).json(Object.assign(Object.assign({}, (0, helper_1.ReturnCode)(200)), { data: questions }));
+    async GetAllQuestion(req, res) {
+        try {
+            const { formid, page } = req.query;
+            if (!formid) {
+                return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
             }
-            catch (error) {
-                console.error("Get All Question Error:", error);
-                return res
-                    .status(500)
-                    .json((0, helper_1.ReturnCode)(500, "Failed to retrieve questions"));
+            // Validate formid is a valid ObjectId
+            if (!mongoose_1.Types.ObjectId.isValid(formid)) {
+                return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
             }
-        });
+            // Build query - if page is provided, filter by page, otherwise get all
+            const query = { formId: new mongoose_1.Types.ObjectId(formid) };
+            if (page !== undefined && page !== null && page !== "") {
+                const pageNum = Number(page);
+                if (!isNaN(pageNum) && pageNum > 0) {
+                    query.page = pageNum;
+                }
+            }
+            const questions = await Content_model_1.default.find(query)
+                .select("_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent qIdx")
+                .lean()
+                .sort({ page: 1, qIdx: 1 }); // Sort by page first, then by question index
+            if (process.env.NODE_ENV === "DEV") {
+                console.log("GetAllQuestion:", {
+                    formid,
+                    page,
+                    query,
+                    questionsFound: questions.length,
+                });
+            }
+            return res.status(200).json({ ...(0, helper_1.ReturnCode)(200), data: questions });
+        }
+        catch (error) {
+            console.error("Get All Question Error:", error);
+            return res
+                .status(500)
+                .json((0, helper_1.ReturnCode)(500, "Failed to retrieve questions"));
+        }
     }
-    SaveSolution(req, res) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const data = req.body;
-                if (!data || data.length === 0) {
-                    return res
-                        .status(400)
-                        .json((0, helper_1.ReturnCode)(400, "No solution data provided"));
-                }
-                // Save answer key
-                yield Form_model_1.default.bulkWrite(data.map((solution) => ({
-                    updateOne: {
-                        filter: { _id: solution._id },
-                        update: { $set: { answer: solution } },
-                        upsert: true,
-                    },
-                })));
-                return res.status(200).json((0, helper_1.ReturnCode)(200, "Solution Saved"));
+    async SaveSolution(req, res) {
+        try {
+            const data = req.body;
+            if (!data || data.length === 0) {
+                return res
+                    .status(400)
+                    .json((0, helper_1.ReturnCode)(400, "No solution data provided"));
             }
-            catch (error) {
-                console.log("Save Solution", error);
-                return res.status(500).json((0, helper_1.ReturnCode)(500));
-            }
-        });
+            // Save answer key
+            await Form_model_1.default.bulkWrite(data.map((solution) => ({
+                updateOne: {
+                    filter: { _id: solution._id },
+                    update: { $set: { answer: solution } },
+                    upsert: true,
+                },
+            })));
+            return res.status(200).json((0, helper_1.ReturnCode)(200, "Solution Saved"));
+        }
+        catch (error) {
+            console.log("Save Solution", error);
+            return res.status(500).json((0, helper_1.ReturnCode)(500));
+        }
     }
     convertStringToDate(val) {
         const date = new Date(val);
@@ -516,7 +488,7 @@ class QuestionController {
             }
         }
         for (const incomingItem of incoming) {
-            const { _id } = incomingItem, incomingData = __rest(incomingItem, ["_id"]);
+            const { _id, ...incomingData } = incomingItem;
             if (!_id) {
                 if (process.env.NODE_ENV === "DEV") {
                     console.log("⚡ New item detected without ID");
@@ -530,7 +502,7 @@ class QuestionController {
                 }
                 return false;
             }
-            const { _id: existingId, createdAt, updatedAt } = existingItem, existingData = __rest(existingItem, ["_id", "createdAt", "updatedAt"]);
+            const { _id: existingId, createdAt, updatedAt, ...existingData } = existingItem;
             if (!this.deepEqual(existingData, incomingData)) {
                 return false;
             }
@@ -551,15 +523,14 @@ class QuestionController {
         return result;
     }
     generateCacheKey(obj1, obj2) {
-        var _a, _b;
         try {
             const type1 = typeof obj1;
             const type2 = typeof obj2;
             const isArray1 = Array.isArray(obj1);
             const isArray2 = Array.isArray(obj2);
-            return `${type1}_${type2}_${isArray1}_${isArray2}_${((_a = obj1 === null || obj1 === void 0 ? void 0 : obj1.constructor) === null || _a === void 0 ? void 0 : _a.name) || "none"}_${((_b = obj2 === null || obj2 === void 0 ? void 0 : obj2.constructor) === null || _b === void 0 ? void 0 : _b.name) || "none"}`;
+            return `${type1}_${type2}_${isArray1}_${isArray2}_${obj1?.constructor?.name || "none"}_${obj2?.constructor?.name || "none"}`;
         }
-        catch (_c) {
+        catch {
             return `fallback_${Math.random()}`;
         }
     }
@@ -614,7 +585,7 @@ class QuestionController {
                     return str1 === str2;
                 }
             }
-            catch (_a) {
+            catch {
                 // Not ObjectIds, continue with regular comparison
             }
         }
@@ -647,11 +618,9 @@ class QuestionController {
      * Fetches all content from the database and calculates total
      * Excludes conditional/child questions to avoid double counting
      */
-    calculateFormTotalScore(formId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const allContent = yield Content_model_1.default.find({ formId, parentcontent: { $exists: false } }, { score: 1 }, { lean: true });
-            return allContent.reduce((total, { score = 0 }) => total + score, 0);
-        });
+    async calculateFormTotalScore(formId) {
+        const allContent = await Content_model_1.default.find({ formId, parentcontent: { $exists: false } }, { score: 1 }, { lean: true });
+        return allContent.reduce((total, { score = 0 }) => total + score, 0);
     }
     /**
      * Calculate the difference in score between incoming and existing content

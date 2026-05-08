@@ -62,7 +62,7 @@ export class SolutionValidationService {
    */
   static validateContent(
     content: ContentType,
-    parentScore?: number
+    parentScore?: number,
   ): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -121,7 +121,7 @@ export class SolutionValidationService {
       const answerValidation = this.validateAnswerFormat(
         content.type,
         content.answer.answer,
-        content
+        content,
       );
       if (!answerValidation.isValid) {
         errors.push(...answerValidation.errors);
@@ -139,7 +139,7 @@ export class SolutionValidationService {
           errors.push(`Required ${questionTitle} must have scores`);
       } else {
         errors.push(
-          `Required ${questionTitle} must have both answer and score`
+          `Required ${questionTitle} must have both answer and score`,
         );
       }
     }
@@ -160,10 +160,31 @@ export class SolutionValidationService {
     };
   }
 
+  /**
+   * Normalizes a choice answer to a plain number array.
+   * Handles both Array<number> and {key: number | number[], val: ...} (ResponseAnswerReturnType) formats.
+   */
+  private static normalizeChoiceAnswer(
+    answer: ResponseAnswerType,
+  ): number[] | null {
+    if (Array.isArray(answer)) return answer as number[];
+    if (
+      answer !== null &&
+      typeof answer === "object" &&
+      !Array.isArray(answer) &&
+      "key" in (answer as object)
+    ) {
+      const key = (answer as unknown as { key: number | number[] }).key;
+      if (Array.isArray(key)) return key as number[];
+      if (typeof key === "number") return [key];
+    }
+    return null;
+  }
+
   static validateAnswerFormat(
     questionType: QuestionType,
     answer: ResponseAnswerType,
-    content: ContentType
+    content: ContentType,
   ): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
 
@@ -171,7 +192,7 @@ export class SolutionValidationService {
       case QuestionType.MultipleChoice:
       case QuestionType.Selection:
       case QuestionType.CheckBox:
-        if (!Array.isArray(answer)) {
+        if (this.normalizeChoiceAnswer(answer) === null) {
           errors.push(`Choice Question ${content.qIdx} have invalid answer`);
         }
         break;
@@ -187,7 +208,7 @@ export class SolutionValidationService {
       case QuestionType.Number:
         if (typeof answer !== "number") {
           errors.push(
-            `Question ${content.qIdx} number answer must be a number`
+            `Question ${content.qIdx} number answer must be a number`,
           );
         }
         break;
@@ -202,7 +223,7 @@ export class SolutionValidationService {
         {
           if (!this.isValidRangeObject(answer)) {
             errors.push(
-              "Range date answer must have valid start and end dates"
+              "Range date answer must have valid start and end dates",
             );
           }
 
@@ -222,7 +243,7 @@ export class SolutionValidationService {
             typeof localAnswer.end !== "number"
           ) {
             errors.push(
-              "Range number answer must have valid start and end numbers"
+              "Range number answer must have valid start and end numbers",
             );
           }
           if (!isRangeValueValid(localAnswer)) {
@@ -317,7 +338,7 @@ export class SolutionValidationService {
 
       //Validate question with condition
       const parentScore = contents.find(
-        (ques) => ques._id.toString() === content.parentcontent?.qId
+        (ques) => ques._id.toString() === content.parentcontent?.qId,
       )?.score;
       const result = this.validateContent(content, parentScore);
       validationResults.push(result);
@@ -332,7 +353,7 @@ export class SolutionValidationService {
     }
 
     const scorableQuestions = contents.filter(
-      (content) => content.type !== QuestionType.Text
+      (content) => content.type !== QuestionType.Text,
     );
 
     const canReturnScoreAutomatically =
@@ -369,7 +390,7 @@ export class SolutionValidationService {
 
     if (summary.totalInvalidQuestions > 0) {
       errors.push(
-        `${summary.totalInvalidQuestions} question(s) have validation errors`
+        `${summary.totalInvalidQuestions} question(s) have validation errors`,
       );
     }
 
@@ -386,7 +407,7 @@ export class SolutionValidationService {
     return errors;
   }
   static calcualteResponseTotalScore(
-    responseSet: Array<ResponseSetType>
+    responseSet: Array<ResponseSetType>,
   ): number {
     let totalscore = 0;
 
@@ -409,7 +430,7 @@ export class SolutionValidationService {
     userAnswer: ResponseAnswerType,
     correctAnswer: ResponseAnswerType,
     questionType: QuestionType,
-    maxScore: number
+    maxScore: number,
   ): number {
     if (!correctAnswer || maxScore === 0) return 0;
 
@@ -420,10 +441,13 @@ export class SolutionValidationService {
       case QuestionType.MultipleChoice:
       case QuestionType.CheckBox:
       case QuestionType.Selection: {
+        const normalizedUser = this.normalizeChoiceAnswer(userAnswer);
+        const normalizedCorrect = this.normalizeChoiceAnswer(correctAnswer);
+        if (!normalizedUser || !normalizedCorrect) return 0;
         return this.calculateChoiceQuestionScore(
-          userAnswer as Array<number>,
-          correctAnswer as Array<number>,
-          maxScore
+          normalizedUser,
+          normalizedCorrect,
+          maxScore,
         );
       }
 
@@ -432,7 +456,7 @@ export class SolutionValidationService {
         return this.calculateTextScore(
           userAnswer as string,
           correctAnswer as string,
-          maxScore
+          maxScore,
         );
 
       case QuestionType.Number:
@@ -442,7 +466,7 @@ export class SolutionValidationService {
         return this.calculateDateScore(
           userAnswer as string,
           correctAnswer as string,
-          maxScore
+          maxScore,
         );
 
       case QuestionType.RangeDate:
@@ -460,7 +484,7 @@ export class SolutionValidationService {
   private static calculateChoiceQuestionScore(
     userAnswer: number[],
     correctAnswer: number[],
-    maxScore: number
+    maxScore: number,
   ): number {
     //Verify answer format
     if (!Array.isArray(userAnswer) || !Array.isArray(correctAnswer)) return 0;
@@ -489,7 +513,7 @@ export class SolutionValidationService {
   private static calculateTextScore(
     userAnswer: string,
     correctAnswer: string,
-    maxScore: number
+    maxScore: number,
   ): number {
     if (typeof userAnswer !== "string" || typeof correctAnswer !== "string")
       return 0;
@@ -509,7 +533,7 @@ export class SolutionValidationService {
   private static calculateDateScore(
     userAnswer: string,
     correctAnswer: string,
-    maxScore: number
+    maxScore: number,
   ): number {
     const userDate = new Date(userAnswer);
     const correctDate = new Date(correctAnswer);
@@ -525,7 +549,7 @@ export class SolutionValidationService {
   private static calculateRangeScore(
     userAnswer: any,
     correctAnswer: any,
-    maxScore: number
+    maxScore: number,
   ): number {
     if (
       !this.isValidRangeObject(userAnswer) ||
@@ -533,12 +557,10 @@ export class SolutionValidationService {
     )
       return 0;
 
-    const userStart = new Date(userAnswer.start).getTime() || userAnswer.start;
-    const userEnd = new Date(userAnswer.end).getTime() || userAnswer.end;
-    const correctStart =
-      new Date(correctAnswer.start).getTime() || correctAnswer.start;
-    const correctEnd =
-      new Date(correctAnswer.end).getTime() || correctAnswer.end;
+    const userStart = userAnswer.start;
+    const userEnd = userAnswer.end;
+    const correctStart = correctAnswer.start;
+    const correctEnd = correctAnswer.end;
 
     return userStart === correctStart && userEnd === correctEnd ? maxScore : 0;
   }

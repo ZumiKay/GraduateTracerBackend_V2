@@ -2,7 +2,6 @@ import { z } from "zod";
 import Content, { ContentType, QuestionType } from "../../model/Content.model";
 import { Request, Response } from "express";
 import { ReturnCode } from "../../utilities/helper";
-import { MongoErrorHandler } from "../../utilities/MongoErrorHandler";
 import Form from "../../model/Form.model";
 import SolutionValidationService from "../../services/SolutionValidationService";
 
@@ -26,7 +25,6 @@ interface AddFormContentType {
 
 export async function AddFormContent(req: Request, res: Response) {
   const data = req.body as AddFormContentType;
-  const operationId = MongoErrorHandler.generateOperationId("add_content");
 
   try {
     const AddContent = await Content.create(data.contents);
@@ -36,7 +34,7 @@ export async function AddFormContent(req: Request, res: Response) {
     //Assign to form
     const updateForm = await Form.updateOne(
       { _id: data.formId },
-      { contentIds: AddedContentIds }
+      { contentIds: AddedContentIds },
     );
     if (updateForm.modifiedCount === 0) {
       return res.status(404).json(ReturnCode(404, "Form not found"));
@@ -44,22 +42,13 @@ export async function AddFormContent(req: Request, res: Response) {
 
     return res.status(201).json(ReturnCode(201, "Form Updated"));
   } catch (error) {
-    console.error(`[${operationId}] Add Form Content error:`, error);
-
-    const mongoErrorHandled = MongoErrorHandler.handleMongoError(error, res, {
-      operationId,
-      customMessage: "Failed to add content to form",
-    });
-
-    if (!mongoErrorHandled.handled) {
-      return res.status(500).json(ReturnCode(500));
-    }
+    return res.status(500).json(ReturnCode(500));
   }
 }
 
 export async function EditFormContent(
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<Response> {
   const { contents } = req.body as AddFormContentType;
   try {
@@ -86,7 +75,7 @@ export async function EditFormContent(
       {
         new: true, // Return the updated document
         runValidators: true, // Run schema validations
-      }
+      },
     );
 
     // Check if the content was found and updated
@@ -124,7 +113,7 @@ export async function DeleteContent(req: Request, res: Response) {
     if (formId) {
       await Form.updateOne(
         { _id: formId },
-        { $pull: { contentIds: id } } // Remove the ID from the contentIds array
+        { $pull: { contentIds: id } }, // Remove the ID from the contentIds array
       );
     }
 
@@ -143,12 +132,10 @@ export async function ValidateFormContent(req: Request, res: Response) {
   }
 
   try {
-    const validationSummary = await SolutionValidationService.validateForm(
-      formId
-    );
-    const errors = await SolutionValidationService.getFormValidationErrors(
-      formId
-    );
+    const validationSummary =
+      await SolutionValidationService.validateForm(formId);
+    const errors =
+      await SolutionValidationService.getFormValidationErrors(formId);
 
     return res.status(200).json({
       ...ReturnCode(200),

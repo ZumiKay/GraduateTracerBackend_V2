@@ -33,7 +33,6 @@ const canTypeBeAutoScored = (type) => {
  * 2. It has both a score value and an answer key defined
  */
 const isQuestionAutoScorable = (question) => {
-    var _a;
     // Check if question type supports auto-scoring
     if (!canTypeBeAutoScored(question.type)) {
         return false;
@@ -43,7 +42,7 @@ const isQuestionAutoScorable = (question) => {
         return false;
     }
     // Must have an answer key defined
-    if (!((_a = question.answer) === null || _a === void 0 ? void 0 : _a.answer)) {
+    if (!question.answer?.answer) {
         return false;
     }
     return true;
@@ -53,14 +52,13 @@ const isQuestionAutoScorable = (question) => {
  * Only returns true for questions that don't have answer keys set
  */
 const isQuestionManualGrading = (question) => {
-    var _a;
     // Display only types are never graded
     if (DISPLAY_ONLY_TYPES.has(question.type)) {
         return false;
     }
     // ShortAnswer and Paragraph require manual grading only if they don't have answer keys
     if (CONDITIONALLY_AUTO_SCORABLE_TYPES.has(question.type)) {
-        return !((_a = question.answer) === null || _a === void 0 ? void 0 : _a.answer) && !!question.score && question.score > 0;
+        return !question.answer?.answer && !!question.score && question.score > 0;
     }
     return false;
 };
@@ -92,25 +90,19 @@ const getFormScoringAnalysis = ({ questions, }) => {
     const autoScorableQuestions = scoredQuestions.filter(isQuestionAutoScorable);
     const manualGradingQuestions = questions.filter(isQuestionManualGrading);
     const missingAnswerKeys = scoredQuestions
-        .filter((q) => { var _a; return canTypeBeAutoScored(q.type) && !((_a = q.answer) === null || _a === void 0 ? void 0 : _a.answer); })
-        .map((q) => {
-        var _a;
-        return ({
-            qIdx: q.qIdx,
-            title: typeof q.title === "string" ? q.title : ((_a = q.title) === null || _a === void 0 ? void 0 : _a.text) || "",
-            type: q.type,
-        });
-    });
+        .filter((q) => canTypeBeAutoScored(q.type) && !q.answer?.answer)
+        .map((q) => ({
+        qIdx: q.qIdx,
+        title: typeof q.title === "string" ? q.title : q.title?.text || "",
+        type: q.type,
+    }));
     const unsupportedTypes = scoredQuestions
         .filter((q) => !canTypeBeAutoScored(q.type))
-        .map((q) => {
-        var _a;
-        return ({
-            qIdx: q.qIdx,
-            title: typeof q.title === "string" ? q.title : ((_a = q.title) === null || _a === void 0 ? void 0 : _a.text) || "",
-            type: q.type,
-        });
-    });
+        .map((q) => ({
+        qIdx: q.qIdx,
+        title: typeof q.title === "string" ? q.title : q.title?.text || "",
+        type: q.type,
+    }));
     return {
         isAutoScoreable: scoredQuestions.length > 0 &&
             scoredQuestions.every(isQuestionAutoScorable),

@@ -224,7 +224,7 @@ const ContentSchema = new Schema<ContentType>(
       default: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 //Pre-save middleware to update form total score
