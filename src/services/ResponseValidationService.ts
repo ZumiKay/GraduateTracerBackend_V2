@@ -43,7 +43,7 @@ export interface RespondentCheckOptions {
 export class ResponseValidationService {
   static async hasRespondent(
     formId: string,
-    options: RespondentCheckOptions
+    options: RespondentCheckOptions,
   ): Promise<RespondentCheckResult> {
     try {
       const {
@@ -114,7 +114,7 @@ export class ResponseValidationService {
           respondentIP: ipAddress,
         })
           .select(
-            "_id submittedAt respondentFingerprint respondentIP fingerprintStrength"
+            "_id submittedAt respondentFingerprint respondentIP fingerprintStrength",
           )
           .lean();
 
@@ -149,7 +149,7 @@ export class ResponseValidationService {
           respondentFingerprint: fingerprint,
         })
           .select(
-            "_id submittedAt respondentFingerprint respondentIP fingerprintStrength"
+            "_id submittedAt respondentFingerprint respondentIP fingerprintStrength",
           )
           .lean();
 
@@ -214,7 +214,7 @@ export class ResponseValidationService {
       throw new Error(
         `Failed to check respondent status: ${
           error instanceof Error ? error.message : "Unknown error"
-        }`
+        }`,
       );
     }
   }
@@ -222,10 +222,10 @@ export class ResponseValidationService {
   static async hasRespondentResponse(
     formId: string,
     fingerprint: string,
-    respondentIp: string
+    respondentIp: string,
   ): Promise<boolean> {
     console.warn(
-      "hasRespondentResponse is deprecated. Use hasRespondent() instead."
+      "hasRespondentResponse is deprecated. Use hasRespondent() instead.",
     );
 
     try {
@@ -245,7 +245,7 @@ export class ResponseValidationService {
 
   static extractTrackingOptions(
     req: Request | CustomRequest,
-    additionalOptions: Partial<RespondentCheckOptions> = {}
+    additionalOptions: Partial<RespondentCheckOptions> = {},
   ): RespondentCheckOptions {
     const options: RespondentCheckOptions = { ...additionalOptions };
 
@@ -269,7 +269,6 @@ export class ResponseValidationService {
     // Extract IP address
     const clientIP =
       req.ip ||
-      req.connection?.remoteAddress ||
       req.socket?.remoteAddress ||
       (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
       (req.headers["x-real-ip"] as string) ||
@@ -285,7 +284,7 @@ export class ResponseValidationService {
   static async hasRespondentFromRequest(
     formId: string,
     req: Request | CustomRequest,
-    options: Partial<RespondentCheckOptions> = {}
+    options: Partial<RespondentCheckOptions> = {},
   ): Promise<RespondentCheckResult> {
     const trackingOptions = this.extractTrackingOptions(req, options);
     return this.hasRespondent(formId, trackingOptions);
@@ -311,6 +310,8 @@ export class ResponseValidationService {
     isValid: boolean;
     uid?: string;
     rid?: string;
+    message?: string;
+    emails?: Array<string>;
   }> {
     const user = req.user;
 
@@ -338,6 +339,8 @@ export class ResponseValidationService {
         uid: (req.query.uid as string) ?? undefined,
         rid: (req.query.rid as string) ?? undefined,
         isValid: true,
+        message: req?.body?.message,
+        emails: req?.body?.emails,
       };
     }
 
@@ -360,7 +363,7 @@ export class ResponseValidationService {
   static async validateFormAccess(
     formId: string,
     userId: string,
-    res: Response
+    res: Response,
   ): Promise<any> {
     try {
       const form = await Form.findById(new Types.ObjectId(formId)).lean();
@@ -386,12 +389,11 @@ export class ResponseValidationService {
   static async validateResponseAccess(
     responseId: string,
     userId: string,
-    res: Response
+    res: Response,
   ): Promise<any> {
     try {
-      const response = await FormResponse.findById(responseId).populate(
-        "formId"
-      );
+      const response =
+        await FormResponse.findById(responseId).populate("formId");
 
       if (!response) {
         res.status(404).json(ReturnCode(404, "Response not found"));
@@ -503,7 +505,7 @@ export class ResponseValidationService {
   static createPaginationResponse(
     page: number,
     limit: number,
-    totalCount: number
+    totalCount: number,
   ) {
     return {
       page,

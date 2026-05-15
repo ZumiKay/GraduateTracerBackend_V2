@@ -12,7 +12,7 @@ import FormResponse, {
 } from "../../model/Response.model";
 import { ContentType, QuestionType } from "../../model/Content.model";
 import { ResponseValidationService } from "../../services/ResponseValidationService";
-import { hasFormAccess, verifyRole } from "../../utilities/formHelpers";
+import { hasFormAccess } from "../../utilities/formHelpers";
 import { getResponseDisplayName } from "../../utilities/respondentUtils";
 import { CustomRequest } from "../../types/customType";
 import { generateResponseHTML } from "../../utilities/EmailTemplate/SendResponseEmail";
@@ -57,7 +57,7 @@ export class FormResponseUtilityController {
       });
       if (!validation.isValid || !validation.user?.sub) return;
 
-      const { formId, emails, message } = req.body;
+      const { formId, emails, message } = validation;
       if (!formId || !emails || !Array.isArray(emails) || emails.length === 0) {
         return res
           .status(400)
@@ -86,7 +86,10 @@ export class FormResponseUtilityController {
         message,
       });
 
-      res
+      //save the invite as pending
+      await this.savePendingInvite(formId, emails);
+
+      return res
         .status(200)
         .json(
           ReturnCode(
@@ -98,7 +101,7 @@ export class FormResponseUtilityController {
         );
     } catch (error) {
       console.error("Send Form Links Error:", error);
-      res.status(500).json(ReturnCode(500, "Failed to send form links"));
+      return res.status(500).json(ReturnCode(500, "Failed to send form links"));
     }
   };
 
@@ -116,7 +119,6 @@ export class FormResponseUtilityController {
       if (!form) {
         return res.status(404).json(ReturnCode(404, "Form not found"));
       }
-      const hasAccess = hasFormAccess(form, new Types.ObjectId(req.user.sub));
 
       if (!hasFormAccess(form, new Types.ObjectId(req.user.sub))) {
         return res.status(403).json(ReturnCode(403, "No Access"));
@@ -387,6 +389,21 @@ export class FormResponseUtilityController {
         await browser.close();
       }
     }
+  }
+
+  private async savePendingInvite(formId: string, emails: Array<string>) {
+    const isForm = await Form.findById(formId).select("_id pendingInvite");
+
+    if (!isForm) throw Error("Invalid FormId");
+
+    const filteredEmails = isForm.pendingInvite?.concat([
+      ...emails.filter((i) => !isForm.pendingInvite?.includes(i)),
+    ]);
+
+    if (filteredEmails) {
+      await Form.updateOne({ _id: formId }, { pendingInvite: filteredEmails });
+    }
+    return { success: true };
   }
 }
 

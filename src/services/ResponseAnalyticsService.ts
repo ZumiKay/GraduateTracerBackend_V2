@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import FormResponse, { FormResponseType } from "../model/Response.model";
 import Content, { ContentTitle, ContentType } from "../model/Content.model";
 import { getResponseDisplayName } from "../utilities/respondentUtils";
+import { CustomRequest } from "../types/customType";
 
 export class FormOverViewAnalyticsService {
   static extractQuestionTitle(title: ContentTitle): string {
@@ -10,10 +11,10 @@ export class FormOverViewAnalyticsService {
     }
 
     if (title && typeof title === "object") {
-      // Handle TipTap/ProseMirror JSON structure
+      // Handle TipTap JSON structure
       if (title.content && Array.isArray(title.content)) {
         return title.content
-          .map((node: any) => {
+          .map((node) => {
             if (node.text) return node.text;
             if (node.content) {
               return node.content.map((n: any) => n.text || "").join("");
@@ -223,4 +224,6 @@ export class FormOverViewAnalyticsService {
 
     return csvRows.join("\n");
   }
+
+  static async getResponseStatusSummary() {}
 }

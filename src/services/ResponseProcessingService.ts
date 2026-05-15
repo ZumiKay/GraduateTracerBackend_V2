@@ -211,16 +211,14 @@ export class ResponseProcessingService {
     totalScore =
       SolutionValidationService.calcualteResponseTotalScore(scoredResponses);
 
+    //Assign status to response
     let completionStatus = ResponseCompletionStatus.submitted;
-    if (isNonScore) {
-      completionStatus = ResponseCompletionStatus.noscore;
-    } else if (isAutoScored) {
+    if (isAutoScored) {
       const hasManualScoring = scoredResponses.some(
         (i) => i.scoringMethod === ScoringMethod.MANUAL,
       );
-      completionStatus = hasManualScoring
-        ? ResponseCompletionStatus.partial
-        : ResponseCompletionStatus.autoscore;
+      if (!hasManualScoring)
+        completionStatus = ResponseCompletionStatus.autoscore;
     }
 
     // Create response data

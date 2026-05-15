@@ -1,14 +1,18 @@
 import { Response } from "express";
 import { FormatToGeneralDate, ReturnCode } from "../../utilities/helper";
-import Form from "../../model/Form.model";
+import Form, { TypeForm } from "../../model/Form.model";
 import { CustomRequest } from "../../types/customType";
 import { Types } from "mongoose";
 import {
+  hasFormAccess,
   isValidObjectIdString,
   validateAccess,
   validateFormRequest,
 } from "../../utilities/formHelpers";
-import FormResponse, { FormResponseType } from "../../model/Response.model";
+import FormResponse, {
+  FormResponseType,
+  ResponseCompletionStatus,
+} from "../../model/Response.model";
 
 export const GetFilledForm = async (req: CustomRequest, res: Response) => {
   try {
@@ -65,7 +69,7 @@ export const GetFilledForm = async (req: CustomRequest, res: Response) => {
     let currentResponse = userResponses[0];
     if (responseId && isValidObjectIdString(responseId)) {
       const specificResponse = userResponses.find(
-        (resp) => resp._id.toString() === responseId
+        (resp) => resp._id.toString() === responseId,
       );
       if (specificResponse) {
         currentResponse = specificResponse;
@@ -136,7 +140,7 @@ export const GetFormDetails = async (req: CustomRequest, res: Response) => {
     const userObjectId = new Types.ObjectId(user.sub);
     const { hasAccess, isCreator, isOwner, isEditor } = validateAccess(
       form,
-      userObjectId
+      userObjectId,
     );
 
     if (!hasAccess) {
@@ -145,8 +149,8 @@ export const GetFormDetails = async (req: CustomRequest, res: Response) => {
         .json(
           ReturnCode(
             403,
-            "Access denied. You don't have permission to view this form."
-          )
+            "Access denied. You don't have permission to view this form.",
+          ),
         );
     }
 
@@ -184,5 +188,58 @@ export const GetFormDetails = async (req: CustomRequest, res: Response) => {
     return res
       .status(500)
       .json(ReturnCode(500, "Failed to retrieve form details"));
+  }
+};
+
+interface summaryResultType {
+  toScore: number;
+  completed: number;
+  submitted: number;
+}
+export const validateFormResponses = async (
+  req: CustomRequest,
+  res: Response,
+) => {
+  const { formId } = req.params as { formId: string };
+
+  if (!formId) return res.status(400).json(ReturnCode(400));
+
+  try {
+    const isForm = await Form.findById(formId).select(
+      "type setting.acceptResponses user editors owners",
+    );
+
+    if (!isForm || !hasFormAccess(isForm, new Types.ObjectId(req.user?.sub)))
+      return res.status(400).json(ReturnCode(400));
+    const allResponse = await FormResponse.find({ formId })
+      .select("completionStatus submittedAt ")
+      .lean();
+
+    if (!allResponse || allResponse.length === 0)
+      return res.status(200).json(ReturnCode(200));
+
+    //Process form responses summary
+
+    const summaryResult: summaryResultType = {
+      toScore: 0,
+      completed: 0,
+      submitted: 0,
+    };
+
+    allResponse.forEach((response) => {
+      if (response.completionStatus === ResponseCompletionStatus.submitted) {
+        summaryResult.submitted += 1;
+
+        if (isForm.type === TypeForm.Quiz) summaryResult.toScore += 1;
+      } else if (
+        response.completionStatus === ResponseCompletionStatus.completed
+      ) {
+        summaryResult.completed += 1;
+      }
+    });
+    return res.status(200).json({ ...ReturnCode(200), data: summaryResult });
+  } catch (error) {
+    console.log("validateFormRespones", error);
+    return res.status(500).json(ReturnCode(500));
   }
 };

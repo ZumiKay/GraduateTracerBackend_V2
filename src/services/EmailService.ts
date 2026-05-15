@@ -130,7 +130,7 @@ class EmailService {
           </div>
           <div class="content">
             <h2>${this.escapeHtml(
-              this.convertTitleToString(data.formTitle)
+              this.convertTitleToString(data.formTitle),
             )}</h2>
             <p>Hello!</p>
             <p>You have been invited by <strong>${
@@ -358,8 +358,8 @@ class EmailService {
           <div class="total-score-section">
             <div class="total-score-card">
               <div class="score-number">${data.totalScore}/${
-      data.maxScore
-    }</div>
+                data.maxScore
+              }</div>
               <div class="score-percentage">${scorePercentage}%</div>
               <p class="score-label">Overall Score</p>
             </div>
@@ -400,8 +400,8 @@ class EmailService {
                     <h4 class="question-title">Question ${
                       index + 1
                     }: ${this.escapeHtml(
-                    this.convertTitleToString(question.title)
-                  )}</h4>
+                      this.convertTitleToString(question.title),
+                    )}</h4>
                     <span class="question-type">${question.type}</span>
                   </div>
                   
@@ -433,8 +433,8 @@ class EmailService {
                         isCorrect
                           ? "score-correct"
                           : isPartial
-                          ? "score-partial"
-                          : "score-incorrect"
+                            ? "score-partial"
+                            : "score-incorrect"
                       }">
                         ${question.score}/${question.maxScore} points
                       </div>
@@ -442,15 +442,15 @@ class EmailService {
                         isCorrect
                           ? "badge-correct"
                           : isPartial
-                          ? "badge-partial"
-                          : "badge-incorrect"
+                            ? "badge-partial"
+                            : "badge-incorrect"
                       }">
                         ${
                           isCorrect
                             ? "✓ Correct"
                             : isPartial
-                            ? "~ Partial"
-                            : "✗ Incorrect"
+                              ? "~ Partial"
+                              : "✗ Incorrect"
                         }
                       </div>
                     </div>
@@ -502,7 +502,7 @@ class EmailService {
       : new Date().toLocaleDateString();
 
     const getScoreGrade = (
-      percentage: number
+      percentage: number,
     ): { grade: string; color: string; bgColor: string; emoji: string } => {
       if (percentage >= 90)
         return {
@@ -550,7 +550,7 @@ class EmailService {
     const gradeInfo = getScoreGrade(data.scorePercentage);
 
     const formatUserResponse = (
-      question: (typeof data.questions)[0]
+      question: (typeof data.questions)[0],
     ): string => {
       const response = question.userResponse;
 
@@ -598,7 +598,7 @@ class EmailService {
     };
 
     const formatCorrectAnswer = (
-      question: (typeof data.questions)[0]
+      question: (typeof data.questions)[0],
     ): string => {
       if (!question.answer) return "";
 
@@ -631,7 +631,7 @@ class EmailService {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Response Results - ${this.escapeHtml(
-          this.convertTitleToString(data.formTitle)
+          this.convertTitleToString(data.formTitle),
         )}</title>
         <!--[if mso]>
         <style type="text/css">
@@ -685,7 +685,7 @@ class EmailService {
                       gradeInfo.emoji
                     }</div>
                     <h1 style="color: white; font-size: 24px; font-weight: 700; margin: 0 0 8px 0;">${this.escapeHtml(
-                      this.convertTitleToString(data.formTitle)
+                      this.convertTitleToString(data.formTitle),
                     )}</h1>
                     <p style="color: rgba(255,255,255,0.9); font-size: 15px; margin: 0;">Your Response Results Are Ready</p>
                   </td>
@@ -700,8 +700,8 @@ class EmailService {
                           <div class="score-circle" style="width: 130px; height: 130px; border-radius: 50%; background: ${
                             gradeInfo.bgColor
                           }; border: 5px solid ${
-      gradeInfo.color
-    }; display: inline-block; text-align: center; padding-top: 32px; box-sizing: border-box; margin-bottom: 12px;">
+                            gradeInfo.color
+                          }; display: inline-block; text-align: center; padding-top: 32px; box-sizing: border-box; margin-bottom: 12px;">
                             <span class="score-value" style="display: block; font-size: 32px; font-weight: 800; color: ${
                               gradeInfo.color
                             };">${data.scorePercentage.toFixed(0)}%</span>
@@ -712,10 +712,10 @@ class EmailService {
                           <div style="display: inline-block; background: ${
                             gradeInfo.bgColor
                           }; color: ${
-      gradeInfo.color
-    }; padding: 8px 18px; border-radius: 20px; font-weight: 600; font-size: 15px;">${
-      gradeInfo.emoji
-    } ${gradeInfo.grade}</div>
+                            gradeInfo.color
+                          }; padding: 8px 18px; border-radius: 20px; font-weight: 600; font-size: 15px;">${
+                            gradeInfo.emoji
+                          } ${gradeInfo.grade}</div>
                         </td>
                       </tr>
                       <tr>
@@ -756,7 +756,7 @@ class EmailService {
                         <td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;">
                           <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">👤 Respondent</div>
                           <div style="font-size: 14px; font-weight: 600; color: #1f2937; word-break: break-word;">${this.escapeHtml(
-                            data.respondentName || "Anonymous"
+                            data.respondentName || "Anonymous",
                           )}</div>
                         </td>
                         <td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;">
@@ -804,24 +804,24 @@ class EmailService {
                         const statusBgColor = isNoScore
                           ? ""
                           : isCorrect
-                          ? "#d1fae5"
-                          : isPartial
-                          ? "#fef3c7"
-                          : "#fee2e2";
+                            ? "#d1fae5"
+                            : isPartial
+                              ? "#fef3c7"
+                              : "#fee2e2";
                         const statusTextColor = isNoScore
                           ? ""
                           : isCorrect
-                          ? "#065f46"
-                          : isPartial
-                          ? "#92400e"
-                          : "#991b1b";
+                            ? "#065f46"
+                            : isPartial
+                              ? "#92400e"
+                              : "#991b1b";
                         const statusText = isNoScore
                           ? ""
                           : isCorrect
-                          ? "✓ Correct"
-                          : isPartial
-                          ? "~ Partial"
-                          : "✗ Incorrect";
+                            ? "✓ Correct"
+                            : isPartial
+                              ? "~ Partial"
+                              : "✗ Incorrect";
 
                         return `
                     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 12px; overflow: hidden;">
@@ -831,7 +831,7 @@ class EmailService {
                             index + 1
                           }</span>
                           <span style="font-size: 15px; font-weight: 600; color: #1f2937; vertical-align: middle;">${this.escapeHtml(
-                            question.title
+                            question.title,
                           )}</span>
                           <span style="float: right; font-size: 10px; padding: 3px 8px; background: #e5e7eb; color: #4b5563; border-radius: 10px; text-transform: uppercase; font-weight: 500;">${
                             question.type
@@ -843,7 +843,7 @@ class EmailService {
                           <div style="padding: 14px; border-radius: 8px; margin-bottom: 10px; background: #f0f9ff; border-left: 4px solid #3b82f6;">
                             <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; color: #1d4ed8;">👤 Your Answer</div>
                             <div style="font-size: 14px; line-height: 1.5; color: #1f2937;">${formatUserResponse(
-                              question
+                              question,
                             )}</div>
                           </div>
                           
@@ -853,7 +853,7 @@ class EmailService {
                           <div style="padding: 14px; border-radius: 8px; background: #ecfdf5; border-left: 4px solid #10b981;">
                             <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; color: #059669;">✓ Correct Answer</div>
                             <div style="font-size: 14px; line-height: 1.5; color: #1f2937;">${formatCorrectAnswer(
-                              question
+                              question,
                             )}</div>
                           </div>
                           `
@@ -928,7 +928,7 @@ class EmailService {
     return await this.sendEmail({
       to: [data.to],
       subject: `${gradeInfo.emoji} Your Results: ${this.convertTitleToString(
-        data.formTitle
+        data.formTitle,
       )} (${data.scorePercentage.toFixed(0)}%)`,
       html,
     });

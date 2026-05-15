@@ -82,6 +82,7 @@ export interface FormType {
   inviteCodes?: Array<string>;
   pendingCollarborators: Array<PendingCollarboratorsType>;
   pendingOwnershipTransfer?: PendingOwnershipTransferType;
+  pendingInvite?: Array<string>;
 }
 
 const FormSettingSchema = new Schema<FromSettingType>({
@@ -162,7 +163,7 @@ const PendingOwnershipTransferSchema = new Schema<PendingOwnershipTransferType>(
       ref: "User",
       required: true,
     },
-  }
+  },
 );
 
 const FormSchema = new Schema<FormType>(
@@ -208,6 +209,11 @@ const FormSchema = new Schema<FormType>(
       required: false,
       default: null,
     },
+    pendingInvite: {
+      type: [String],
+      require: false,
+      default: null,
+    },
     totalpage: {
       type: Number,
       default: 1,
@@ -218,7 +224,11 @@ const FormSchema = new Schema<FormType>(
       required: false,
     },
   },
-  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  },
 );
 
 FormSchema.index({ user: 1 });

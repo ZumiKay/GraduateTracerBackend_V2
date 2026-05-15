@@ -10,7 +10,7 @@ import {
 import { RespondentTrackingService } from "../../services/RespondentTrackingService";
 import { ResponseQueryService } from "../../services/ResponseQueryService";
 import Formsession from "../../model/Formsession.model";
-import FormResponse, {
+import {
   FormResponseType,
   ResponseSetType,
   SubmitionProcessionReturnType,
@@ -74,6 +74,7 @@ export class FormResponseSubmissionController {
         return res.status(404).json(ReturnCode(404, "Form not found"));
       }
 
+      //Prepare submission data
       let submissionDataWithTracking: ProcessNormalFormSubmissionType;
 
       const baseSubmissionData: Partial<FormResponseType> = {

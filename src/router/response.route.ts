@@ -8,6 +8,8 @@ import { ResponseQueryService } from "../services/ResponseQueryService";
 import FormsessionService from "../controller/form/formsession.controller";
 import form_response_returnController from "../controller/response/form_response_return.controller";
 import analyticsController from "../controller/analytics/analytics.controller";
+import { validateAccess } from "../utilities/formHelpers";
+import { validateFormResponses } from "../controller/form/form.response.controller";
 
 const ResponseRouter = Router();
 
@@ -60,6 +62,13 @@ ResponseRouter.get(
   "/getresponseById/:id/:formId",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   FormResponseController.GetResponseByID as unknown as RequestHandler,
+);
+
+//Get response summary
+ResponseRouter.get(
+  "/getResponseSummary/:formId",
+  UserMiddleware.VerifyToken,
+  validateFormResponses as unknown as RequestHandler,
 );
 
 //Validate Form data before submission
