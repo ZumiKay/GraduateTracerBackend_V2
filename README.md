@@ -1,6 +1,6 @@
 # GraduateTracer Backend V2
 
-REST API backend for the **GraduateTracer** system — a platform for managing graduate tracer forms, respondent login sessions, responses, analytics, and notifications.
+REST API backend for the **GraduateTracer** system — a platform for managing forms, login sessions, responses, analytics, and notifications.
 
 Built with **Node.js**, **Express**, **TypeScript**, and **MongoDB**.
 

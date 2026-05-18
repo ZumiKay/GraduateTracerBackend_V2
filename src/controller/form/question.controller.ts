@@ -125,8 +125,6 @@ class QuestionController {
     }
   };
 
-  // ==================== Helper Methods for SaveQuestion ====================
-
   /**
    * Validates the request payload for SaveQuestion
    */
