@@ -119,7 +119,7 @@ export async function EditUser(req: Request, res: Response) {
             let isUnqiue = false;
 
             while (!isUnqiue) {
-              const isCode = await User.findOne({ code: generateCode });
+              const isCode = await User.findOne({ code: String(generateCode) });
               if (!isCode) {
                 isUnqiue = true;
               }

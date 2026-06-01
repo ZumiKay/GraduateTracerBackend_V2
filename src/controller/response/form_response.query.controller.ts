@@ -53,7 +53,10 @@ export class FormResponseQueryController {
       });
       if (!validation.isValid || !validation.user?.sub) return;
 
-      const { respondentEmail, formId } = req.query;
+      const { respondentEmail, formId } = req.query as {
+        respondentEmail: string;
+        formId: string;
+      };
       if (!respondentEmail || !formId) {
         return res.status(400).json(ReturnCode(400));
       }
@@ -82,7 +85,11 @@ export class FormResponseQueryController {
 
       //Populate response set question
       const responseContent = await Content.find({
-        _id: { $in: populatedResponse?.responseset.map((i) => i.question) },
+        _id: {
+          $in: populatedResponse?.responseset.map(
+            (i) => i.question as Types.ObjectId,
+          ),
+        },
       }).lean();
 
       populatedResponse = {

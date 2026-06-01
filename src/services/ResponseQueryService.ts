@@ -1,4 +1,4 @@
-import { FilterQuery, isValidObjectId, RootFilterQuery, Types } from "mongoose";
+import { QueryFilter, isValidObjectId, Types } from "mongoose";
 import FormResponse, {
   FormResponseType,
   ResponseSetType,
@@ -64,7 +64,7 @@ export class ResponseQueryService {
 
   //Helper Fetcher
   private static async fetchResponsesWithPagination(
-    query: FilterQuery<FormResponseType>,
+    query: QueryFilter<FormResponseType>,
     page: number,
     limit: number,
     sortOptions?: Record<string, 1 | -1>,
@@ -95,7 +95,7 @@ export class ResponseQueryService {
 
     const responsesWithCount = await this.addResponseCountByEmail(
       responses,
-      query.formId,
+      query.formId as Types.ObjectId,
     );
 
     return {
@@ -260,7 +260,7 @@ export class ResponseQueryService {
    * Get responses grouped by respondent email
    */
   static async getGroupedResponses(
-    query: RootFilterQuery<FormResponseType>,
+    query: QueryFilter<FormResponseType>,
     page: number,
     limit: number,
     sortOptions?: Record<string, 1 | -1>,
@@ -336,7 +336,7 @@ export class ResponseQueryService {
     user: string;
     formId: string;
   }) {
-    const query: RootFilterQuery<FormResponseType> = {
+    const query: QueryFilter<FormResponseType> = {
       formId,
       $or: [{ user }, { respondentEmail: user }],
     };
@@ -478,7 +478,7 @@ export class ResponseQueryService {
     requireEmail: boolean,
     req: CustomRequest,
   ) {
-    const baseQuery: RootFilterQuery<FormResponseType> = {
+    const baseQuery: QueryFilter<FormResponseType> = {
       formId: new Types.ObjectId(formId),
     };
 

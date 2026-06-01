@@ -242,7 +242,6 @@ FormSchema.index({ _id: 1, responses: 1 });
 FormSchema.pre("deleteOne", async function (next) {
   const formId = this.getQuery()._id;
   await FormResponse.deleteMany({ formId });
-  next();
 });
 
 const Form = model<FormType>("Form", FormSchema);

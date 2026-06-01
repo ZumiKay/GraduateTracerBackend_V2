@@ -323,9 +323,6 @@ export default class FormsessionService {
    * Handles respondent login for form access
    *
    * Features:
-   * - Early validation and fail-fast strategy
-   * - Parallel database queries for better performance
-   * - Comprehensive error handling with specific error codes
    * - Support for guest and authenticated users
    * - Session reactivation for existing users
    *
@@ -455,7 +452,7 @@ export default class FormsessionService {
         if (!isVerified) return res.status(401).json(ReturnCode(401));
 
         const isUser = await Usersession.findOne({
-          session_id: existedUserRefreshToken,
+          session_id: existedUserRefreshToken as string,
         })
           .select("expireAt user")
           .populate("user")
@@ -533,7 +530,7 @@ export default class FormsessionService {
 
       try {
         await Formsession.create({
-          form: formId,
+          form: new Types.ObjectId(formId),
           session_id,
           access_id,
           expiredAt,
@@ -649,7 +646,7 @@ export default class FormsessionService {
 
     try {
       const formsession = await Formsession.findOne({
-        removeCode: parseInt(code),
+        removeCode: code,
       })
         .populate({
           path: "form",
@@ -904,7 +901,7 @@ export default class FormsessionService {
   };
   private static GenerateUniqueRemoveCode = async ({
     formsession,
-    maxAttempts = 5, // Reduced from 10 for better performance
+    maxAttempts = 5,
   }: {
     formsession: Model<Formsessiondatatype>;
     maxAttempts?: number;
@@ -913,7 +910,9 @@ export default class FormsessionService {
       // Generate 6-digit codes with better distribution
       const removeCode = Math.floor(100000 + Math.random() * 900000);
 
-      const existingCode = await formsession.exists({ removeCode });
+      const existingCode = await formsession.exists({
+        removeCode: String(removeCode),
+      });
 
       if (!existingCode) {
         return removeCode;

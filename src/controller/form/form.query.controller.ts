@@ -4,9 +4,10 @@ import Form, {
   CollaboratorType,
   DashboardTabType,
   FormType,
+  TypeForm,
 } from "../../model/Form.model";
 import { CustomRequest, UserToken } from "../../types/customType";
-import { RootFilterQuery, Types } from "mongoose";
+import { Types, QueryFilter } from "mongoose";
 import Content, {
   DetailContentSelection,
   QuestionType,
@@ -98,7 +99,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           q as string,
           p,
           new Types.ObjectId(user?.sub),
-          Number(page ?? "1")
+          Number(page ?? "1"),
         );
       case "response":
       case "analytics":
@@ -149,7 +150,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
   } catch (error) {
     console.error(
       "Error in GetFilterForm:",
-      error instanceof Error ? error.message : error
+      error instanceof Error ? error.message : error,
     );
     return res.status(500).json(ReturnCode(500, "Internal Server Error"));
   }
@@ -198,7 +199,7 @@ async function handleDetailQuery(
   q: string,
   p: number,
   user: Types.ObjectId,
-  page?: number
+  page?: number,
 ) {
   if (!user) return res.status(401).json(ReturnCode(401));
 
@@ -428,8 +429,6 @@ async function handleUserQuery({
     const userForms = (results.data as FormType[]).map((form) => {
       const isFormFilled = filledFormIds.includes(form._id.toString());
 
-      // In "filledform" tab, always flag forms as filled so owners/creators/editors
-      // can view their own responses by switching to this tab
       if (tab === DashboardTabType.filledform) {
         return {
           ...form,
@@ -437,18 +436,14 @@ async function handleUserQuery({
         };
       }
 
-      // For other tabs (all, myform, otherform):
-      // Check if user has ownership/management rights over this form
       const isCreator = form.user?.toString() === userId.toString();
       const isOwner = form.owners?.some(
-        (ownerId) => ownerId.toString() === userId.toString()
+        (ownerId) => ownerId.toString() === userId.toString(),
       );
       const isEditor = form.editors?.some(
-        (editorId) => editorId.toString() === userId.toString()
+        (editorId) => editorId.toString() === userId.toString(),
       );
 
-      // If user owns/manages the form, don't flag it as "filled" even if they responded to it
-      // Only flag as filled if user is ONLY a respondent (not owner/creator/editor)
       const shouldBeFlagged =
         isFormFilled && !isCreator && !isOwner && !isEditor;
 
@@ -477,8 +472,8 @@ async function handleUserQuery({
 // Helper function to build base query based on tab type
 async function buildBaseQuery(
   tab: DashboardTabType,
-  userId: Types.ObjectId
-): Promise<RootFilterQuery<FormType>> {
+  userId: Types.ObjectId,
+): Promise<QueryFilter<FormType>> {
   switch (tab) {
     case DashboardTabType.all:
       return {
@@ -516,8 +511,8 @@ async function buildBaseQuery(
 function buildFilterQuery(filter?: {
   query?: string;
   type?: FormType;
-}): RootFilterQuery<FormType> {
-  const filterQuery: RootFilterQuery<FormType> = {};
+}): QueryFilter<FormType> {
+  const filterQuery: QueryFilter<FormType> = {};
 
   if (filter?.query) {
     const searchQuery = filter.query.trim();
@@ -527,7 +522,7 @@ function buildFilterQuery(filter?: {
   }
 
   if (filter?.type) {
-    filterQuery.type = filter.type;
+    filterQuery.type = filter.type as unknown as TypeForm;
   }
 
   return filterQuery;
@@ -563,7 +558,7 @@ function buildSortOptions(filter?: {
  */
 export async function ValidateFormBeforeAction(
   req: CustomRequest,
-  res: Response
+  res: Response,
 ) {
   const { formId, action } = req.query;
   const user = req.user;
@@ -610,12 +605,12 @@ export async function ValidateFormBeforeAction(
         isOwner: verifyRole(
           CollaboratorType.owner,
           form,
-          new Types.ObjectId(user.sub)
+          new Types.ObjectId(user.sub),
         ),
         isEditor: verifyRole(
           CollaboratorType.editor,
           form,
-          new Types.ObjectId(user.sub)
+          new Types.ObjectId(user.sub),
         ),
       },
     });

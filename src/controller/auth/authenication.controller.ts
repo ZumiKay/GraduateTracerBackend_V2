@@ -61,7 +61,6 @@ class AuthenticationController {
         session_id: RefreshToken,
         expireAt: getDateByNumDay(1),
         user: user._id,
-        guest: null,
       });
 
       //Set Authentication Cookie
@@ -113,7 +112,7 @@ class AuthenticationController {
             let isUnqiue = false;
 
             while (!isUnqiue) {
-              const isCode = await User.findOne({ code: generateCode });
+              const isCode = await User.findOne({ code: String(generateCode) });
               if (!isCode) {
                 isUnqiue = true;
               }

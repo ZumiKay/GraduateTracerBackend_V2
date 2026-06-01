@@ -240,7 +240,6 @@ ResponseSchema.pre("save", function (next) {
       return total + (response.score || 0);
     }, 0);
   }
-  next();
 });
 
 const FormResponse = model("Response", ResponseSchema);

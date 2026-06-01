@@ -14,7 +14,7 @@ import FormResponse, {
   ResponseSetType,
 } from "../../model/Response.model";
 import { FormType } from "../../model/Form.model";
-import { RootFilterQuery, Types } from "mongoose";
+import { QueryFilter, Types } from "mongoose";
 import { FormOverViewAnalyticsService } from "../../services/ResponseAnalyticsService";
 
 type ExtendedResponseSet = ResponseSetType & {
@@ -95,7 +95,7 @@ class AnalyticsController {
         });
       }
 
-      const questionFilter: RootFilterQuery<FormResponseType> = {
+      const questionFilter: QueryFilter<FormResponseType> = {
         formId: new Types.ObjectId(formId),
       };
 

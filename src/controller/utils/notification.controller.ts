@@ -1,6 +1,6 @@
 import { Response } from "express";
-import { RootFilterQuery, Types } from "mongoose";
-import Notification from "../../model/Notification.model";
+import { QueryFilter, Types } from "mongoose";
+import Notification, { NotificationType } from "../../model/Notification.model";
 import { CustomRequest } from "../../types/customType";
 import { ReturnCode } from "../../utilities/helper";
 
@@ -109,7 +109,7 @@ export class NotificationController {
         return;
       }
 
-      const query: RootFilterQuery<NotificationData> = {
+      const query: QueryFilter<NotificationType> = {
         userId: new Types.ObjectId(userId as string),
       };
       if (unreadOnly) {

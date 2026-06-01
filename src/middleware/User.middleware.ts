@@ -87,7 +87,7 @@ class AuthenticateMiddleWare {
     try {
       const decoded = JWT.verify(
         token,
-        process.env.JWT_SECRET ?? "secret"
+        process.env.JWT_SECRET ?? "secret",
       ) as TokenPayload;
 
       return {
@@ -95,8 +95,9 @@ class AuthenticateMiddleWare {
         isExpired: false,
         data: decoded,
       };
-    } catch (error: any) {
-      if (error.name === "TokenExpiredError") {
+    } catch (error) {
+      const err = error as Error;
+      if (err.name === "TokenExpiredError") {
         return { isValid: false, isExpired: true };
       }
       return { isValid: false, isExpired: false };
@@ -121,7 +122,7 @@ class AuthenticateMiddleWare {
    */
   private async validateSession(
     sessionToken: string,
-    userId?: string
+    userId?: string,
   ): Promise<any | null> {
     const query: any = {
       session_id: sessionToken,
@@ -159,7 +160,7 @@ class AuthenticateMiddleWare {
   public VerifyToken = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ): Promise<void> => {
     // Validate environment variables
     if (!this.validateEnvVars()) {
@@ -230,7 +231,7 @@ class AuthenticateMiddleWare {
   public VerifyRefreshToken = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       const { refreshToken } = this.getTokensFromCookies(req);
@@ -247,7 +248,7 @@ class AuthenticateMiddleWare {
       //Clean up invalid token
       if (!verifiedToken.isValid) {
         await Usersession.deleteOne({
-          session_id: verifiedToken,
+          session_id: refreshToken,
         });
 
         //Clear Cookie
@@ -301,7 +302,7 @@ class AuthenticateMiddleWare {
   public RequireAdmin = (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       if (!req.user) {

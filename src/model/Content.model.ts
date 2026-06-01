@@ -243,10 +243,8 @@ ContentSchema.pre("save", async function (next) {
 
     // Update the form's total score
     await Form.findByIdAndUpdate(this.formId, { totalscore: totalScore });
-
-    next();
   } catch (error) {
-    next(error as never);
+    throw error;
   }
 });
 
@@ -273,10 +271,8 @@ ContentSchema.pre("deleteOne", async function (next) {
         totalscore: totalScore,
       });
     }
-
-    next();
   } catch (error) {
-    next(error as never);
+    throw error;
   }
 });
 

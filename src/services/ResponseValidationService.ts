@@ -1,4 +1,4 @@
-import { RootFilterQuery, Types } from "mongoose";
+import { Types, QueryFilter } from "mongoose";
 import { CustomRequest, UserToken } from "../types/customType";
 import { Request, Response } from "express";
 import { ReturnCode } from "../utilities/helper";
@@ -423,7 +423,7 @@ export class ResponseValidationService {
   }
 
   static buildFilterQuery(filters: ResponseFilterType) {
-    const query: RootFilterQuery<FormResponseType> = {
+    const query: QueryFilter<FormResponseType> = {
       formId: new Types.ObjectId(filters.formId),
     };
 

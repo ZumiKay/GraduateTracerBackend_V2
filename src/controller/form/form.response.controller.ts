@@ -83,7 +83,6 @@ export const GetFilledForm = async (req: CustomRequest, res: Response) => {
         : undefined,
     });
 
-    console.log(form.totalscore);
     const responseData = {
       form: {
         _id: form._id,

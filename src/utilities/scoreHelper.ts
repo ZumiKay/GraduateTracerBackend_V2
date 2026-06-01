@@ -1,7 +1,7 @@
 import { ContentType, QuestionType } from "../model/Content.model";
 
 // Question types that are always automatically scored (objective types)
-const ALWAYS_AUTO_SCORABLE_TYPES: Set<QuestionType> = new Set([
+const AUTO_SCORABLE_TYPES: Set<QuestionType> = new Set([
   QuestionType.MultipleChoice,
   QuestionType.CheckBox,
   QuestionType.Selection,
@@ -12,7 +12,7 @@ const ALWAYS_AUTO_SCORABLE_TYPES: Set<QuestionType> = new Set([
 ]);
 
 // Question types that can be auto-scored IF they have both answer key and score
-const CONDITIONALLY_AUTO_SCORABLE_TYPES: Set<QuestionType> = new Set([
+const MAYBE_AUTO_SCORABLE_TYPES: Set<QuestionType> = new Set([
   QuestionType.ShortAnswer,
   QuestionType.Paragraph,
 ]);
@@ -20,24 +20,11 @@ const CONDITIONALLY_AUTO_SCORABLE_TYPES: Set<QuestionType> = new Set([
 // Question types that are display only (no scoring)
 const DISPLAY_ONLY_TYPES: Set<QuestionType> = new Set([QuestionType.Text]);
 
-/**
- * Checks if a question type can potentially be auto-scored
- */
 const canTypeBeAutoScored = (type: QuestionType): boolean => {
-  return (
-    ALWAYS_AUTO_SCORABLE_TYPES.has(type) ||
-    CONDITIONALLY_AUTO_SCORABLE_TYPES.has(type)
-  );
+  return AUTO_SCORABLE_TYPES.has(type) || MAYBE_AUTO_SCORABLE_TYPES.has(type);
 };
 
-/**
- * Checks if a single question is auto-scorable
- * A question is auto-scorable if:
- * 1. It has a type that supports automatic scoring (including ShortAnswer/Paragraph with answer keys)
- * 2. It has both a score value and an answer key defined
- */
 const isQuestionAutoScorable = (question: ContentType): boolean => {
-  // Check if question type supports auto-scoring
   if (!canTypeBeAutoScored(question.type)) {
     return false;
   }
@@ -55,10 +42,6 @@ const isQuestionAutoScorable = (question: ContentType): boolean => {
   return true;
 };
 
-/**
- * Checks if a question requires manual grading
- * Only returns true for questions that don't have answer keys set
- */
 const isQuestionManualGrading = (question: ContentType): boolean => {
   // Display only types are never graded
   if (DISPLAY_ONLY_TYPES.has(question.type)) {
@@ -66,18 +49,13 @@ const isQuestionManualGrading = (question: ContentType): boolean => {
   }
 
   // ShortAnswer and Paragraph require manual grading only if they don't have answer keys
-  if (CONDITIONALLY_AUTO_SCORABLE_TYPES.has(question.type)) {
+  if (MAYBE_AUTO_SCORABLE_TYPES.has(question.type)) {
     return !question.answer?.answer && !!question.score && question.score > 0;
   }
 
   return false;
 };
 
-/**
- * Determines if a form can be auto-scored
- * Returns true if ALL scorable questions (questions with score > 0) have valid answer keys
- * and are of auto-scorable types
- */
 export const IsFormAutoScoreable = ({
   questions,
 }: {
@@ -87,10 +65,9 @@ export const IsFormAutoScoreable = ({
     return false;
   }
 
-  // Filter questions that have scores assigned (these need to be gradable)
   const scoredQuestions = questions.filter((q) => q.score && q.score > 0);
 
-  // If no questions have scores, form is not scorable
+  // If no questions have scores
   if (scoredQuestions.length === 0) {
     return false;
   }
@@ -99,10 +76,6 @@ export const IsFormAutoScoreable = ({
   return scoredQuestions.every(isQuestionAutoScorable);
 };
 
-/**
- * Get detailed scoring analysis for a form
- * Useful for debugging or providing feedback to form creators
- */
 export const getFormScoringAnalysis = ({
   questions,
 }: {
