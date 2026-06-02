@@ -53,7 +53,6 @@ class QuestionController {
       const existingContent = await this.fetchExistingContent(formId, page!);
 
       if (this.efficientChangeDetection(existingContent, data)) {
-        this.logDev("⚡ No changes detected - skipping database operations");
         return res.status(200).json(ReturnCode(200, "No changes detected"));
       }
 

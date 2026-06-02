@@ -150,7 +150,6 @@ export class NotificationController {
     res: Response,
   ): Promise<void> => {
     const { notificationId } = req.params;
-    const user = req.user;
 
     try {
       const notification = await Notification.findById(notificationId);
