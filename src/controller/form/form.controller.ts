@@ -152,12 +152,14 @@ export async function PageHandler(req: CustomRequest, res: Response) {
       const toBeDeleteContent = await Content.find({ page: deletepage })
         .select("_id")
         .lean();
+
+      //update form totalpage and delete questions
       await Form.updateOne(
         { _id: formId },
         {
           $inc: { totalpage: -1 },
           $pull: { contentIds: { $in: toBeDeleteContent.map((i) => i._id) } },
-        }
+        },
       );
       await Content.deleteMany({ page: deletepage });
     }

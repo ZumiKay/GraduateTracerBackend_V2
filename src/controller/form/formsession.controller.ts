@@ -443,6 +443,16 @@ export default class FormsessionService {
         isExistedLogin &&
         req.cookies[process.env.REFRESH_TOKEN_COOKIE as string];
 
+      //Check if the registered login as guest
+      if (isGuest) {
+        const registeredUser = await User.findOne({ email });
+        if (registeredUser) {
+          return res
+            .status(400)
+            .json(ReturnCode(400, "User exist please login as user"));
+        }
+      }
+
       //Check usersession if existed login
       if (existedUserRefreshToken) {
         const isVerified = ExtractTokenPaylod({
@@ -495,6 +505,7 @@ export default class FormsessionService {
       if (hasDuplicateSession) {
         return; // Response already sent by handleDuplicateSession
       }
+      //Check if registered user login as guest
 
       const expiresInSeconds = expiredAt
         ? Math.floor((expiredAt.getTime() - Date.now()) / 1000)
@@ -554,7 +565,6 @@ export default class FormsessionService {
         });
       }
 
-      // ⚡ Set authentication cookies
       try {
         // Set main session cookie (refresh token)
         this.setCookie(
@@ -770,6 +780,8 @@ export default class FormsessionService {
     }
     try {
       const { formId } = req.params;
+
+      console.log("Session Verification for " + formId);
 
       const isForm = await Form.findOne({
         _id: new Types.ObjectId(formId),
