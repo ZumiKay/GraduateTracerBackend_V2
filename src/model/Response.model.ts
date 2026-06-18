@@ -63,6 +63,7 @@ export interface FormResponseType {
   respondentName?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  completionTime?: string | number;
   respondentType?: RespondentType;
   // Browser fingerprinting fields for anonymous tracking
   respondentFingerprint?: string;
@@ -166,6 +167,10 @@ const ResponseSchema = new Schema<FormResponseType>(
       type: String,
       enum: ResponseCompletionStatus,
       default: "partial",
+    },
+    completionTime: {
+      type: Number,
+      default: null,
     },
     respondentEmail: {
       type: String,

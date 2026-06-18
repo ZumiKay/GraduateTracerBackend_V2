@@ -457,10 +457,10 @@ async function handleUserQuery({
       ...ReturnCode(200),
       data: {
         userForms,
-        pagination: {
-          totalCount,
-          totalPage: totalCount / lt,
-        },
+      },
+      pagination: {
+        totalCount,
+        totalPage: Math.ceil(totalCount / lt),
       },
     });
   } catch (error) {

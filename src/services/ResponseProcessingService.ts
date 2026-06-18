@@ -111,6 +111,7 @@ export class ResponseProcessingService {
         respondentType: isUser ? RespondentType.user : RespondentType.guest,
       }),
       userId: isUser,
+      completionTime: responseData.completionTime,
     });
 
     return {
@@ -237,6 +238,7 @@ export class ResponseProcessingService {
       respondentIP: submissionData.respondentIP,
       fingerprintStrength: submissionData.fingerprintStrength,
       userId: user?._id,
+      completionTime: submissionData.completionTime,
     };
 
     if (user?._id) {

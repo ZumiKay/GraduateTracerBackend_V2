@@ -21,7 +21,6 @@ import { Response } from "express";
 import { CustomRequest } from "../types/customType";
 import {
   AddQuestionNumbering,
-  contentTitleToString,
   formatDateToDDMMYYYY,
   ReturnCode,
 } from "../utilities/helper";
@@ -60,7 +59,7 @@ export interface ResponseFilterType {
 
 export class ResponseQueryService {
   private static readonly SUMMARY_SELECT_RESPONSE_FIELD =
-    "_id respondentEmail respondentName respondentType submittedAt isCompleted completionStatus createdAt";
+    "_id respondentEmail respondentName respondentType submittedAt isCompleted completionStatus createdAt totalScore";
 
   //Helper Fetcher
   private static async fetchResponsesWithPagination(
@@ -308,6 +307,7 @@ export class ResponseQueryService {
         respondentType: 1,
         responseCount: 1,
         responseIds: 1,
+        totalscore: 1,
       },
     });
 
@@ -683,15 +683,10 @@ export class ResponseQueryService {
         }
       }
 
-      const convertedTitle = contentTitleToString(question.title);
-
       // Handle questions without responses
       if (!existingResponse) {
         result.push({
-          question: {
-            ...question,
-            title: convertedTitle as never,
-          },
+          question,
           response: "" as ResponseAnswerType,
         });
         continue;
@@ -712,7 +707,6 @@ export class ResponseQueryService {
         question: {
           ...question,
           answer: processedAnswer,
-          title: convertedTitle as never,
         },
       });
     }

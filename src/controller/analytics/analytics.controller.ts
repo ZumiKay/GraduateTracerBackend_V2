@@ -6,6 +6,7 @@ import { isValidObjectIdString } from "../../utilities/formHelpers";
 import { ResponseValidationService } from "../../services/ResponseValidationService";
 import Content, {
   ChoiceQuestionType,
+  ContentTitle,
   ContentType,
   QuestionType,
 } from "../../model/Content.model";
@@ -27,7 +28,7 @@ type ExtendedResponseSet = ResponseSetType & {
 interface QuestionBaseData {
   id: string;
   questionId: string;
-  questionTitle: string;
+  questionTitle: ContentTitle;
   questionType: QuestionType;
   questionIndex: number | undefined;
   totalResponses: number;
@@ -80,21 +81,7 @@ class AnalyticsController {
         return;
       }
 
-      // Get all responses for the form
-      const responses = await FormResponse.find({
-        formId: new Types.ObjectId(formId),
-      })
-        .lean()
-        .sort({ createdAt: -1 });
-
-      if (!responses || responses.length === 0) {
-        return res.status(204).json({
-          data: {
-            isResponse: false,
-          },
-        });
-      }
-
+      // Fetch questions first based on filters
       const questionFilter: QueryFilter<FormResponseType> = {
         formId: new Types.ObjectId(formId),
       };
@@ -107,6 +94,7 @@ class AnalyticsController {
         questionFilter._id = new Types.ObjectId(questionId);
       }
 
+      //Get all responsible questions
       let questions = await Content.find(questionFilter)
         .sort({ qIdx: 1 })
         .lean();
@@ -119,6 +107,53 @@ class AnalyticsController {
       questions = AddQuestionNumbering({
         questions: questions as unknown as Array<ContentType>,
       }) as never;
+
+      // Extract question IDs
+      const questionIds = questions
+        .filter((q) => q._id)
+        .map((q) => {
+          const id = q._id;
+          return typeof id === "string"
+            ? new Types.ObjectId(id)
+            : (id as Types.ObjectId);
+        });
+
+      // Get total response count for the form
+      const totalResponseCount = await FormResponse.countDocuments({
+        formId: new Types.ObjectId(formId),
+      });
+
+      if (totalResponseCount === 0) {
+        return res.status(204).json({
+          data: {
+            isResponse: false,
+          },
+        });
+      }
+
+      const responses = await FormResponse.aggregate<FormResponseType>([
+        {
+          $match: {
+            formId: new Types.ObjectId(formId),
+            "responseset.question": { $in: questionIds },
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            respondentName: 1,
+            respondentEmail: 1,
+            responseset: 1,
+            score: 1,
+            submittedAt: 1,
+            totalScore: 1,
+            completionTime: 1,
+          },
+        },
+        {
+          $sort: { createdAt: -1 },
+        },
+      ]);
 
       // Process analytics for each question based on type
       const analyticsData = await Promise.all(
@@ -137,7 +172,7 @@ class AnalyticsController {
           formId,
           formTitle: form.title,
           page,
-          totalResponses: responses.length,
+          totalResponses: totalResponseCount,
           formStats,
           questions: analyticsData.filter(Boolean),
           timestamp: new Date().toISOString(),
@@ -183,9 +218,7 @@ class AnalyticsController {
     const baseData: QuestionBaseData = {
       id,
       questionId: question.questionId as string,
-      questionTitle: FormOverViewAnalyticsService.extractQuestionTitle(
-        question.title,
-      ),
+      questionTitle: question.title,
       questionType,
       questionIndex: question.qIdx,
       totalResponses: questionResponses.length,

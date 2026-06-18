@@ -43,7 +43,6 @@ export class FormResponseSubmissionController {
   };
 
   public SubmitFormResponse = async (req: CustomRequest, res: Response) => {
-    //Generate a unique Id with date and add random number to its
     const submissionId = `submission_${Date.now()}_${Math.random()
       .toString(36)
       .substring(2, 11)}`;

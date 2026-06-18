@@ -15,6 +15,7 @@ import FormResponse, {
 } from "../model/Response.model";
 import bcrypt from "bcrypt";
 import { configDotenv } from "dotenv";
+import { GenerateFormResponse } from "./seed-data/response-generate";
 configDotenv({});
 
 interface SeededData {
@@ -760,7 +761,26 @@ if (require.main === module) {
     .connect(mongoUri)
     .then(async () => {
       console.log("Connected to MongoDB");
-      await seedFormData();
+
+      //Analytics data seed
+
+      //Quiz type form
+      await GenerateFormResponse({
+        formId: "6a213c42addc5c3edadabaf3",
+        responseCount: 30,
+        allUser: true,
+        addScore: true,
+      });
+
+      //Normal type form
+      await GenerateFormResponse({
+        formId: "6a2fb2f821e3debb7d5f7eb5",
+        responseCount: 200,
+        allUser: true,
+      });
+
+      // ?Initial form data seed
+      // await seedFormData();
       await mongoose.disconnect();
       console.log("Disconnected from MongoDB");
       process.exit(0);

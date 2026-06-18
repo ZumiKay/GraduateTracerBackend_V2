@@ -3,6 +3,7 @@ import FormResponse, { FormResponseType } from "../model/Response.model";
 import Content, { ContentTitle, ContentType } from "../model/Content.model";
 import { getResponseDisplayName } from "../utilities/respondentUtils";
 import { CustomRequest } from "../types/customType";
+import { RespondentTrackingService } from "./RespondentTrackingService";
 
 export class FormOverViewAnalyticsService {
   static extractQuestionTitle(title: ContentTitle): string {
@@ -30,6 +31,51 @@ export class FormOverViewAnalyticsService {
     }
 
     return "Question";
+  }
+
+  /**
+   * Calculate comprehensive completion time statistics
+   * @param completionTimes Array of completion times in seconds
+   * @returns Object with average, min, max times in seconds
+   */
+  static calculateAverageCompletionTime(completionTimes: number[] | undefined) {
+    // Validate input
+    if (!completionTimes || completionTimes.length === 0) {
+      return {
+        average: 0,
+        median: 0,
+        min: 0,
+        max: 0,
+        count: 0,
+      };
+    }
+
+    const validTimes = completionTimes.filter((time) => time >= 0);
+
+    if (validTimes.length === 0) {
+      return {
+        average: 0,
+        median: 0,
+        min: 0,
+        max: 0,
+        count: 0,
+      };
+    }
+
+    // Calculate average
+    const sum = validTimes.reduce((acc, time) => acc + time, 0);
+    const average = Math.round(sum / validTimes.length);
+
+    // Get min and max
+    const min = Math.min(...validTimes);
+    const max = Math.max(...validTimes);
+
+    return {
+      average,
+      min,
+      max,
+      count: validTimes.length,
+    };
   }
 
   /* ------------------------ Analytics Metries Methods ----------------------- */
@@ -80,12 +126,29 @@ export class FormOverViewAnalyticsService {
     const responseRate =
       totalResponses > 0 ? (completedResponses / totalResponses) * 100 : 0;
 
+    // Extract completion times from responses (assuming completionTime is in seconds or parseable)
+    const completionTimes = responses
+      .map((r) => {
+        if (typeof r.completionTime === "number") {
+          return r.completionTime;
+        }
+        // If it's a string like "1d 2h 30mn", you can parse it or skip
+        return null;
+      })
+      .filter((time): time is number => time !== null);
+
+    const completionTimeStats =
+      this.calculateAverageCompletionTime(completionTimes);
+
     return {
       totalResponses,
       completedResponses,
       averageScore,
       responseRate,
-      averageCompletionTime: 8, // Mock data
+      averageCompletionTime: RespondentTrackingService.formatCompletionTime(
+        completionTimeStats.average,
+      ),
+      completionTimeStats, // Return full stats for detailed analytics
     };
   }
 
@@ -114,7 +177,8 @@ export class FormOverViewAnalyticsService {
       );
 
       const dayResponses = responses.filter(
-        (r) => r.createdAt && r.createdAt >= dayStart && r.createdAt < dayEnd,
+        (r) =>
+          r.submittedAt && r.submittedAt >= dayStart && r.submittedAt < dayEnd,
       );
 
       const avgScore =

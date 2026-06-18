@@ -37,6 +37,24 @@ export interface TrackingData {
 }
 
 export class RespondentTrackingService {
+  /**
+   * Converts seconds to a human-readable duration string (e.g., "1d 2h 30mn")
+   */
+  static formatCompletionTime(seconds: number): string {
+    if (seconds < 0) return "0mn";
+
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}mn`);
+
+    return parts.length > 0 ? parts.join(" ") : "0mn";
+  }
+
   static async checkRespondentExists(
     respondentData: Partial<ProcessNormalFormSubmissionType>,
   ): Promise<RespondentTrackingResult> {
@@ -162,7 +180,6 @@ export class RespondentTrackingService {
   ): any {
     const trackingData = this.generateTrackingData(req);
     const hashedIP = hashedPassword(trackingData.ip);
-
     return {
       ...baseData,
       respondentFingerprint: trackingData.fingerprint,
