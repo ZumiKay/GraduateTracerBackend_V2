@@ -36,7 +36,6 @@ export async function seedFormData(): Promise<SeededData> {
       Form.deleteMany({}),
       User.deleteMany({}),
     ]);
-    console.log("✓ Cleared existing data");
 
     // 1. Create Users
     const hashedPassword = await bcrypt.hash("Password@123", 10);

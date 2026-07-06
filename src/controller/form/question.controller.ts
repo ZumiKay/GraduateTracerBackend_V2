@@ -13,6 +13,7 @@ interface SaveQuestionPayload {
   data: Array<ContentType>;
   formId: string;
   page?: number;
+  title?: string;
 }
 
 interface DeleteOperationResult {
@@ -43,7 +44,7 @@ class QuestionController {
         return res.status(400).json(ReturnCode(400, validationError));
       }
 
-      const { formId, page } = payload;
+      const { formId, page, title } = payload;
       let { data } = payload;
 
       // Step 2: Normalize date fields
@@ -53,6 +54,7 @@ class QuestionController {
       const existingContent = await this.fetchExistingContent(formId, page!);
 
       if (this.efficientChangeDetection(existingContent, data)) {
+        if (title) await Form.updateOne({ _id: formId }, { title });
         return res.status(200).json(ReturnCode(200, "No changes detected"));
       }
 
@@ -99,12 +101,21 @@ class QuestionController {
         (i) => i.score !== existingContent.find((j) => j._id === i._id)?.score,
       );
 
-      if (isScoreChange || !form?.totalscore) {
-        const computedTotalScore = await this.calculateFormTotalScore(formId);
+      const isBonusChange = data.some(
+        (i) =>
+          i.isBonusScore !==
+          existingContent.find((j) => j._id === i._id)?.isBonusScore,
+      );
+
+      if (isScoreChange || isBonusChange || !form?.totalscore) {
+        const { totalscore, extraScore } =
+          await this.calculateFormTotalScore(formId);
         await Form.updateOne(
           { _id: formId },
-          { totalscore: computedTotalScore },
+          { totalscore, extraScore, ...(title ? { title } : {}) },
         );
+      } else if (title) {
+        await Form.updateOne({ _id: formId }, { title });
       }
       // Step 10: Return updated content
       const updatedContent = await this.fetchUpdatedContent(formId, page!);
@@ -200,24 +211,64 @@ class QuestionController {
     return { questionIdMap, newIds };
   }
 
-  /**
-   * Validates that child question scores don't exceed parent scores
-   */
   private validateChildQuestionScores(
     data: ContentType[],
     existingContent: ContentType[],
   ): string | null {
+    const dataByStrId = new Map<string, ContentType>();
+    const dataByQIdx = new Map<number, ContentType>();
     for (const item of data) {
-      if (!item.parentcontent || !item.score) continue;
+      if (item._id) dataByStrId.set(item._id.toString(), item);
+      if (item.qIdx !== undefined) dataByQIdx.set(item.qIdx, item);
+    }
 
-      const parent = existingContent.find(
-        (par) =>
-          (par._id?.toString() || par.qIdx) ===
-          (item.parentcontent?.qId || item.parentcontent?.qIdx),
-      );
+    // Combined map: data takes precedence over existingContent for parent lookups
+    const combinedByKey = new Map<string | number, ContentType>();
+    for (const item of existingContent) {
+      const key = item._id ? item._id.toString() : item.qIdx;
+      if (key !== undefined) combinedByKey.set(key, item);
+    }
+    for (const item of data) {
+      if (item._id) combinedByKey.set(item._id.toString(), item);
+      if (item.qIdx !== undefined) combinedByKey.set(item.qIdx, item);
+    }
 
-      if (parent?.score && item.score > parent.score) {
-        return `Condition of ${parent.qIdx} has wrong score`;
+    for (const item of data) {
+      if (item.score && item.conditional?.length) {
+        if (!item.isBonusScore) {
+          // Non-bonus: sum of children must exactly equal parent score
+          let totalChildScore = 0;
+
+          for (const cond of item.conditional) {
+            const child =
+              cond.contentId !== undefined
+                ? dataByStrId.get(cond.contentId.toString())
+                : cond.contentIdx !== undefined
+                  ? dataByQIdx.get(cond.contentIdx)
+                  : undefined;
+
+            if (child?.score) totalChildScore += child.score;
+          }
+
+          if (totalChildScore > 0 && totalChildScore !== item.score) {
+            return `Children scores of question ${item.qIdx} must equal parent score (${totalChildScore} ≠ ${item.score})`;
+          }
+        }
+      }
+
+      if (item.parentcontent && item.score) {
+        const parentKey = item.parentcontent.qId || item.parentcontent.qIdx;
+        if (parentKey !== undefined) {
+          const parent = combinedByKey.get(parentKey);
+          // Bonus parents allow any child score; non-bonus parents cap individual child scores
+          if (
+            !parent?.isBonusScore &&
+            parent?.score &&
+            item.score > parent.score
+          ) {
+            return `Condition of ${parent.qIdx} has wrong score`;
+          }
+        }
       }
     }
 
@@ -826,14 +877,23 @@ class QuestionController {
       .reduce((total, { score = 0 }) => total + score, 0);
   }
 
-  private async calculateFormTotalScore(formId: string): Promise<number> {
+  private async calculateFormTotalScore(
+    formId: string,
+  ): Promise<{ totalscore: number; extraScore: number }> {
     const allContent = await Content.find(
       { formId, parentcontent: { $exists: false } },
-      { score: 1 },
+      { score: 1, isBonusScore: 1 },
       { lean: true },
     );
 
-    return allContent.reduce((total, { score = 0 }) => total + score, 0);
+    let totalscore = 0;
+    let extraScore = 0;
+    for (const { score = 0, isBonusScore } of allContent) {
+      if (isBonusScore) extraScore += score;
+      else totalscore += score;
+    }
+
+    return { totalscore, extraScore };
   }
 
   private calculateScoreDifference(

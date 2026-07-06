@@ -18,6 +18,7 @@ import Form, { FormType, TypeForm } from "../../model/Form.model";
 import User from "../../model/User.model";
 import { compareSync } from "bcrypt";
 import Usersession from "../../model/Usersession.model";
+import FormResponse from "../../model/Response.model";
 
 interface RespodentLoginProps {
   formId: string;
@@ -357,12 +358,11 @@ export default class FormsessionService {
       const [form, userData] = await Promise.all([
         Form.findById(formId)
           .select(
-            "type setting.acceptResponses setting.acceptGuest setting.submitonce",
+            "type totalscore setting.acceptResponses setting.acceptGuest setting.submitonce",
           )
           .lean()
           .exec(),
 
-        // Only query user if not guest and password provided
         !isGuest && password
           ? User.findOne({ email }).select("email password").lean().exec()
           : Promise.resolve(null),
@@ -384,7 +384,6 @@ export default class FormsessionService {
         });
       }
 
-      // Normal forms don't require authentication
       if (form.type === TypeForm.Normal) {
         return res.status(204).json({
           success: true,
@@ -495,17 +494,31 @@ export default class FormsessionService {
           : email
       ) as string;
 
-      const hasDuplicateSession = await this.handleDuplicateSession(
-        userEmail,
-        formId,
-        res,
-        form,
-      );
+      const [hasDuplicateSession, existingResponse] = await Promise.all([
+        this.handleDuplicateSession(userEmail, formId, res, form),
+        form.setting?.submitonce
+          ? FormResponse.findOne({
+              formId: new Types.ObjectId(formId),
+              respondentEmail: userEmail,
+            })
+              .select("_id totalScore submittedAt")
+              .lean()
+          : Promise.resolve(null),
+      ]);
 
       if (hasDuplicateSession) {
         return; // Response already sent by handleDuplicateSession
       }
-      //Check if registered user login as guest
+
+      const isResponsed = existingResponse
+        ? {
+            message: "You already submitted a response to this form",
+            responseId: existingResponse._id.toString(),
+            totalScore: existingResponse.totalScore,
+            maxScore: form.totalscore,
+            submittedAt: existingResponse.submittedAt,
+          }
+        : undefined;
 
       const expiresInSeconds = expiredAt
         ? Math.floor((expiredAt.getTime() - Date.now()) / 1000)
@@ -524,7 +537,6 @@ export default class FormsessionService {
           }),
         ]);
       } catch (tokenError) {
-        console.error("Token generation error:", tokenError);
         return res.status(500).json({
           success: false,
           status: 500,
@@ -539,76 +551,37 @@ export default class FormsessionService {
         });
       }
 
-      try {
-        await Formsession.create({
-          form: new Types.ObjectId(formId),
-          session_id,
-          access_id,
-          expiredAt,
-          respondentEmail: userEmail,
-          respondentName: name ?? userEmail.split("@")[0], // Extract name from email if not provided
+      await Formsession.create({
+        form: new Types.ObjectId(formId),
+        session_id,
+        access_id,
+        expiredAt,
+        respondentEmail: userEmail,
+        respondentName: name ?? userEmail.split("@")[0], // Extract name from email if not provided
+        isGuest,
+      });
+
+      // Set main session cookie (refresh token)
+      this.setCookie(res, session_id, process.env.RESPONDENT_COOKIE, expiredAt);
+
+      // Set access token cookie
+      this.setCookie(
+        res,
+        access_id,
+        process.env.ACCESS_RESPONDENT_COOKIE as string,
+        accessExpiredAt,
+      );
+
+      return res.status(200).json({
+        success: true,
+        status: 200,
+        message: "Login successful",
+        data: {
+          expiresAt: expiredAt?.toISOString(),
           isGuest,
-        });
-      } catch (sessionCreateError) {
-        console.error("Session creation error:", sessionCreateError);
-        return res.status(500).json({
-          success: false,
-          status: 500,
-          message: "Failed to create session",
-          error: "SESSION_CREATION_ERROR",
-          details:
-            process.env.NODE_ENV === "DEV"
-              ? sessionCreateError instanceof Error
-                ? sessionCreateError.message
-                : String(sessionCreateError)
-              : undefined,
-        });
-      }
-
-      try {
-        // Set main session cookie (refresh token)
-        this.setCookie(
-          res,
-          session_id,
-          process.env.RESPONDENT_COOKIE,
-          expiredAt,
-        );
-
-        // Set access token cookie
-        this.setCookie(
-          res,
-          access_id,
-          process.env.ACCESS_RESPONDENT_COOKIE as string,
-          accessExpiredAt,
-        );
-
-        return res.status(200).json({
-          success: true,
-          status: 200,
-          message: "Login successful",
-          data: {
-            expiresAt: expiredAt?.toISOString(),
-            isGuest,
-          },
-        });
-      } catch (cookieError) {
-        console.error("Cookie setting error:", cookieError);
-
-        // Session created but cookies failed - cleanup session
-        await Formsession.deleteOne({ session_id }).catch((cleanupError) => {
-          console.error(
-            "Failed to cleanup session after cookie error:",
-            cleanupError,
-          );
-        });
-
-        return res.status(500).json({
-          success: false,
-          status: 500,
-          message: "Failed to set authentication cookies",
-          error: "COOKIE_SETTING_ERROR",
-        });
-      }
+          isResponsed,
+        },
+      });
     } catch (error) {
       console.error("RespondentLogin error:", error);
       return res.status(500).json({
@@ -781,8 +754,6 @@ export default class FormsessionService {
     try {
       const { formId } = req.params;
 
-      console.log("Session Verification for " + formId);
-
       const isForm = await Form.findOne({
         _id: new Types.ObjectId(formId),
       })
@@ -808,8 +779,7 @@ export default class FormsessionService {
         req.cookies[process.env.ACCESS_RESPONDENT_COOKIE as string];
 
       if (!respondentCookie) {
-        console.log("Error session");
-        return res.status(401).json({ ...ReturnCode(401) });
+        return res.status(401).json(ReturnCode(401));
       }
 
       const session = await Formsession.findOne({

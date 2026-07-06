@@ -170,7 +170,9 @@ async function handleShortFormInfo({
   }
 
   const form = await Form.findById(id)
-    .select("_id title type totalpage user owners editors setting.email")
+    .select(
+      "_id title type totalpage totalscore user owners editors setting.email",
+    )
     .lean()
     .exec();
 
@@ -187,6 +189,7 @@ async function handleShortFormInfo({
       title: form.title,
       type: form.type,
       totalpage: form.totalpage,
+      totalscore: form.totalscore,
       setting: form.setting,
       ...isHasAccess,
     },
@@ -218,7 +221,7 @@ async function handleDetailQuery(
 
   const contentProjection =
     ty === "solution"
-      ? `${DetailContentSelection} answer score hasAnswer isValidated`
+      ? `${DetailContentSelection} answer score hasAnswer isValidated isBonusScore`
       : DetailContentSelection;
 
   let validationSummary = null;

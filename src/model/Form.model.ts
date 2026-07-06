@@ -75,6 +75,7 @@ export interface FormType {
   setting?: FromSettingType;
   totalpage?: number;
   totalscore?: number;
+  extraScore?: number;
   respondants?: Array<Types.ObjectId>;
   responses?: Array<FormResponseType>;
   createdAt?: Date;
@@ -222,6 +223,11 @@ const FormSchema = new Schema<FormType>(
     totalscore: {
       type: Number,
       required: false,
+    },
+    extraScore: {
+      type: Number,
+      required: false,
+      default: 0,
     },
   },
   {

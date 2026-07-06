@@ -67,6 +67,7 @@ export interface ContentType {
   conditional?: Array<ConditionalType>;
   parentcontent?: ParentContentType;
   selection?: Array<ChoiceQuestionType>;
+  isBonusScore?: boolean;
   require?: boolean;
   page?: number;
   hasAnswer?: boolean; // Flag to indicate if question has an answer
@@ -222,6 +223,9 @@ const ContentSchema = new Schema<ContentType>(
     isValidated: {
       type: Boolean,
       default: false,
+    },
+    isBonusScore: {
+      type: Boolean,
     },
   },
   { timestamps: true },

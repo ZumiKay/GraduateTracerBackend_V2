@@ -1,9 +1,14 @@
 import { Types } from "mongoose";
 import FormResponse, { FormResponseType } from "../model/Response.model";
-import Content, { ContentTitle, ContentType } from "../model/Content.model";
+import Content, {
+  ContentTitle,
+  ContentType,
+  QuestionType,
+} from "../model/Content.model";
 import { getResponseDisplayName } from "../utilities/respondentUtils";
-import { CustomRequest } from "../types/customType";
 import { RespondentTrackingService } from "./RespondentTrackingService";
+import { AddQuestionNumbering } from "../utilities/helper";
+import { coerce } from "zod";
 
 export class FormOverViewAnalyticsService {
   static extractQuestionTitle(title: ContentTitle): string {
@@ -88,16 +93,21 @@ export class FormOverViewAnalyticsService {
     const responses = await FormResponse.find({
       formId: new Types.ObjectId(formId),
       createdAt: { $gte: startDate },
-    }).sort({ createdAt: -1 });
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
     const questions = await Content.find({
       formId: new Types.ObjectId(formId),
-    });
+    }).lean();
 
     return {
       ...this.calculateBasicMetrics(responses),
       timeSeriesData: this.generateTimeSeriesData(responses, startDate, now),
-      performanceMetrics: this.generatePerformanceMetrics(responses, questions),
+      performanceMetrics: this.generatePerformanceMetrics(
+        responses,
+        AddQuestionNumbering({ questions }),
+      ),
     };
   }
 
@@ -201,7 +211,6 @@ export class FormOverViewAnalyticsService {
     responses: Array<FormResponseType>,
     questions: Array<ContentType>,
   ) {
-    //Filter for highscore of each response for registered user only
     const topPerformers = responses
       .filter(
         (r) => (r.respondentName || r.respondentEmail) && r.respondentEmail,
@@ -214,8 +223,9 @@ export class FormOverViewAnalyticsService {
         score: r.totalScore || 0,
       }));
 
-    //Estimate the difficultQuestion
+    //Estimate the difficultQuestions
     const difficultQuestions = questions
+      .filter((i) => i.type !== QuestionType.Text && i.score)
       .map((q) => {
         const questionResponses = responses.filter((r) =>
           r.responseset.some(
@@ -223,39 +233,42 @@ export class FormOverViewAnalyticsService {
           ),
         );
 
-        const correctCount = questionResponses.filter((r) => {
-          const questionResponse = r.responseset.find(
-            (rs) => rs.question.toString() === q._id?.toString(),
+        const correctCount = questionResponses.reduce((correct, res) => {
+          const isQuestion = res.responseset.find(
+            (i) => i.question.toString() === q._id?.toString(),
           );
-          return (
-            questionResponse &&
-            questionResponse.score &&
-            questionResponse.score > 0
-          );
-        }).length;
 
-        //Correction rate
+          if (isQuestion && isQuestion.score === q.score) {
+            correct += 1;
+          }
+
+          return correct;
+        }, 0);
+
         const accuracy =
           questionResponses.length > 0
-            ? (correctCount / questionResponses.length) * 100
+            ? correctCount / questionResponses.length
             : 0;
 
         const avgScore =
-          questionResponses.reduce((sum, r) => {
-            const questionResponse = r.responseset.find(
-              (rs) => rs.question.toString() === q._id?.toString(),
-            );
-            return sum + (questionResponse?.score || 0);
-          }, 0) / questionResponses.length || 0;
+          (
+            questionResponses.reduce((sum, r) => {
+              const questionResponse = r.responseset.find(
+                (rs) => rs.question.toString() === q._id?.toString(),
+              );
+              return sum + (questionResponse?.score || 0);
+            }, 0) / questionResponses.length
+          ).toFixed(2) || 0;
 
         return {
-          questionId: q._id?.toString() || "",
+          _id: q._id,
+          questionId: q.questionId, //label
           title: typeof q.title === "string" ? q.title : "Question",
           accuracy,
           averageScore: avgScore,
         };
       })
-      .sort((a, b) => a.accuracy - b.accuracy) //Descending
+      .sort((a, b) => a.accuracy - b.accuracy)
       .slice(0, 5); // Take top 5
 
     return { topPerformers, difficultQuestions };

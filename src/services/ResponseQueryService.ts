@@ -612,7 +612,6 @@ export class ResponseQueryService {
       .sort({ qIdx: 1 })
       .lean();
 
-    // Get response count for this respondent email
     let responseCount = 0;
     if (isResponse.respondentEmail && isResponse.formId) {
       responseCount = await FormResponse.countDocuments({
@@ -621,13 +620,11 @@ export class ResponseQueryService {
       });
     }
 
-    //All require question must have an max score
-    const isScoreable = !contents.some(
-      (question) => question.require && !question.score,
-    );
+    const isScoreable = true;
 
-    return {
+    const responseData: Partial<FormResponseType> | { [x: string]: {} } = {
       ...isResponse,
+      submittedAt: formatDateToDDMMYYYY(isResponse.submittedAt as Date),
       responseCount,
       isScoreable,
       responseset: this.ResponsesetProcessQuestion(
@@ -637,6 +634,8 @@ export class ResponseQueryService {
         isResponse.responseset,
       ),
     };
+
+    return responseData;
   }
 
   public static ResponsesetProcessQuestion(

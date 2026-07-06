@@ -457,7 +457,6 @@ export const AddQuestionNumbering = ({
   ): string => {
     //QuestionId for non conditional question (top-level)
     if (isTopLevelQuestion(question)) {
-      // Count how many top-level questions come before this one (inclusive)
       let topLevelCount = 0;
       for (let i = 0; i <= index; i++) {
         if (isTopLevelQuestion(questions[i])) {

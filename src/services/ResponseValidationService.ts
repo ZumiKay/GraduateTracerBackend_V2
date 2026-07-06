@@ -22,11 +22,11 @@ export interface RespondentCheckResult {
     | "none";
   confidence: "high" | "medium" | "low";
   metadata?: {
+    submittedAt?: Date;
     fingerprint?: string;
     ipAddress?: string;
     userId?: string;
     guestEmail?: string;
-    submittedAt?: Date;
     fingerprintStrength?: number;
   };
 }
@@ -77,7 +77,7 @@ export class ResponseValidationService {
             confidence: "high",
             metadata: {
               userId,
-              submittedAt: userResponse.submittedAt,
+              submittedAt: userResponse.submittedAt as Date,
             },
           };
         }
@@ -100,7 +100,7 @@ export class ResponseValidationService {
             confidence: "high",
             metadata: {
               guestEmail,
-              submittedAt: emailResponse.submittedAt,
+              submittedAt: emailResponse.submittedAt as Date,
             },
           };
         }
@@ -127,7 +127,7 @@ export class ResponseValidationService {
             metadata: {
               fingerprint,
               ipAddress,
-              submittedAt: fingerprintIpResponse.submittedAt,
+              submittedAt: fingerprintIpResponse.submittedAt as Date,
               fingerprintStrength: fingerprintIpResponse.fingerprintStrength,
             },
           };
@@ -162,7 +162,7 @@ export class ResponseValidationService {
             metadata: {
               fingerprint,
               ipAddress: fingerprintResponse.respondentIP,
-              submittedAt: fingerprintResponse.submittedAt,
+              submittedAt: fingerprintResponse.submittedAt as Date,
               fingerprintStrength: fingerprintResponse.fingerprintStrength,
             },
           };
@@ -188,7 +188,7 @@ export class ResponseValidationService {
             metadata: {
               ipAddress,
               fingerprint: ipResponse.respondentFingerprint,
-              submittedAt: ipResponse.submittedAt,
+              submittedAt: ipResponse.submittedAt as Date,
             },
           };
         }

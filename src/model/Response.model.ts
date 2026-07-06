@@ -56,8 +56,9 @@ export interface FormResponseType {
   responseset: Array<ResponseSetType>;
   maxScore?: number;
   totalScore?: number;
+  extraScore?: number;
   isCompleted?: boolean;
-  submittedAt?: Date;
+  submittedAt?: Date | string;
   completionStatus?: ResponseCompletionStatus;
   respondentEmail?: string;
   respondentName?: string;
@@ -95,6 +96,7 @@ export enum ScoringMethod {
 export interface SubmitionProcessionReturnType {
   maxScore: number;
   totalScore: number;
+  extraScore?: number;
   message: string;
   responseId?: string;
   respondentEmail?: string;
@@ -162,7 +164,10 @@ const ResponseSchema = new Schema<FormResponseType>(
       type: Number,
       default: 0,
     },
-
+    extraScore: {
+      type: Number,
+      default: null,
+    },
     completionStatus: {
       type: String,
       enum: ResponseCompletionStatus,

@@ -182,7 +182,6 @@ const GenerateQuestionResponseBaseOnType = (
       const maxDate = data.rangedate?.end
         ? new Date(data.rangedate.end)
         : new Date();
-      // Split the range at a random midpoint so start always precedes end
       const midMs =
         minDate.getTime() +
         Math.random() * ((maxDate.getTime() - minDate.getTime()) / 2);
@@ -202,7 +201,7 @@ const GenerateQuestionResponseBaseOnType = (
     }
 
     case QuestionType.Text:
-      return null; // display-only; no response value
+      return null;
 
     default:
       return null;
@@ -282,9 +281,49 @@ export const GenerateFormResponse = async (
     return false;
   }
 
+  // Clear existing responses for this form before seeding fresh data
+  const deleted = await FormResponse.deleteMany({ formId });
+  console.log(
+    `Cleared ${deleted.deletedCount} existing responses for form ${formId}`,
+  );
+
   const questions = await Content.find({ formId })
     .sort({ page: 1, qIdx: 1 })
     .lean();
+
+  // Index every question by its _id string for O(1) parent lookup.
+  const questionById = new Map<string, ContentType>();
+  for (const q of questions) {
+    if (q._id) questionById.set(q._id.toString(), q);
+  }
+
+  // Build trigger index from the parent's conditional array (primary source)
+  // so we don't rely on parentcontent.qId format being correct.
+  // key: child _id string → option index (cond.key) that triggers this child.
+  const triggerByChildId = new Map<string, number>();
+  for (const q of questions) {
+    for (const cond of q.conditional ?? []) {
+      triggerByChildId.set(cond.contentId.toString(), Number(cond.key));
+    }
+  }
+
+  // Extra-score classification: conditional child whose parent has score === 0.
+  const extraScoreQIds = new Set<string>();
+  for (const q of questions) {
+    if (!q.parentcontent) continue;
+    const parentQ = questionById.get(q.parentcontent.qId?.toString() ?? "");
+    if (parentQ && (parentQ.score ?? 0) === 0) {
+      extraScoreQIds.add(q._id!.toString());
+    }
+  }
+
+  const conditionalQIds = new Set(
+    questions.filter((q) => !!q.parentcontent).map((q) => q._id!.toString()),
+  );
+
+  console.log(
+    `Form ${formId}: ${questions.length} questions, ${conditionalQIds.size} conditional, ${extraScoreQIds.size} extra-score`,
+  );
 
   if (questions.length === 0) {
     console.log("No questions found for form:", formId);
@@ -296,8 +335,6 @@ export const GenerateFormResponse = async (
     "respondentEmail" | "respondentName" | "respondentType"
   >;
 
-  // When the form allows multiple submissions, seed with 50% fewer unique
-  // respondents so that some users appear more than once in the results.
   const canSubmitMultiple = !isForm.setting?.submitonce;
   const poolSize = multipleSubmissions
     ? Math.ceil(responseCount * 0.3)
@@ -323,7 +360,6 @@ export const GenerateFormResponse = async (
   } else if (allUser) {
     const guestCount = Math.round(poolSize * 0.3);
     const userCount = poolSize - guestCount;
-
     const users = await createUserData(userCount);
     pool = [
       ...users.map((u) => ({
@@ -348,25 +384,69 @@ export const GenerateFormResponse = async (
 
   const responseDocs: Partial<FormResponseType>[] = respondent
     .map((r) => {
+      const respondentAnswerMap = new Map<string, ResponseAnswerType>();
+
       const responseset = questions
         .map((q) => {
+          const qId = q._id!.toString();
+
+          if (q.parentcontent) {
+            const parentQ = questionById.get(
+              q.parentcontent.qId?.toString() ?? "",
+            );
+            if (!parentQ) return null;
+
+            const parentAnswer = respondentAnswerMap.get(
+              parentQ._id!.toString(),
+            );
+            if (parentAnswer === undefined) return null;
+
+            const triggerIdx =
+              triggerByChildId.get(qId) ?? Number(q.parentcontent.optIdx);
+
+            const triggered = Array.isArray(parentAnswer)
+              ? (parentAnswer as number[]).includes(triggerIdx)
+              : parentAnswer === triggerIdx;
+
+            if (!triggered) return null;
+          }
+
           const response = GenerateQuestionResponseBaseOnType(q);
           if (response === null) return null;
 
+          respondentAnswerMap.set(qId, response);
+
           const randomScore =
-            isForm.type === TypeForm.Quiz &&
-            isForm.totalscore &&
-            addScore &&
-            q.score &&
-            randomIntBetween(0, q.score);
+            canAddScore && q.score ? randomIntBetween(0, q.score) : undefined;
+
           return {
             question: q._id,
             response,
             score: randomScore,
-            scoringMethod: randomScore ? ScoringMethod.AUTO : undefined,
+            scoringMethod:
+              randomScore != null ? ScoringMethod.AUTO : ScoringMethod.NONE,
           } as ResponseSetType;
         })
         .filter((entry): entry is ResponseSetType => entry !== null);
+
+      const scoredEntries = responseset.filter(
+        (i) => typeof i.score === "number" && i.score > 0,
+      );
+
+      const baseScore = canAddScore
+        ? Math.min(
+            scoredEntries
+              .filter((i) => !extraScoreQIds.has(i.question.toString()))
+              .reduce((sum, res) => sum + (res.score ?? 0), 0),
+            isForm.totalscore ?? 0,
+          )
+        : 0;
+
+      const extraScore = canAddScore
+        ? scoredEntries
+            .filter((i) => extraScoreQIds.has(i.question.toString()))
+            .reduce((sum, res) => sum + (res.score ?? 0), 0)
+        : 0;
 
       return {
         formId: isForm._id,
@@ -378,11 +458,8 @@ export const GenerateFormResponse = async (
         completionTime: randomCompletionTime(),
         completionStatus: ResponseCompletionStatus.submitted,
         maxScore: canAddScore ? isForm.totalscore : undefined,
-        totalScore: canAddScore
-          ? responseset
-              .filter((i) => i.score)
-              .reduce((total, res) => (total += res.score ?? 0), 0)
-          : 0,
+        totalScore: baseScore,
+        extraScore: extraScore > 0 ? extraScore : undefined,
       };
     })
     .filter((doc) => doc.responseset!.length > 0);

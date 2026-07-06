@@ -103,10 +103,9 @@ export class SolutionValidationService {
       missingScores.push(questionTitle);
     }
 
-    //validate child conditioned question score
+    //validate child conditioned question score must equal parent score
     if (content.score && content.parentcontent && parentScore) {
-      const isValid = content.score > parentScore;
-      if (isValid) {
+      if (content.score !== parentScore) {
         wrongScores.push(questionTitle);
       }
     }
@@ -414,7 +413,7 @@ export class SolutionValidationService {
     for (let r = 0; r < responseSet.length; r++) {
       const res = responseSet[r];
 
-      //Ignore the response have no saved question and question with parentContent
+      //?Ignore the response have no saved question and question with parentContent
       if (res.question) {
         const ques = res.question as ContentType;
         if (!ques.parentcontent) {

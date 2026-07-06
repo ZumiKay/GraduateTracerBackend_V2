@@ -212,6 +212,40 @@ export class ResponseProcessingService {
     totalScore =
       SolutionValidationService.calcualteResponseTotalScore(scoredResponses);
 
+    //?Condition question extraScore procession
+    let extraScore: number | undefined;
+    if (isAutoScored && scoredResponses.length > 0) {
+      const allFormQuestions = await Content.find({ formId }).lean();
+      const extraScoreQIds = new Set<string>();
+      for (const q of allFormQuestions) {
+        if (!q.parentcontent) continue;
+        const parentQ = allFormQuestions.find(
+          (p) => p._id.toString() === (q.parentcontent!.qId?.toString() ?? ""),
+        );
+
+        //Extract extraScore question with parentQuestion flag isBonusScore
+        if (parentQ && parentQ.isBonusScore && (parentQ.score ?? 0) === 0) {
+          extraScoreQIds.add(q._id.toString());
+        }
+      }
+      if (extraScoreQIds.size > 0) {
+        const scoredEntries = scoredResponses.filter(
+          (i) => typeof i.score === "number" && (i.score as number) > 0,
+        );
+        const baseScore = Math.min(
+          scoredEntries
+            .filter((i) => !extraScoreQIds.has(i.question.toString()))
+            .reduce((s, r) => s + (r.score ?? 0), 0),
+          form.totalscore ?? 0,
+        );
+        const extra = scoredEntries
+          .filter((i) => extraScoreQIds.has(i.question.toString()))
+          .reduce((s, r) => s + (r.score ?? 0), 0);
+        totalScore = baseScore;
+        if (extra > 0) extraScore = extra;
+      }
+    }
+
     //Assign status to response
     let completionStatus = ResponseCompletionStatus.submitted;
     if (isAutoScored) {
@@ -219,7 +253,7 @@ export class ResponseProcessingService {
         (i) => i.scoringMethod === ScoringMethod.MANUAL,
       );
       if (!hasManualScoring)
-        completionStatus = ResponseCompletionStatus.autoscore;
+        completionStatus = ResponseCompletionStatus.completed;
     }
 
     // Create response data
@@ -228,6 +262,7 @@ export class ResponseProcessingService {
       responseset: scoredResponses,
       maxScore: form.totalscore,
       totalScore,
+      extraScore,
       submittedAt: new Date(),
       completionStatus: completionStatus,
       respondentType: user ? RespondentType.user : RespondentType.guest,
@@ -283,6 +318,7 @@ export class ResponseProcessingService {
     return {
       isNonScore,
       totalScore,
+      extraScore,
       respondentEmail,
       responseId: savedResponse._id.toString(),
       maxScore: form.totalscore || 0,
