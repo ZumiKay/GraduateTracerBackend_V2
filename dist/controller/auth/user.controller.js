@@ -37,7 +37,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserValidate = void 0;
-exports.GetRespondentProfile = GetRespondentProfile;
 exports.GetUserProfile = GetUserProfile;
 exports.RegisterUser = RegisterUser;
 exports.EditUser = EditUser;
@@ -53,25 +52,10 @@ exports.UserValidate = zod_1.z.object({
         name: zod_1.z.string().optional(),
         password: zod_1.z
             .string()
-            .refine((pass) => (0, helper_1.ValidatePassword)(pass), "Some Data Has Invalid Format"),
+            .refine((pass) => (0, helper_1.ValidatePassword)(pass), "Invalid Credential"),
         role: zod_1.z.nativeEnum(User_model_1.ROLE).optional(),
     }),
 });
-async function GetRespondentProfile(req, res) {
-    const data = req.body;
-    try {
-        const profile = await User_model_1.default.findOne({ email: data.email })
-            .select("_id")
-            .lean();
-        if (profile) {
-            return res.status(200).json({ ...(0, helper_1.ReturnCode)(200), data: profile });
-        }
-        return res.status(404).json((0, helper_1.ReturnCode)(404, "No User Found"));
-    }
-    catch (error) {
-        return res.status(500).json((0, helper_1.ReturnCode)(500));
-    }
-}
 async function GetUserProfile(req, res) {
     const user = req.user;
     if (!user)
@@ -130,7 +114,7 @@ async function EditUser(req, res) {
                         let generateCode = (0, helper_1.RandomNumber)(6);
                         let isUnqiue = false;
                         while (!isUnqiue) {
-                            const isCode = await User_model_1.default.findOne({ code: generateCode });
+                            const isCode = await User_model_1.default.findOne({ code: String(generateCode) });
                             if (!isCode) {
                                 isUnqiue = true;
                             }

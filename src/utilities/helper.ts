@@ -9,8 +9,12 @@ import {
 } from "../model/Content.model";
 import { ResponseSetType } from "../model/Response.model";
 
+import { Response } from "express";
+
+export type StatusCode = 200 | 201 | 204 | 400 | 401 | 403 | 404 | 409 | 500;
+
 export function ReturnCode(
-  code: 200 | 201 | 204 | 400 | 401 | 403 | 404 | 409 | 500,
+  code: StatusCode,
   custommess?: string,
 ) {
   const returnValue = (code: number, message: string) => ({ code, message });
@@ -44,12 +48,75 @@ export function ReturnCode(
       break;
     case 500:
       message = "Server Error";
+      break;
     default:
       return;
   }
 
   return returnValue(code, custommess ?? message);
 }
+
+/**
+ * Reusable helper method to replace `res.status(...).json(...)`.
+ * Standardizes API responses across Express controllers and middlewares.
+ *
+ * @example
+ * SendResponse(res, 200, data)
+ * SendResponse(res, 404, undefined, "User Not Found")
+ * SendResponse.success(res, data)
+ * SendResponse.badRequest(res, "Invalid input")
+ */
+export function SendResponse<T = any>(
+  res: Response,
+  code: StatusCode,
+  data?: T,
+  message?: string,
+): Response {
+  const returnObj = ReturnCode(code, message);
+
+  if (code === 204) {
+    return res.status(204).send();
+  }
+
+  if (data !== undefined) {
+    return res.status(code).json({
+      ...returnObj,
+      data,
+    });
+  }
+
+  return res.status(code).json(returnObj);
+}
+
+// Convenient helper shortcuts
+SendResponse.success = <T = any>(res: Response, data?: T, message?: string) =>
+  SendResponse(res, 200, data, message);
+
+SendResponse.created = <T = any>(res: Response, data?: T, message?: string) =>
+  SendResponse(res, 201, data, message);
+
+SendResponse.noContent = (res: Response) => SendResponse(res, 204);
+
+SendResponse.badRequest = <T = any>(
+  res: Response,
+  message?: string,
+  data?: T,
+) => SendResponse(res, 400, data, message);
+
+SendResponse.unauthorized = (res: Response, message?: string) =>
+  SendResponse(res, 401, undefined, message);
+
+SendResponse.forbidden = (res: Response, message?: string) =>
+  SendResponse(res, 403, undefined, message);
+
+SendResponse.notFound = (res: Response, message?: string) =>
+  SendResponse(res, 404, undefined, message);
+
+SendResponse.conflict = (res: Response, message?: string) =>
+  SendResponse(res, 409, undefined, message);
+
+SendResponse.error = (res: Response, message?: string) =>
+  SendResponse(res, 500, undefined, message);
 
 /**
  * Formats a date to dd-mm-yyyy format

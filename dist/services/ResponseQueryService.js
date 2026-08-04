@@ -47,7 +47,8 @@ const helper_1 = require("../utilities/helper");
 const formHelpers_1 = require("../utilities/formHelpers");
 const bcrypt_1 = require("bcrypt");
 class ResponseQueryService {
-    static SUMMARY_SELECT_RESPONSE_FIELD = "_id respondentEmail respondentName respondentType submittedAt isCompleted completionStatus createdAt";
+    static SUMMARY_SELECT_RESPONSE_FIELD = "_id respondentEmail respondentName respondentType submittedAt isCompleted completionStatus createdAt totalScore";
+    //Helper Fetcher
     static async fetchResponsesWithPagination(query, page, limit, sortOptions, selectFields, populate) {
         const skip = (page - 1) * limit;
         let queryBuilder = Response_model_1.default.find(query);
@@ -66,21 +67,12 @@ class ResponseQueryService {
             queryBuilder,
             Response_model_1.default.countDocuments(query),
         ]);
-        // Extract formId from query if it exists
-        const formId = query.formId;
-        // Get response counts for each unique respondentEmail
-        const responsesWithCount = await this.addResponseCountByEmail(responses, formId);
+        const responsesWithCount = await this.addResponseCountByEmail(responses, query.formId);
         return {
             responses: responsesWithCount,
             pagination: ResponseValidationService_1.ResponseValidationService.createPaginationResponse(page, limit, totalCount),
         };
     }
-    /**
-     * Add response count for each respondentEmail
-     * @param responses - Array of response objects
-     * @param formId - Form ID to filter responses by
-     * @returns Responses with responseCount field added
-     */
     static async addResponseCountByEmail(responses, formId) {
         if (!responses || responses.length === 0) {
             return responses;
@@ -92,10 +84,8 @@ class ResponseQueryService {
                 .filter((email) => !!email)),
         ];
         if (emails.length === 0) {
-            // If no emails, return responses with count 0
             return responses.map((r) => ({ ...r, responseCount: 0 }));
         }
-        // Build aggregation pipeline to count responses per email
         const emailCounts = await Response_model_1.default.aggregate([
             {
                 $match: {
@@ -110,7 +100,6 @@ class ResponseQueryService {
                 },
             },
         ]);
-        // Create a map for quick lookup
         const emailCountMap = new Map(emailCounts.map((item) => [item._id, item.count]));
         // Add responseCount to each response
         return responses.map((response) => ({
@@ -123,12 +112,6 @@ class ResponseQueryService {
     static async getResponsesByFormId(formId, page, limit) {
         return this.fetchResponsesWithPagination({ formId }, page, limit);
     }
-    /**
-    Get Response by UserId and With Pagination for multiple responses
-    @RequestParam formId | page | resIdx | useId
-    @page for navigate within form
-    @resIdx resIdx for navigate user responses
-    */
     static async getResponsebyUserIdWithPagination(req, res) {
         const { formId, page, resIdx, userId } = req.params;
         // Validate parameters
@@ -219,7 +202,6 @@ class ResponseQueryService {
         // Add pagination
         pipeline.push({ $skip: skip });
         pipeline.push({ $limit: limit });
-        // Project final shape
         pipeline.push({
             $project: {
                 _id: 0,
@@ -228,6 +210,7 @@ class ResponseQueryService {
                 respondentType: 1,
                 responseCount: 1,
                 responseIds: 1,
+                totalscore: 1,
             },
         });
         const groupedResponses = await Response_model_1.default.aggregate(pipeline);
@@ -297,7 +280,6 @@ class ResponseQueryService {
                 };
             }
         }
-        // Clean up content data
         const resultContents = contents.map((content) => ({
             ...content,
             parentcontent: content.parentcontent?.qId === content._id.toString()
@@ -305,11 +287,11 @@ class ResponseQueryService {
                 : content.parentcontent,
             answer: undefined,
         }));
-        // Get cumulative question count from previous pages for proper numbering
         const lastQuestionIdx = await (0, formHelpers_1.getLastQuestionIdx)(formObjectId, page);
         return {
             ...form,
             contentIds: undefined,
+            //Return questions with valid numbering
             contents: (0, helper_1.AddQuestionNumbering)({
                 questions: resultContents,
                 lastIdx: lastQuestionIdx,
@@ -327,13 +309,13 @@ class ResponseQueryService {
         if (isIPMatch) {
             score += 80;
         }
-        // Platform match (10 points) - Secondary verification
+        // Platform match (10 points)
         if (deviceInfo?.platform &&
             storedDeviceInfo?.platform &&
             deviceInfo.platform === storedDeviceInfo.platform) {
             score += 10;
         }
-        // Timezone match (10 points) - Secondary verification
+        // Timezone match (10 points)
         if (deviceInfo?.timezone &&
             storedDeviceInfo?.timezone &&
             deviceInfo.timezone === storedDeviceInfo.timezone) {
@@ -350,8 +332,8 @@ class ResponseQueryService {
             ? "_id totalScore isCompleted submittedAt respondentEmail respondentName"
             : "_id totalScore completionStatus submittedAt respondentEmail responseName respondentIP deviceInfo";
         if (requireEmail) {
-            // Email-based lookup (simpler path)
-            const email = req?.body?.respondentEmail;
+            // Email-based lookup: prefer session email since GET requests have no body
+            const email = req.formsession?.email || req?.body?.respondentEmail;
             if (!email)
                 return null;
             return Response_model_1.default.findOne({
@@ -441,7 +423,6 @@ class ResponseQueryService {
             .select("-rangedate -date -rangenumber")
             .sort({ qIdx: 1 })
             .lean();
-        // Get response count for this respondent email
         let responseCount = 0;
         if (isResponse.respondentEmail && isResponse.formId) {
             responseCount = await Response_model_1.default.countDocuments({
@@ -449,32 +430,23 @@ class ResponseQueryService {
                 respondentEmail: isResponse.respondentEmail,
             });
         }
-        //All require question must have an max score
-        const isScoreable = !contents.some((question) => question.require && !question.score);
-        return {
+        const isScoreable = true;
+        const responseData = {
             ...isResponse,
+            submittedAt: (0, helper_1.formatDateToDDMMYYYY)(isResponse.submittedAt),
             responseCount,
             isScoreable,
             responseset: this.ResponsesetProcessQuestion((0, helper_1.AddQuestionNumbering)({
                 questions: contents,
             }), isResponse.responseset),
         };
+        return responseData;
     }
-    /**
-     * Process questions with responses and optionally filter hidden conditional questions
-     * @param questions - Array of questions
-     * @param responseset - Array of responses
-     * @param options - Optional configuration
-     * @param options.filterHidden - If true, filter out conditional questions that don't match responses
-     * @returns Processed response set with question details
-     */
     static ResponsesetProcessQuestion(questions, responseset, options) {
-        // Early validation with fast path
         const invalidQuestion = questions.find((q) => !q._id);
         if (invalidQuestion) {
             throw new Error("Invalid Question");
         }
-        // Build response map once - O(n) instead of O(n*m) lookups
         const responseMap = new Map();
         for (let i = 0; i < responseset.length; i++) {
             const r = responseset[i];
@@ -483,7 +455,6 @@ class ResponseQueryService {
         const filterHidden = options?.filterHidden ?? false;
         const questionsLength = questions.length;
         const result = [];
-        // Pre-allocate estimated capacity
         result.length = 0;
         for (let i = 0; i < questionsLength; i++) {
             const question = questions[i];
@@ -501,15 +472,10 @@ class ResponseQueryService {
                     continue;
                 }
             }
-            // Cache title conversion - used in both branches
-            const convertedTitle = (0, helper_1.contentTitleToString)(question.title);
             // Handle questions without responses
             if (!existingResponse) {
                 result.push({
-                    question: {
-                        ...question,
-                        title: convertedTitle,
-                    },
+                    question,
                     response: "",
                 });
                 continue;
@@ -524,7 +490,6 @@ class ResponseQueryService {
                 question: {
                     ...question,
                     answer: processedAnswer,
-                    title: convertedTitle,
                 },
             });
         }
@@ -596,23 +561,14 @@ class ResponseQueryService {
         // Return original answer for other types
         return answer;
     }
-    /**
-     * Check if a conditional question should be shown based on parent response
-     * @param parentResponse - The response value from the parent question
-     * @param requiredOptIdx - The option index required to show the conditional question
-     * @returns true if question should be shown, false otherwise
-     */
     static shouldShowConditionalQuestion(parentResponse, requiredOptIdx) {
         const requiredIdx = Number(requiredOptIdx);
-        // Handle direct number response
         if (typeof parentResponse === "number") {
             return parentResponse === requiredIdx;
         }
-        // Handle array of numbers (checkbox)
         if (Array.isArray(parentResponse)) {
             return parentResponse.includes(requiredIdx);
         }
-        // Handle ResponseAnswerReturnType format
         if (typeof parentResponse === "object" &&
             parentResponse !== null &&
             "key" in parentResponse) {

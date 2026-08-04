@@ -42,7 +42,6 @@ class FormResponseController {
     GetInititalFormData = form_response_submission_controller_2.default.GetInititalFormData;
     GetPublicFormData = form_response_submission_controller_2.default.GetPublicFormData;
     // Utility methods
-    ValidateFormForSubmission = form_response_utility_controller_2.default.ValidateFormForSubmission;
     SendFormLinks = form_response_utility_controller_2.default.SendFormLinks;
     GenerateFormLink = form_response_utility_controller_2.default.GenerateFormLink;
     SendResponseCardEmail = form_response_utility_controller_2.default.SendResponseCardEmail;

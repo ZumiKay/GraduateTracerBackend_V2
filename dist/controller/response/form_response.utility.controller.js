@@ -38,7 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FormResponseUtilityController = void 0;
 const helper_1 = require("../../utilities/helper");
-const SolutionValidationService_1 = __importDefault(require("../../services/SolutionValidationService"));
+const ResponseContentValidationService_1 = __importDefault(require("../../services/ResponseContentValidationService"));
 const EmailService_1 = __importDefault(require("../../services/EmailService"));
 const FormLinkService_1 = __importDefault(require("../../services/FormLinkService"));
 const User_model_1 = __importDefault(require("../../model/User.model"));
@@ -51,28 +51,6 @@ const formHelpers_1 = require("../../utilities/formHelpers");
 const respondentUtils_1 = require("../../utilities/respondentUtils");
 const SendResponseEmail_1 = require("../../utilities/EmailTemplate/SendResponseEmail");
 class FormResponseUtilityController {
-    ValidateFormForSubmission = async (req, res) => {
-        const { formId } = req.query;
-        if (!formId || typeof formId !== "string") {
-            return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-        }
-        try {
-            const validationSummary = await SolutionValidationService_1.default.validateForm(formId);
-            const errors = await SolutionValidationService_1.default.getFormValidationErrors(formId);
-            res.status(200).json({
-                ...(0, helper_1.ReturnCode)(200),
-                data: {
-                    ...validationSummary,
-                    errors,
-                    canSubmit: errors.length === 0,
-                },
-            });
-        }
-        catch (error) {
-            console.error("Validate Form Error:", error);
-            res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to validate form"));
-        }
-    };
     SendFormLinks = async (req, res) => {
         try {
             const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
@@ -82,7 +60,7 @@ class FormResponseUtilityController {
             });
             if (!validation.isValid || !validation.user?.sub)
                 return;
-            const { formId, emails, message } = req.body;
+            const { formId, emails, message } = validation;
             if (!formId || !emails || !Array.isArray(emails) || emails.length === 0) {
                 return res
                     .status(400)
@@ -104,7 +82,9 @@ class FormResponseUtilityController {
                 recipientEmails: emails,
                 message,
             });
-            res
+            //save the invite as pending
+            await this.savePendingInvite(formId, emails);
+            return res
                 .status(200)
                 .json((0, helper_1.ReturnCode)(200, success
                 ? "Form links sent successfully"
@@ -112,7 +92,7 @@ class FormResponseUtilityController {
         }
         catch (error) {
             console.error("Send Form Links Error:", error);
-            res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to send form links"));
+            return res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to send form links"));
         }
     };
     GenerateFormLink = async (req, res) => {
@@ -127,7 +107,6 @@ class FormResponseUtilityController {
             if (!form) {
                 return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
             }
-            const hasAccess = (0, formHelpers_1.hasFormAccess)(form, new mongoose_1.Types.ObjectId(req.user.sub));
             if (!(0, formHelpers_1.hasFormAccess)(form, new mongoose_1.Types.ObjectId(req.user.sub))) {
                 return res.status(403).json((0, helper_1.ReturnCode)(403, "No Access"));
             }
@@ -177,7 +156,7 @@ class FormResponseUtilityController {
                     continue;
                 const questionType = question.type;
                 const hasAnswerKey = question.answer &&
-                    SolutionValidationService_1.default.isAnswerisempty(question.answer.answer);
+                    ResponseContentValidationService_1.default.isAnswerisempty(question.answer.answer);
                 const questionMaxScore = question.score || 0;
                 const questionScore = responseItem.score || 0;
                 maxScore += questionMaxScore;
@@ -341,6 +320,18 @@ class FormResponseUtilityController {
                 await browser.close();
             }
         }
+    }
+    async savePendingInvite(formId, emails) {
+        const isForm = await Form_model_1.default.findById(formId).select("_id pendingInvite");
+        if (!isForm)
+            throw Error("Invalid FormId");
+        const filteredEmails = isForm.pendingInvite?.concat([
+            ...emails.filter((i) => !isForm.pendingInvite?.includes(i)),
+        ]);
+        if (filteredEmails) {
+            await Form_model_1.default.updateOne({ _id: formId }, { pendingInvite: filteredEmails });
+        }
+        return { success: true };
     }
 }
 exports.FormResponseUtilityController = FormResponseUtilityController;

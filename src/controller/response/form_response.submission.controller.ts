@@ -15,10 +15,7 @@ import {
   ResponseSetType,
   SubmitionProcessionReturnType,
 } from "../../model/Response.model";
-import {
-  GetPublicFormDataType,
-  GetPublicFormDataTyEnum,
-} from "../../middleware/User.middleware";
+import { GetPublicFormDataType } from "../../middleware/User.middleware";
 import { CustomRequest } from "../../types/customType";
 import { NotificationController } from "../utils/notification.controller";
 import { FingerprintService } from "../../utilities/fingerprint";
@@ -413,10 +410,6 @@ export class FormResponseSubmissionController {
 
       const isUserAlreadyAuthenticated = !!req.formsession;
 
-      if (req.formsession) {
-        ty = GetPublicFormDataTyEnum.data;
-      }
-
       switch (ty) {
         case "initial": {
           const initialData = await Form.findById(formId)
@@ -437,7 +430,7 @@ export class FormResponseSubmissionController {
           }
 
           //Check if the respondent already response
-          if (initialData.setting.submitonce && !initialData.setting.email) {
+          if (initialData.setting.submitonce) {
             const respondentFingerPrint =
               FingerprintService.extractFingerprintFromRequest(req);
             const fingerprintHash = FingerprintService.generateFingerprint(
@@ -445,14 +438,23 @@ export class FormResponseSubmissionController {
             );
             const trackingResult =
               await RespondentTrackingService.checkRespondentExists({
-                respondentFingerprint: fingerprintHash,
-                respondentIP: FingerprintService.getClientIP(req),
-                fingerprintStrength: FingerprintService.getFingerprintStrength(
-                  respondentFingerPrint,
-                ),
+                formId: new Types.ObjectId(formId),
+                ...(!isUserAlreadyAuthenticated
+                  ? {
+                      respondentFingerprint: fingerprintHash,
+                      respondentIP: FingerprintService.getClientIP(req),
+                      fingerprintStrength:
+                        FingerprintService.getFingerprintStrength(
+                          respondentFingerPrint,
+                        ),
+                    }
+                  : {}),
+                respondentEmail: isUserAlreadyAuthenticated
+                  ? req.formsession?.access_payload?.email
+                  : undefined,
               });
 
-            if (trackingResult.hasResponded) {
+            if (trackingResult?.hasResponded) {
               return res.status(200).json({
                 ...ReturnCode(200),
                 data: {

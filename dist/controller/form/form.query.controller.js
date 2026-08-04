@@ -36,61 +36,68 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.GetFilterTypeEnum = void 0;
 exports.GetFilterForm = GetFilterForm;
-exports.ValidateFormBeforeAction = ValidateFormBeforeAction;
 const helper_1 = require("../../utilities/helper");
 const Form_model_1 = __importStar(require("../../model/Form.model"));
 const mongoose_1 = require("mongoose");
 const Content_model_1 = __importStar(require("../../model/Content.model"));
-const SolutionValidationService_1 = __importDefault(require("../../services/SolutionValidationService"));
 const User_model_1 = __importDefault(require("../../model/User.model"));
 const formHelpers_1 = require("../../utilities/formHelpers");
 const Response_model_1 = __importDefault(require("../../model/Response.model"));
+const FormValidationService_1 = require("../../services/FormValidationService");
+var GetFilterTypeEnum;
+(function (GetFilterTypeEnum) {
+    GetFilterTypeEnum["search"] = "search";
+    GetFilterTypeEnum["type"] = "type";
+    GetFilterTypeEnum["createdDate"] = "createddate";
+    GetFilterTypeEnum["modifiedDate"] = "modifieddate";
+    GetFilterTypeEnum["detail"] = "detail";
+    GetFilterTypeEnum["user"] = "user";
+    GetFilterTypeEnum["setting"] = "setting";
+    GetFilterTypeEnum["solution"] = "solution";
+    GetFilterTypeEnum["preview"] = "preview";
+    GetFilterTypeEnum["total"] = "total";
+    GetFilterTypeEnum["response"] = "response";
+    GetFilterTypeEnum["analytics"] = "analytics";
+    GetFilterTypeEnum["validation"] = "validation";
+})(GetFilterTypeEnum || (exports.GetFilterTypeEnum = GetFilterTypeEnum = {}));
+var ValidationActionEnum;
+(function (ValidationActionEnum) {
+    ValidationActionEnum["page"] = "page";
+    ValidationActionEnum["submission"] = "submit";
+    ValidationActionEnum["normal"] = "normal";
+})(ValidationActionEnum || (ValidationActionEnum = {}));
 async function GetFilterForm(req, res) {
     try {
-        const { ty, q, page = "1", limit = "5", tab, created, updated, } = req.query;
+        const { ty, q, page = "1", limit = "5", tab, created, updated, action, } = req.query;
         if (tab && !Object.values(Form_model_1.DashboardTabType).includes(tab)) {
             return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid type or query"));
         }
-        const p = Number(page);
+        const p = Number(page ?? "1");
         const lt = Math.min(Number(limit), 50);
         const createdAt = created ? parseInt(created) : undefined;
         const updatedAt = updated ? parseInt(updated) : undefined;
-        const requiresQuery = [
-            "detail",
-            "solution",
-            "setting",
-            "search",
-            "type",
-            "preview",
-            "total",
-            "response",
-            "analytics",
-            "user",
-        ];
-        if (ty && !requiresQuery.includes(ty)) {
-            return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid query"));
-        }
         const user = req.user;
         if (!user)
             return res.status(401).json((0, helper_1.ReturnCode)(401));
         // Handle different query types with optimized logic
         switch (ty) {
-            case "detail":
-            case "solution":
-                return await handleDetailQuery(res, ty, q, p, new mongoose_1.Types.ObjectId(user?.sub), Number(page ?? "1"));
-            case "response":
-            case "analytics":
+            case GetFilterTypeEnum.detail:
+            case GetFilterTypeEnum.solution:
+                return await handleDetailQuery(res, ty, q, p, new mongoose_1.Types.ObjectId(user?.sub));
+            case GetFilterTypeEnum.response:
+            case GetFilterTypeEnum.analytics:
                 return await handleShortFormInfo({
                     res,
                     id: q,
                     userId: new mongoose_1.Types.ObjectId(user?.sub),
                 });
-            case "total":
+            case GetFilterTypeEnum.total:
                 return await handleTotalQuery(res, q, user);
-            case "setting":
+            case GetFilterTypeEnum.setting:
                 return await handleSettingQuery(res, q, user);
-            case "user":
+            case GetFilterTypeEnum.user:
                 if ((createdAt && ![1, -1].includes(createdAt)) ||
                     (updatedAt && ![1, -1].includes(updatedAt))) {
                     return res
@@ -128,7 +135,7 @@ async function handleShortFormInfo({ res, userId, id, }) {
         return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID"));
     }
     const form = await Form_model_1.default.findById(id)
-        .select("_id title type totalpage user owners editors setting.email")
+        .select("_id title type totalpage totalscore user owners editors setting.email")
         .lean()
         .exec();
     if (!form) {
@@ -142,64 +149,67 @@ async function handleShortFormInfo({ res, userId, id, }) {
             title: form.title,
             type: form.type,
             totalpage: form.totalpage,
+            totalscore: form.totalscore,
             setting: form.setting,
             ...isHasAccess,
         },
     });
 }
-async function handleDetailQuery(res, ty, q, p, user, page) {
+async function handleDetailQuery(res, ty, q, p, user) {
     if (!user)
         return res.status(401).json((0, helper_1.ReturnCode)(401));
     const query = (0, formHelpers_1.isValidObjectIdString)(q) ? { _id: q } : { title: q };
     const detailForm = await Form_model_1.default.findOne(query)
         .select(formHelpers_1.projections.detail)
-        .lean()
-        .exec();
+        .lean();
     if (!detailForm)
         return res.status(404).json((0, helper_1.ReturnCode)(404, "No Form Found"));
+    //Normal form can't have solution ty
+    if (ty === GetFilterTypeEnum.solution && detailForm.type !== Form_model_1.TypeForm.Quiz) {
+        return res.status(404).json((0, helper_1.ReturnCode)(400, "Invalid Form"));
+    }
+    //Verfiy form acess
     const accessInfo = (0, formHelpers_1.validateAccess)(detailForm, user);
     if (!accessInfo.hasAccess)
         return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-    const contentProjection = ty === "solution"
-        ? `${Content_model_1.DetailContentSelection} answer score hasAnswer isValidated`
+    //Fetch content procession
+    const contentProjection = ty === GetFilterTypeEnum.solution
+        ? `${Content_model_1.DetailContentSelection} answer score hasAnswer isValidated isBonusScore useChildScoreSum`
         : Content_model_1.DetailContentSelection;
     let validationSummary = null;
-    if (ty === "solution") {
-        try {
-            validationSummary = await SolutionValidationService_1.default.validateForm(q);
-        }
-        catch (error) {
-            console.error("Validation error:", error);
-        }
-    }
-    const resultContent = await Content_model_1.default.find({
-        _id: { $in: detailForm.contentIds },
-        page: p,
+    let resultContent = (await Content_model_1.default.find({
+        formId: detailForm._id,
     })
         .select(contentProjection)
         .sort({ qIdx: 1 })
-        .lean()
-        .exec();
-    // Get cumulative question count from previous pages for proper numbering
-    const lastQuestionIdx = await (0, formHelpers_1.getLastQuestionIdx)(q, p);
+        .lean());
+    validationSummary = FormValidationService_1.FormValidationService.validateForm(detailForm, resultContent, p, ty);
+    //Attach each question valdiation message
+    resultContent = resultContent
+        .filter((i) => i.page === p)
+        .map((i) => ({
+        ...i,
+        //Issues message attach to each question
+        validationWarning: FormValidationService_1.FormValidationService.getValidationMessageByQId(validationSummary?.validationResults?.warnings ?? [], i._id?.toString() ?? i.qIdx),
+        validationIssues: FormValidationService_1.FormValidationService.getValidationMessageByQId(validationSummary?.validationResults?.errors ?? [], i._id?.toString() ?? i.qIdx),
+    }));
+    const summaryData = await FormValidationService_1.FormValidationService.getFormOverviewDataById({
+        formId: detailForm._id,
+        p,
+    });
     return res.status(200).json({
         ...(0, helper_1.ReturnCode)(200),
         data: {
             ...detailForm,
-            owners: undefined,
-            editors: undefined,
-            user: undefined,
             contents: (0, helper_1.AddQuestionNumbering)({
-                questions: resultContent,
-                lastIdx: lastQuestionIdx,
-            }),
+                questions: resultContent.filter((i) => i.page === p),
+                lastIdx: summaryData?.lastQuestionIdx,
+            }), //Return only the selected page content
             contentIds: undefined,
-            validationSummary,
+            //Overall validation
+            validation: validationSummary,
+            ...summaryData,
             ...accessInfo, //User Role Of Form
-            ...(page &&
-                page > 1 && {
-                lastqIdx: lastQuestionIdx,
-            }),
         },
     });
 }
@@ -230,6 +240,9 @@ async function handleTotalQuery(res, q, user) {
             $group: {
                 _id: null,
                 totalQuestions: { $sum: 1 },
+                totalConditions: {
+                    $sum: { $cond: [{ $ne: ["$parentcontent", true] }, 1, 0] },
+                },
                 totalScore: {
                     $sum: {
                         $cond: [
@@ -247,13 +260,18 @@ async function handleTotalQuery(res, q, user) {
             },
         },
     ]);
-    const stats = contentStats[0] || { totalQuestions: 0, totalScore: 0 };
+    const stats = contentStats[0] || {
+        totalQuestions: 0,
+        totalScore: 0,
+        totalConditions: 0,
+    };
     return res.status(200).json({
         ...(0, helper_1.ReturnCode)(200),
         data: {
-            totalpage: formdata.totalpage ?? 0,
-            totalscore: stats.totalScore,
-            totalquestion: stats.totalQuestions,
+            totalPage: formdata.totalpage ?? 0,
+            totalScore: stats.totalScore,
+            totalQuestion: stats.totalQuestions,
+            totalConditions: stats.totalConditions,
             ...accessInfo,
         },
     });
@@ -333,21 +351,15 @@ async function handleUserQuery({ p, userId, tab, res, lt, filter, }) {
         const totalCount = results.totalCount[0]?.count || 0;
         const userForms = results.data.map((form) => {
             const isFormFilled = filledFormIds.includes(form._id.toString());
-            // In "filledform" tab, always flag forms as filled so owners/creators/editors
-            // can view their own responses by switching to this tab
             if (tab === Form_model_1.DashboardTabType.filledform) {
                 return {
                     ...form,
                     isFilled: true,
                 };
             }
-            // For other tabs (all, myform, otherform):
-            // Check if user has ownership/management rights over this form
             const isCreator = form.user?.toString() === userId.toString();
             const isOwner = form.owners?.some((ownerId) => ownerId.toString() === userId.toString());
             const isEditor = form.editors?.some((editorId) => editorId.toString() === userId.toString());
-            // If user owns/manages the form, don't flag it as "filled" even if they responded to it
-            // Only flag as filled if user is ONLY a respondent (not owner/creator/editor)
             const shouldBeFlagged = isFormFilled && !isCreator && !isOwner && !isEditor;
             return {
                 ...form,
@@ -358,10 +370,10 @@ async function handleUserQuery({ p, userId, tab, res, lt, filter, }) {
             ...(0, helper_1.ReturnCode)(200),
             data: {
                 userForms,
-                pagination: {
-                    totalCount,
-                    totalPage: totalCount / lt,
-                },
+            },
+            pagination: {
+                totalCount,
+                totalPage: Math.ceil(totalCount / lt),
             },
         });
     }
@@ -427,53 +439,4 @@ function buildSortOptions(filter) {
         sortOptions.updatedAt = -1;
     }
     return sortOptions;
-}
-/**
- *
- * Validate Form Content handler
- */
-async function ValidateFormBeforeAction(req, res) {
-    const { formId, action } = req.query;
-    const user = req.user;
-    if (!user) {
-        return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
-    }
-    const validation = (0, formHelpers_1.validateFormRequest)(formId);
-    if (!validation.isValid) {
-        return res.status(400).json((0, helper_1.ReturnCode)(400, validation.error));
-    }
-    try {
-        const form = await Form_model_1.default.findById(formId)
-            .select("user owners editors")
-            .lean();
-        if (!form) {
-            return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-        }
-        if (!(0, formHelpers_1.hasFormAccess)(form, new mongoose_1.Types.ObjectId(user.sub))) {
-            return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
-        }
-        const [validationSummary, errors] = await Promise.all([
-            SolutionValidationService_1.default.validateForm(formId),
-            SolutionValidationService_1.default.getFormValidationErrors(formId),
-        ]);
-        const canProceed = action === "send_form" ? errors.length === 0 : true;
-        const warnings = action === "send_form" ? [] : errors;
-        return res.status(200).json({
-            ...(0, helper_1.ReturnCode)(200),
-            data: {
-                ...validationSummary,
-                errors: action === "send_form" ? errors : [],
-                warnings,
-                canProceed,
-                action,
-                hasAccess: formHelpers_1.hasFormAccess,
-                isOwner: (0, formHelpers_1.verifyRole)(Form_model_1.CollaboratorType.owner, form, new mongoose_1.Types.ObjectId(user.sub)),
-                isEditor: (0, formHelpers_1.verifyRole)(Form_model_1.CollaboratorType.editor, form, new mongoose_1.Types.ObjectId(user.sub)),
-            },
-        });
-    }
-    catch (error) {
-        console.error("Validate Form Before Action Error:", error);
-        return res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to validate form"));
-    }
 }

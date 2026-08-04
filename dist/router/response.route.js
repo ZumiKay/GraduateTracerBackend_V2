@@ -13,6 +13,7 @@ const ResponseQueryService_1 = require("../services/ResponseQueryService");
 const formsession_controller_1 = __importDefault(require("../controller/form/formsession.controller"));
 const form_response_return_controller_1 = __importDefault(require("../controller/response/form_response_return.controller"));
 const analytics_controller_1 = __importDefault(require("../controller/analytics/analytics.controller"));
+const form_response_controller_3 = require("../controller/form/form.response.controller");
 const ResponseRouter = (0, express_1.Router)();
 //Form session management
 ResponseRouter.post("/respondentlogin", formsession_controller_1.default.RespondentLogin);
@@ -27,8 +28,8 @@ ResponseRouter.get("/getrespondents/:formId", User_middleware_1.default.VerifyTo
 ResponseRouter.get("/getresponselist", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponsesWithFilters);
 //Get response by id
 ResponseRouter.get("/getresponseById/:id/:formId", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponseByID);
-//Validate Form data before submission
-ResponseRouter.get("/validate", User_middleware_1.default.VerifyToken, form_response_controller_1.default.ValidateFormForSubmission);
+//Get response summary
+ResponseRouter.get("/getResponseSummary/:formId", User_middleware_1.default.VerifyToken, form_response_controller_3.validateFormResponses);
 // Send form links via email
 ResponseRouter.post("/send-links", User_middleware_1.default.VerifyToken, form_response_controller_1.default.SendFormLinks);
 // Generate form link
@@ -59,4 +60,5 @@ ResponseRouter.get("/filled-form/:formId", User_middleware_1.default.VerifyToken
 ResponseRouter.get("/filled-form/:formId/:responseId", User_middleware_1.default.VerifyToken, form_controller_1.GetFilledForm);
 //Analytics routes
 ResponseRouter.get("/getanalytics", User_middleware_1.default.VerifyToken, analytics_controller_1.default.GetAnalyticsData);
+ResponseRouter.get("/getoverviewanalytic", User_middleware_1.default.VerifyToken, analytics_controller_1.default.GetFormOverviewPerformance);
 exports.default = ResponseRouter;

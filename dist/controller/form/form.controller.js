@@ -3,12 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GetFormDetails = exports.GetFilledForm = exports.ValidateFormBeforeAction = exports.GetFilterForm = exports.DeletePendingCollaborator = exports.ResendPendingInvitation = exports.CancelOwnershipTransfer = exports.ConfirmOwnershipTransfer = exports.ChangePrimaryOwner = exports.RemoveSelfFromForm = exports.GetFormCollaborators = exports.ManageFormCollaborator = void 0;
+exports.GetFormDetails = exports.GetFilledForm = exports.GetFilterForm = exports.DeletePendingCollaborator = exports.ResendPendingInvitation = exports.CancelOwnershipTransfer = exports.ConfirmOwnershipTransfer = exports.ChangePrimaryOwner = exports.RemoveSelfFromForm = exports.GetFormCollaborators = exports.ManageFormCollaborator = void 0;
 exports.CreateForm = CreateForm;
 exports.EditForm = EditForm;
 exports.DeleteForm = DeleteForm;
 exports.PageHandler = PageHandler;
-exports.GetAllForm = GetAllForm;
 const helper_1 = require("../../utilities/helper");
 const Form_model_1 = __importDefault(require("../../model/Form.model"));
 const mongoose_1 = require("mongoose");
@@ -25,7 +24,6 @@ Object.defineProperty(exports, "ResendPendingInvitation", { enumerable: true, ge
 Object.defineProperty(exports, "DeletePendingCollaborator", { enumerable: true, get: function () { return form_collaborator_controller_1.DeletePendingCollaborator; } });
 var form_query_controller_1 = require("./form.query.controller");
 Object.defineProperty(exports, "GetFilterForm", { enumerable: true, get: function () { return form_query_controller_1.GetFilterForm; } });
-Object.defineProperty(exports, "ValidateFormBeforeAction", { enumerable: true, get: function () { return form_query_controller_1.ValidateFormBeforeAction; } });
 var form_response_controller_1 = require("./form.response.controller");
 Object.defineProperty(exports, "GetFilledForm", { enumerable: true, get: function () { return form_response_controller_1.GetFilledForm; } });
 Object.defineProperty(exports, "GetFormDetails", { enumerable: true, get: function () { return form_response_controller_1.GetFormDetails; } });
@@ -139,6 +137,7 @@ async function PageHandler(req, res) {
             const toBeDeleteContent = await Content_model_1.default.find({ page: deletepage })
                 .select("_id")
                 .lean();
+            //update form totalpage and delete questions
             await Form_model_1.default.updateOne({ _id: formId }, {
                 $inc: { totalpage: -1 },
                 $pull: { contentIds: { $in: toBeDeleteContent.map((i) => i._id) } },
@@ -152,20 +151,5 @@ async function PageHandler(req, res) {
     catch (error) {
         console.error("Page Handler Error:", error);
         return res.status(500).json((0, helper_1.ReturnCode)(500, "Operation failed"));
-    }
-}
-async function GetAllForm(req, res) {
-    const { limit = "5", page = "1" } = req.query;
-    const p = Number(page);
-    const lt = Number(limit);
-    try {
-        const allForm = await Form_model_1.default.find()
-            .skip((p - 1) * lt)
-            .limit(lt);
-        return res.status(200).json({ ...(0, helper_1.ReturnCode)(200), data: allForm });
-    }
-    catch (error) {
-        console.error("Get All Form Error:", error);
-        return res.status(500).json((0, helper_1.ReturnCode)(500));
     }
 }

@@ -7,7 +7,6 @@ const express_1 = require("express");
 const ConditionValidator_1 = __importDefault(require("../middleware/ConditionValidator"));
 const Traffic_middleware_1 = __importDefault(require("../middleware/Traffic.middleware"));
 const form_controller_1 = require("../controller/form/form.controller");
-const content_controller_1 = require("../controller/form/content.controller");
 const Form_model_1 = require("../model/Form.model");
 const Validatetor_1 = require("../middleware/Validatetor");
 const authenication_controller_1 = __importDefault(require("../controller/auth/authenication.controller"));
@@ -17,6 +16,7 @@ const form_response_controller_1 = __importDefault(require("../controller/respon
 const question_controller_1 = __importDefault(require("../controller/form/question.controller"));
 const recaptcha_controller_1 = __importDefault(require("../controller/utils/recaptcha.controller"));
 const form_collaborator_controller_1 = require("../controller/form/form.collaborator.controller");
+const FormValidationService_1 = require("../services/FormValidationService");
 const UserRoute = (0, express_1.Router)();
 //Get User Profile
 UserRoute.get("/user/profile", User_middleware_1.default.VerifyToken, user_controller_1.GetUserProfile);
@@ -33,18 +33,17 @@ UserRoute.post("/refreshtoken", User_middleware_1.default.VerifyRefreshToken, au
 UserRoute.put("/forgotpassword", Traffic_middleware_1.default.PasswordResetRateLimit, authenication_controller_1.default.ForgotPassword);
 //Recaptcha
 UserRoute.post("/recaptchaverify", recaptcha_controller_1.default);
-//Form Routes - Enhanced Security for Sensitive Operations
+//Form Modification Routes
 UserRoute.post("/createform", [
     User_middleware_1.default.VerifyToken,
     (0, Validatetor_1.validate)(Form_model_1.createFormValidate),
 ], form_controller_1.CreateForm);
 UserRoute.put("/editform", User_middleware_1.default.VerifyToken, form_controller_1.EditForm);
 UserRoute.delete("/deleteform", User_middleware_1.default.VerifyToken, form_controller_1.DeleteForm);
-UserRoute.get("/getallform", User_middleware_1.default.VerifyToken, form_controller_1.GetAllForm);
+//Fetch form for users
 UserRoute.get("/filteredform", User_middleware_1.default.VerifyToken, form_controller_1.GetFilterForm);
+//Form page mutations
 UserRoute.put("/modifypage", User_middleware_1.default.VerifyToken, form_controller_1.PageHandler);
-//Respondent Form Authentication
-UserRoute.get("/form/:formId", form_response_controller_1.default.GetPublicFormData);
 // Get Form Details with Access Verification (for ViewResponsePage)
 UserRoute.get("/form/details/:formId", User_middleware_1.default.VerifyToken, form_controller_1.GetFormDetails);
 //Form Owner Management Routes
@@ -60,23 +59,13 @@ UserRoute.delete("/ownership/cancel", User_middleware_1.default.VerifyToken, for
 // Pending collaborator management
 UserRoute.post("/resendpending", User_middleware_1.default.VerifyToken, form_controller_1.ResendPendingInvitation);
 UserRoute.delete("/deletepending", User_middleware_1.default.VerifyToken, form_controller_1.DeletePendingCollaborator);
-//Form Validation Routes
-UserRoute.get("/validateform", User_middleware_1.default.VerifyToken, form_controller_1.ValidateFormBeforeAction);
-UserRoute.get("/validatecontent", User_middleware_1.default.VerifyToken, content_controller_1.ValidateFormContent);
 //Form Content Routes
-UserRoute.post("/addcontent", [
-    User_middleware_1.default.VerifyToken,
-    (0, Validatetor_1.validate)(content_controller_1.ContentValidate),
-], content_controller_1.AddFormContent);
 UserRoute.put("/savecontent", User_middleware_1.default.VerifyToken, question_controller_1.default.SaveQuestion);
-UserRoute.put("/editcontent", User_middleware_1.default.VerifyToken, content_controller_1.EditFormContent);
 UserRoute.delete("/deletecontent", User_middleware_1.default.VerifyToken, question_controller_1.default.DeleteQuestion);
-// Question Routes - Get questions
-UserRoute.get("/question/getAllQuestion", question_controller_1.default.GetAllQuestion);
+//Question mutations
 UserRoute.post("/savequestion", User_middleware_1.default.VerifyToken, ConditionValidator_1.default.validateConditionMiddleware, question_controller_1.default.SaveQuestion);
-UserRoute.post("/editcontent", User_middleware_1.default.VerifyToken, ConditionValidator_1.default.validateConditionMiddleware, content_controller_1.EditFormContent);
-//Validate form contenet
-UserRoute.get("/validateformsubmission", User_middleware_1.default.VerifyToken, form_response_controller_1.default.ValidateFormForSubmission);
+//Validate form contents
+UserRoute.get("/validateform", User_middleware_1.default.VerifyToken, FormValidationService_1.FormValidationService.validationFormHandler);
 // Response Management Routes
 UserRoute.post("/response/send-links", User_middleware_1.default.VerifyToken, form_response_controller_1.default.SendFormLinks);
 UserRoute.post("/response/generate-link", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GenerateFormLink);

@@ -38,7 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const Formsession_model_1 = __importDefault(require("../model/Formsession.model"));
 const mongoose_1 = require("mongoose");
-const Form_model_1 = __importStar(require("../model/Form.model"));
+const Form_model_1 = __importDefault(require("../model/Form.model"));
 const User_middleware_1 = __importStar(require("./User.middleware"));
 const helper_1 = require("../utilities/helper");
 const formsession_controller_1 = __importDefault(require("../controller/form/formsession.controller"));
@@ -156,12 +156,13 @@ class FormsessionMiddleware {
                 .lean();
             if (!form?.setting?.acceptResponses)
                 return res.status(403).json(RESPONSES.formClosed());
-            if (form?.type === Form_model_1.TypeForm.Normal && !form.setting.email) {
+            if (!form.setting.email) {
                 return next();
             }
             // Extract both session_id and access_id from cookies
             const sessionToken = req.cookies[process.env.RESPONDENT_COOKIE];
             const accessToken = req.cookies[process.env.ACCESS_RESPONDENT_COOKIE];
+            console.log({ sessionToken, accessToken });
             if (!sessionToken) {
                 return res.status(401).json(RESPONSES.missingSessionToken());
             }
@@ -183,6 +184,8 @@ class FormsessionMiddleware {
                 };
                 const isSession = await Formsession_model_1.default.findOne(sessionQuery).lean();
                 if (!isSession) {
+                    res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE);
+                    res.clearCookie(process.env.RESPONDENT_COOKIE);
                     return res.status(401).json(RESPONSES.sessionNotFound());
                 }
                 const dbExpiredAt = new Date(isSession.expiredAt);
@@ -215,7 +218,6 @@ class FormsessionMiddleware {
                         token: newAccessId,
                     });
                     req.formsession = {
-                        ...extractedSessionToken,
                         sub: sessionToken,
                         access_token: newAccessId,
                         access_payload: newExtractedAccessToken,
@@ -225,7 +227,6 @@ class FormsessionMiddleware {
                 }
                 // No renewal needed - use existing tokens
                 req.formsession = {
-                    ...extractedSessionToken,
                     sub: sessionToken,
                     access_token: accessToken,
                     access_payload: verifiedAccessToken.data,

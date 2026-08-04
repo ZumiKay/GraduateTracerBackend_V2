@@ -57,73 +57,41 @@ export class RespondentTrackingService {
 
   static async checkRespondentExists(
     respondentData: Partial<ProcessNormalFormSubmissionType>,
-  ): Promise<RespondentTrackingResult> {
-    const {
-      formId,
-      respondentFingerprint,
-      respondentIP,
-      respondentEmail,
-      fingerprintStrength,
-    } = respondentData;
+  ) {
+    const { formId, respondentFingerprint, respondentIP, respondentEmail } =
+      respondentData;
 
-    // Build common base result to avoid repetition
-    const baseResult = {
-      fingerprint: respondentFingerprint,
-      ipAddress: respondentIP,
-      fingerprintStrength,
-      respondentEmail,
-    };
+    const orConditions: Record<string, unknown>[] = [];
 
-    // Attempt fingerprint lookup first (most reliable)
-    if (respondentFingerprint) {
-      const existingResponse = await FormResponse.findOne(
-        { formId, respondentFingerprint },
-        { _id: 1 },
-      ).lean();
+    if (respondentEmail)
+      orConditions.push({
+        respondentEmail,
+      });
+    if (respondentIP) orConditions.push({ respondentIP });
 
-      if (existingResponse) {
-        return {
-          hasResponded: {
-            message: "You already submitted response",
-            responseId: existingResponse._id.toString(),
-            maxScore: existingResponse.maxScore,
-            totalScore: existingResponse.totalScore,
-          },
-          trackingMethod: "fingerprint",
+    if (respondentFingerprint) orConditions.push({ respondentFingerprint });
+
+    if (orConditions.length === 0) return { hasResponded: undefined };
+
+    console.dir({ orConditions }, { depth: null });
+
+    const existingResponse = await FormResponse.findOne(
+      { formId, $or: orConditions },
+      { _id: 1, maxScore: 1, totalScore: 1 },
+    ).lean();
+
+    if (existingResponse) {
+      return {
+        hasResponded: {
+          message: "You already submitted response",
           responseId: existingResponse._id.toString(),
-          ...baseResult,
-        };
-      }
+          maxScore: existingResponse.maxScore,
+          totalScore: existingResponse.totalScore,
+        },
+      };
     }
 
-    // Fallback to IP + email lookup (requires both for reliability)
-    if (respondentIP && respondentEmail) {
-      const existingResponse = await FormResponse.findOne(
-        { formId, respondentIP, respondentEmail },
-        { _id: 1 },
-      ).lean();
-
-      if (existingResponse) {
-        return {
-          hasResponded: {
-            message: "You already submitted response",
-            responseId: existingResponse._id.toString(),
-            maxScore: existingResponse.maxScore,
-            totalScore: existingResponse.totalScore,
-          },
-          trackingMethod: "ip",
-          responseId: existingResponse._id.toString(),
-          ...baseResult,
-        };
-      }
-    }
-
-    // No existing response found
-    return {
-      hasResponded: undefined,
-      trackingMethod: "none",
-      ...baseResult,
-    };
+    return { hasResponded: undefined };
   }
 
   static generateTrackingData(req: Request): TrackingData {

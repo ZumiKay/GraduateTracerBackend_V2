@@ -11,8 +11,8 @@ const Form_model_1 = __importDefault(require("../../model/Form.model"));
 const Content_model_1 = __importDefault(require("../../model/Content.model"));
 const ResponseValidationService_1 = require("../../services/ResponseValidationService");
 const ResponseQueryService_1 = require("../../services/ResponseQueryService");
-const ResponseAnalyticsService_1 = require("../../services/ResponseAnalyticsService");
 const formHelpers_1 = require("../../utilities/formHelpers");
+const ResponseAnalyticsService_1 = require("../../services/ResponseAnalyticsService");
 class FormResponseQueryController {
     GetResponseByFormId = async (req, res) => {
         try {
@@ -62,7 +62,9 @@ class FormResponseQueryController {
                 .lean();
             //Populate response set question
             const responseContent = await Content_model_1.default.find({
-                _id: { $in: populatedResponse?.responseset.map((i) => i.question) },
+                _id: {
+                    $in: populatedResponse?.responseset.map((i) => i.question),
+                },
             }).lean();
             populatedResponse = {
                 ...populatedResponse,
@@ -87,7 +89,6 @@ class FormResponseQueryController {
         if (!req.user)
             return res.status(403).json((0, helper_1.ReturnCode)(403));
         const { formId } = req.params;
-        const { group } = req.query;
         if (!formId || !(0, formHelpers_1.isValidObjectIdString)(formId))
             return res.status(400).json((0, helper_1.ReturnCode)(400));
         try {
@@ -281,8 +282,7 @@ class FormResponseQueryController {
             if (!form)
                 return;
             const responses = await ResponseQueryService_1.ResponseQueryService.getResponsesByFormId(validation.formId, 1, 1000);
-            const analytics = await ResponseAnalyticsService_1.ResponseAnalyticsService.getResponseAnalytics(responses.responses, form);
-            res.status(200).json({ ...(0, helper_1.ReturnCode)(200), data: analytics });
+            res.status(200).json({ ...(0, helper_1.ReturnCode)(200) });
         }
         catch (error) {
             console.error("Get Response Analytics Error:", error);
@@ -301,10 +301,8 @@ class FormResponseQueryController {
             if (!form)
                 return;
             const { questionId } = req.query;
-            const analytics = await ResponseAnalyticsService_1.ResponseAnalyticsService.getChoiceQuestionAnalytics(validation.formId, questionId);
             res.status(200).json({
                 ...(0, helper_1.ReturnCode)(200),
-                data: analytics,
                 message: "Choice question analytics retrieved successfully",
             });
         }
@@ -328,7 +326,7 @@ class FormResponseQueryController {
             const form = await ResponseValidationService_1.ResponseValidationService.validateFormAccess(formId, validation.user.sub, res);
             if (!form)
                 return;
-            const analyticsData = await ResponseAnalyticsService_1.ResponseAnalyticsService.getFormAnalytics(formId, period);
+            const analyticsData = await ResponseAnalyticsService_1.FormOverViewAnalyticsService.getFormAnalytics(formId, period);
             res.status(200).json({ ...(0, helper_1.ReturnCode)(200), data: analyticsData });
         }
         catch (error) {
@@ -350,10 +348,10 @@ class FormResponseQueryController {
             const form = await ResponseValidationService_1.ResponseValidationService.validateFormAccess(formId, validation.user.sub, res);
             if (!form)
                 return;
-            const analyticsData = await ResponseAnalyticsService_1.ResponseAnalyticsService.getFormAnalytics(formId);
+            const analyticsData = await ResponseAnalyticsService_1.FormOverViewAnalyticsService.getFormAnalytics(formId);
             if (format === "csv") {
                 const responses = await ResponseQueryService_1.ResponseQueryService.getResponsesByFormId(formId, 1, 1000);
-                const csvData = ResponseAnalyticsService_1.ResponseAnalyticsService.generateCSVData(responses.responses);
+                const csvData = ResponseAnalyticsService_1.FormOverViewAnalyticsService.generateCSVData(responses.responses);
                 res.setHeader("Content-Type", "text/csv");
                 res.setHeader("Content-Disposition", `attachment; filename="${form.title}-analytics.csv"`);
                 res.send(csvData);

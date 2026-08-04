@@ -81,3 +81,46 @@ describe("groupContentByParent basic tests", () => {
     expect(parent2Index).toBeLessThan(child3Index);
   });
 });
+
+import { SendResponse, ReturnCode } from "../helper";
+
+describe("SendResponse helper tests", () => {
+  let res: any;
+
+  beforeEach(() => {
+    res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+      send: jest.fn().mockReturnThis(),
+    };
+  });
+
+  test("SendResponse should return 200 JSON with data", () => {
+    const data = { user: "test" };
+    SendResponse(res, 200, data);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      code: 200,
+      message: "Success",
+      data,
+    });
+  });
+
+  test("SendResponse.notFound shortcut should return 404 with custom message", () => {
+    SendResponse.notFound(res, "Item Not Found");
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({
+      code: 404,
+      message: "Item Not Found",
+    });
+  });
+
+  test("SendResponse 204 noContent should call res.send()", () => {
+    SendResponse.noContent(res);
+
+    expect(res.status).toHaveBeenCalledWith(204);
+    expect(res.send).toHaveBeenCalled();
+  });
+});

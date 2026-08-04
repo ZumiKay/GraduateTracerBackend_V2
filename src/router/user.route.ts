@@ -5,10 +5,8 @@ import {
   CreateForm,
   DeleteForm,
   EditForm,
-  GetAllForm,
   GetFilterForm,
   PageHandler,
-  ValidateFormBeforeAction,
   RemoveSelfFromForm,
   GetFormCollaborators,
   ChangePrimaryOwner,
@@ -17,12 +15,7 @@ import {
   ResendPendingInvitation,
   DeletePendingCollaborator,
 } from "../controller/form/form.controller";
-import {
-  AddFormContent,
-  ContentValidate,
-  EditFormContent,
-  ValidateFormContent,
-} from "../controller/form/content.controller";
+
 import { createFormValidate } from "../model/Form.model";
 import { validate } from "../middleware/Validatetor";
 import authenicationController from "../controller/auth/authenication.controller";
@@ -42,6 +35,7 @@ import {
   ConfirmOwnershipTransfer,
   CancelOwnershipTransfer,
 } from "../controller/form/form.collaborator.controller";
+import { FormValidationService } from "../services/FormValidationService";
 
 const UserRoute = Router();
 
@@ -103,7 +97,7 @@ UserRoute.post(
   VerifyRecaptcha as unknown as RequestHandler,
 );
 
-//Form Routes - Enhanced Security for Sensitive Operations
+//Form Modification Routes
 UserRoute.post(
   "/createform",
   [
@@ -112,36 +106,31 @@ UserRoute.post(
   ],
   CreateForm as unknown as RequestHandler,
 );
+
 UserRoute.put(
   "/editform",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   EditForm as unknown as RequestHandler,
 );
+
 UserRoute.delete(
   "/deleteform",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   DeleteForm as unknown as RequestHandler,
 );
-UserRoute.get(
-  "/getallform",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  GetAllForm as unknown as RequestHandler,
-);
+
+//Fetch form for users
 UserRoute.get(
   "/filteredform",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   GetFilterForm as unknown as RequestHandler,
 );
+
+//Form page mutations
 UserRoute.put(
   "/modifypage",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   PageHandler as unknown as RequestHandler,
-);
-
-//Respondent Form Authentication
-UserRoute.get(
-  "/form/:formId",
-  form_responseController.GetPublicFormData as unknown as RequestHandler,
 );
 
 // Get Form Details with Access Verification (for ViewResponsePage)
@@ -208,50 +197,21 @@ UserRoute.delete(
   DeletePendingCollaborator as unknown as RequestHandler,
 );
 
-//Form Validation Routes
-UserRoute.get(
-  "/validateform",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  ValidateFormBeforeAction as unknown as RequestHandler,
-);
-UserRoute.get(
-  "/validatecontent",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  ValidateFormContent as unknown as RequestHandler,
-);
-
 //Form Content Routes
 
-UserRoute.post(
-  "/addcontent",
-  [
-    UserMiddleware.VerifyToken as unknown as RequestHandler,
-    validate(ContentValidate) as unknown as RequestHandler,
-  ],
-  AddFormContent as unknown as RequestHandler,
-);
 UserRoute.put(
   "/savecontent",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   questionController.SaveQuestion as unknown as RequestHandler,
 );
-UserRoute.put(
-  "/editcontent",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  EditFormContent as unknown as RequestHandler,
-);
+
 UserRoute.delete(
   "/deletecontent",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   questionController.DeleteQuestion as unknown as RequestHandler,
 );
 
-// Question Routes - Get questions
-UserRoute.get(
-  "/question/getAllQuestion",
-  questionController.GetAllQuestion as unknown as RequestHandler,
-);
-
+//Question mutations
 UserRoute.post(
   "/savequestion",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
@@ -259,19 +219,11 @@ UserRoute.post(
   questionController.SaveQuestion as unknown as RequestHandler,
 );
 
-UserRoute.post(
-  "/editcontent",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  ConditionQuestionValidator.validateConditionMiddleware as unknown as RequestHandler,
-  EditFormContent as unknown as RequestHandler,
-);
-
-//Validate form contenet
-
+//Validate form contents
 UserRoute.get(
-  "/validateformsubmission",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  form_responseController.ValidateFormForSubmission as unknown as RequestHandler,
+  "/validateform",
+  UserMiddleware.VerifyToken,
+  FormValidationService.validationFormHandler as unknown as RequestHandler,
 );
 
 // Response Management Routes

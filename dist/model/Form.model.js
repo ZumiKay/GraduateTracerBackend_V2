@@ -153,6 +153,11 @@ const FormSchema = new mongoose_1.Schema({
         required: false,
         default: null,
     },
+    pendingInvite: {
+        type: [String],
+        require: false,
+        default: null,
+    },
     totalpage: {
         type: Number,
         default: 1,
@@ -162,7 +167,16 @@ const FormSchema = new mongoose_1.Schema({
         type: Number,
         required: false,
     },
-}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
+    extraScore: {
+        type: Number,
+        required: false,
+        default: 0,
+    },
+}, {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+});
 FormSchema.index({ user: 1 });
 FormSchema.index({ owners: 1 });
 FormSchema.index({ editors: 1 });
@@ -173,7 +187,6 @@ FormSchema.index({ _id: 1, responses: 1 });
 FormSchema.pre("deleteOne", async function (next) {
     const formId = this.getQuery()._id;
     await Response_model_1.default.deleteMany({ formId });
-    next();
 });
 const Form = (0, mongoose_1.model)("Form", FormSchema);
 exports.default = Form;

@@ -191,7 +191,6 @@ const ResponseSchema = new Schema<FormResponseType>(
       required: false,
       default: null,
     },
-
     // Browser fingerprinting fields for anonymous tracking
     respondentFingerprint: {
       type: String,

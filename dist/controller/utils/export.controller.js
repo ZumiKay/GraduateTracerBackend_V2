@@ -51,7 +51,6 @@ async function getAvailableColumns(req, res) {
             .json((0, helper_1.ReturnCode)(500, "Failed to fetch available columns"));
     }
 }
-// Get export jobs for a form
 async function getExportJobs(req, res) {
     try {
         const { formId } = req.params;

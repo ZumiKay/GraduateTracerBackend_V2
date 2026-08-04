@@ -1,10 +1,12 @@
 import { model, Schema, Types } from "mongoose";
 import { ResponseAnswerType } from "./Response.model";
+import { ValidationErrorCodeType } from "../types/validation.types";
 
 export const DetailContentSelection =
   "_id qIdx title type text multiple checkbox selection rangedate rangenumber date require page conditional parentcontent";
 export enum QuestionType {
   MultipleChoice = "multiple",
+  MultipleSelection = "multipleselection",
   CheckBox = "checkbox",
   Text = "texts",
   Number = "number",
@@ -67,7 +69,10 @@ export interface ContentType {
   conditional?: Array<ConditionalType>;
   parentcontent?: ParentContentType;
   selection?: Array<ChoiceQuestionType>;
+  validationIssues?: ValidationErrorCodeType[];
+  validationWarning?: ValidationErrorCodeType[];
   isBonusScore?: boolean;
+  useChildScoreSum?: boolean;
   require?: boolean;
   page?: number;
   hasAnswer?: boolean; // Flag to indicate if question has an answer
@@ -225,6 +230,9 @@ const ContentSchema = new Schema<ContentType>(
       default: false,
     },
     isBonusScore: {
+      type: Boolean,
+    },
+    useChildScoreSum: {
       type: Boolean,
     },
   },

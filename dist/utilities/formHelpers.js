@@ -41,7 +41,6 @@ exports.verifyRole = verifyRole;
 exports.validateAccess = validateAccess;
 exports.validateFormRequest = validateFormRequest;
 exports.getLastQuestionIdx = getLastQuestionIdx;
-exports.formatISOToDateString = formatISOToDateString;
 exports.formatResponseValue = formatResponseValue;
 const Form_model_1 = require("../model/Form.model");
 const Content_model_1 = __importStar(require("../model/Content.model"));
@@ -91,8 +90,8 @@ function verifyRole(role, form, userId) {
         return user_id === form.user.toString();
     }
     return role === Form_model_1.CollaboratorType.editor
-        ? form.editors?.some((i) => i.toString() === user_id) ?? false
-        : form.owners?.some((i) => i.toString() === user_id) ?? false;
+        ? (form.editors?.some((i) => i.toString() === user_id) ?? false)
+        : (form.owners?.some((i) => i.toString() === user_id) ?? false);
 }
 // Centralized access validation helper
 function validateAccess(form, userId) {
@@ -106,9 +105,9 @@ function validateAccess(form, userId) {
 // Optimized projections for different use cases
 exports.projections = {
     basic: "title type createdAt updatedAt user owners",
-    detail: "title type createdAt updatedAt totalpage totalscore setting contentIds user owners editors",
+    detail: "title type createdAt updatedAt totalpage totalscore extraScore setting contentIds user owners editors",
     minimal: "_id title type user owners editors",
-    total: "totalpage totalscore contentIds user owners editors",
+    total: "totalpage totalscore extraScore contentIds user owners editors",
     setting: "_id title type setting user owners editors",
 };
 // Common validation logic
@@ -142,18 +141,6 @@ async function getLastQuestionIdx(formId, page) {
         page: { $lt: page },
         $or: [{ parentcontent: { $exists: false } }, { parentcontent: null }],
     });
-}
-/**
- * Convert ISO date string to day-month-year format
- * @param isoString - ISO date string (e.g., "2024-01-15T10:30:00.000Z")
- * @returns Formatted date string in "DD-MM-YYYY" format
- */
-function formatISOToDateString(isoString) {
-    const date = new Date(isoString);
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}-${month}-${year}`;
 }
 function formatResponseValue({ response, questionType, }) {
     switch (questionType) {

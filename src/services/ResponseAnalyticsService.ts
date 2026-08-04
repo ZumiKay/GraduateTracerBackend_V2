@@ -8,7 +8,6 @@ import Content, {
 import { getResponseDisplayName } from "../utilities/respondentUtils";
 import { RespondentTrackingService } from "./RespondentTrackingService";
 import { AddQuestionNumbering } from "../utilities/helper";
-import { coerce } from "zod";
 
 export class FormOverViewAnalyticsService {
   static extractQuestionTitle(title: ContentTitle): string {
@@ -211,65 +210,130 @@ export class FormOverViewAnalyticsService {
     responses: Array<FormResponseType>,
     questions: Array<ContentType>,
   ) {
-    const topPerformers = responses
-      .filter(
-        (r) => (r.respondentName || r.respondentEmail) && r.respondentEmail,
-      )
-      .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0))
-      .slice(0, 5) // Take Top 5
+    const scoredStatuses = new Set([
+      "completed",
+      "autoscore",
+      "noscore",
+      "submitted",
+    ]);
+
+    const scoredResponses = responses.filter(
+      (r) =>
+        r.respondentEmail &&
+        r.totalScore != null &&
+        r.completionStatus &&
+        scoredStatuses.has(r.completionStatus),
+    );
+
+    const topPerformers = scoredResponses
+      .sort((a, b) => {
+        const aPercent =
+          a.maxScore && a.maxScore > 0
+            ? (a.totalScore! / a.maxScore) * 100
+            : a.totalScore!;
+        const bPercent =
+          b.maxScore && b.maxScore > 0
+            ? (b.totalScore! / b.maxScore) * 100
+            : b.totalScore!;
+        return bPercent - aPercent;
+      })
+      .slice(0, 5)
       .map((r) => ({
         name: getResponseDisplayName(r),
         email: r.respondentEmail,
-        score: r.totalScore || 0,
+        score: r.totalScore ?? 0,
+        maxScore: r.maxScore ?? null,
+        percentScore:
+          r.maxScore && r.maxScore > 0
+            ? Math.round((r.totalScore! / r.maxScore) * 100 * 10) / 10
+            : null,
       }));
 
-    //Estimate the difficultQuestions
-    const difficultQuestions = questions
-      .filter((i) => i.type !== QuestionType.Text && i.score)
+    // Only score-bearing question types
+    const scoredQuestions = questions.filter(
+      (q) =>
+        q.type !== QuestionType.Text &&
+        !q.isBonusScore &&
+        q.score != null &&
+        q.score > 0,
+    );
+
+    const difficultQuestions = scoredQuestions
       .map((q) => {
+        const qIdStr = q._id?.toString();
+
         const questionResponses = responses.filter((r) =>
-          r.responseset.some(
-            (rs) => rs.question.toString() === q._id?.toString(),
-          ),
+          r.responseset.some((rs) => {
+            const rsQId =
+              rs.question instanceof Types.ObjectId ||
+              typeof rs.question === "string"
+                ? rs.question.toString()
+                : (rs.question as ContentType)?._id?.toString();
+            return rsQId === qIdStr;
+          }),
         );
 
-        const correctCount = questionResponses.reduce((correct, res) => {
-          const isQuestion = res.responseset.find(
-            (i) => i.question.toString() === q._id?.toString(),
-          );
+        const responseCount = questionResponses.length;
 
-          if (isQuestion && isQuestion.score === q.score) {
-            correct += 1;
-          }
+        if (responseCount === 0) {
+          return {
+            _id: q._id,
+            questionId: q.questionId,
+            title: this.extractQuestionTitle(q.title),
+            accuracy: 0,
+            partialAccuracy: 0,
+            averageScore: 0,
+            maxScore: q.score!,
+            averagePercent: 0,
+            responseCount: 0,
+            isConditional: !!q.parentcontent,
+          };
+        }
 
-          return correct;
-        }, 0);
+        let fullMarkCount = 0;
+        let anyMarkCount = 0;
+        let totalEarned = 0;
 
-        const accuracy =
-          questionResponses.length > 0
-            ? correctCount / questionResponses.length
-            : 0;
+        //Count score of the current question
+        for (const res of questionResponses) {
+          const rs = res.responseset.find((rs) => {
+            const rsQId =
+              rs.question instanceof Types.ObjectId ||
+              typeof rs.question === "string"
+                ? rs.question.toString()
+                : (rs.question as ContentType)?._id?.toString();
+            return rsQId === qIdStr;
+          });
 
-        const avgScore =
-          (
-            questionResponses.reduce((sum, r) => {
-              const questionResponse = r.responseset.find(
-                (rs) => rs.question.toString() === q._id?.toString(),
-              );
-              return sum + (questionResponse?.score || 0);
-            }, 0) / questionResponses.length
-          ).toFixed(2) || 0;
+          const earned = rs?.score ?? 0;
+          totalEarned += earned;
+
+          if (earned >= q.score!) fullMarkCount++;
+          if (earned > 0) anyMarkCount++;
+        }
+
+        const accuracy = fullMarkCount / responseCount;
+        const partialAccuracy = anyMarkCount / responseCount;
+        const averageScore = totalEarned / responseCount;
+        const averagePercent =
+          Math.round((averageScore / q.score!) * 100 * 10) / 10;
 
         return {
           _id: q._id,
-          questionId: q.questionId, //label
-          title: typeof q.title === "string" ? q.title : "Question",
+          questionId: q.questionId,
+          title: this.extractQuestionTitle(q.title),
           accuracy,
-          averageScore: avgScore,
+          partialAccuracy,
+          averageScore: Math.round(averageScore * 100) / 100,
+          maxScore: q.score!,
+          averagePercent,
+          responseCount,
+          isConditional: !!q.parentcontent,
         };
       })
-      .sort((a, b) => a.accuracy - b.accuracy)
-      .slice(0, 5); // Take top 5
+      .filter((q) => q.responseCount > 0)
+      .sort((a, b) => a.accuracy - b.accuracy) // lowest accuracy = most difficult
+      .slice(0, 5);
 
     return { topPerformers, difficultQuestions };
   }
@@ -304,3 +368,5 @@ export class FormOverViewAnalyticsService {
 
   static async getResponseStatusSummary() {}
 }
+
+export { FormOverViewAnalyticsService as ResponseAnalyticsService };

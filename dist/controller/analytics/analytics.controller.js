@@ -38,12 +38,26 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const helper_1 = require("../../utilities/helper");
 const formHelpers_1 = require("../../utilities/formHelpers");
-const ResponseAnalyticsService_1 = require("../../services/ResponseAnalyticsService");
 const ResponseValidationService_1 = require("../../services/ResponseValidationService");
 const Content_model_1 = __importStar(require("../../model/Content.model"));
 const Response_model_1 = __importDefault(require("../../model/Response.model"));
 const mongoose_1 = require("mongoose");
+const ResponseAnalyticsService_1 = require("../../services/ResponseAnalyticsService");
 class AnalyticsController {
+    /**Get OverView Performance Metrics */
+    GetFormOverviewPerformance = async (req, res) => {
+        const query = this.ValidateParamData(req.query);
+        if (!query)
+            return res.status(400).json((0, helper_1.ReturnCode)(400));
+        try {
+            const isOverViewData = await ResponseAnalyticsService_1.FormOverViewAnalyticsService.getFormAnalytics(query.formId, query.period);
+            return res.status(200).json({ data: isOverViewData });
+        }
+        catch (error) {
+            console.log("Get Form Overview", error);
+            return res.status(500).json((0, helper_1.ReturnCode)(500));
+        }
+    };
     GetAnalyticsData = async (req, res) => {
         const query = this.ValidateParamData(req.query);
         if (!query)
@@ -58,19 +72,7 @@ class AnalyticsController {
             if (!form) {
                 return;
             }
-            // Get all responses for the form
-            const responses = await Response_model_1.default.find({
-                formId: new mongoose_1.Types.ObjectId(formId),
-            })
-                .lean()
-                .sort({ createdAt: -1 });
-            if (!responses || responses.length === 0) {
-                return res.status(204).json({
-                    data: {
-                        isResponse: false,
-                    },
-                });
-            }
+            // Fetch questions first based on filters
             const questionFilter = {
                 formId: new mongoose_1.Types.ObjectId(formId),
             };
@@ -80,6 +82,7 @@ class AnalyticsController {
             if (questionId && (0, formHelpers_1.isValidObjectIdString)(questionId)) {
                 questionFilter._id = new mongoose_1.Types.ObjectId(questionId);
             }
+            //Get all responsible questions
             let questions = await Content_model_1.default.find(questionFilter)
                 .sort({ qIdx: 1 })
                 .lean();
@@ -90,6 +93,49 @@ class AnalyticsController {
             questions = (0, helper_1.AddQuestionNumbering)({
                 questions: questions,
             });
+            // Extract question IDs
+            const questionIds = questions
+                .filter((q) => q._id)
+                .map((q) => {
+                const id = q._id;
+                return typeof id === "string"
+                    ? new mongoose_1.Types.ObjectId(id)
+                    : id;
+            });
+            // Get total response count for the form
+            const totalResponseCount = await Response_model_1.default.countDocuments({
+                formId: new mongoose_1.Types.ObjectId(formId),
+            });
+            if (totalResponseCount === 0) {
+                return res.status(204).json({
+                    data: {
+                        isResponse: false,
+                    },
+                });
+            }
+            const responses = await Response_model_1.default.aggregate([
+                {
+                    $match: {
+                        formId: new mongoose_1.Types.ObjectId(formId),
+                        "responseset.question": { $in: questionIds },
+                    },
+                },
+                {
+                    $project: {
+                        _id: 1,
+                        respondentName: 1,
+                        respondentEmail: 1,
+                        responseset: 1,
+                        score: 1,
+                        submittedAt: 1,
+                        totalScore: 1,
+                        completionTime: 1,
+                    },
+                },
+                {
+                    $sort: { createdAt: -1 },
+                },
+            ]);
             // Process analytics for each question based on type
             const analyticsData = await Promise.all(questions.map(async (question) => {
                 return await this.ProcessQuestionAnalytics(question, responses);
@@ -103,7 +149,7 @@ class AnalyticsController {
                     formId,
                     formTitle: form.title,
                     page,
-                    totalResponses: responses.length,
+                    totalResponses: totalResponseCount,
                     formStats,
                     questions: analyticsData.filter(Boolean),
                     timestamp: new Date().toISOString(),
@@ -143,7 +189,7 @@ class AnalyticsController {
         const baseData = {
             id,
             questionId: question.questionId,
-            questionTitle: ResponseAnalyticsService_1.ResponseAnalyticsService["extractQuestionTitle"](question.title),
+            questionTitle: question.title,
             questionType,
             questionIndex: question.qIdx,
             totalResponses: questionResponses.length,

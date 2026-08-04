@@ -6,6 +6,7 @@ exports.DetailContentSelection = "_id qIdx title type text multiple checkbox sel
 var QuestionType;
 (function (QuestionType) {
     QuestionType["MultipleChoice"] = "multiple";
+    QuestionType["MultipleSelection"] = "multipleselection";
     QuestionType["CheckBox"] = "checkbox";
     QuestionType["Text"] = "texts";
     QuestionType["Number"] = "number";
@@ -142,6 +143,12 @@ const ContentSchema = new mongoose_1.Schema({
         type: Boolean,
         default: false,
     },
+    isBonusScore: {
+        type: Boolean,
+    },
+    useChildScoreSum: {
+        type: Boolean,
+    },
 }, { timestamps: true });
 //Pre-save middleware to update form total score
 ContentSchema.pre("save", async function (next) {
@@ -156,10 +163,9 @@ ContentSchema.pre("save", async function (next) {
         }, 0) + (this.type !== QuestionType.Text ? this.score || 0 : 0); // Only add this content's score if it's not Text
         // Update the form's total score
         await Form.findByIdAndUpdate(this.formId, { totalscore: totalScore });
-        next();
     }
     catch (error) {
-        next(error);
+        throw error;
     }
 });
 //Pre-remove middleware to update form total score
@@ -182,10 +188,9 @@ ContentSchema.pre("deleteOne", async function (next) {
                 totalscore: totalScore,
             });
         }
-        next();
     }
     catch (error) {
-        next(error);
+        throw error;
     }
 });
 //Indexes

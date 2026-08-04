@@ -41,6 +41,7 @@ const formHelpers_1 = require("../../utilities/formHelpers");
 const Content_model_1 = __importDefault(require("../../model/Content.model"));
 const Form_model_1 = __importDefault(require("../../model/Form.model"));
 const mongoose_1 = __importStar(require("mongoose"));
+const FormValidationService_1 = require("../../services/FormValidationService");
 class QuestionController {
     comparisonCache = new Map();
     CACHE_SIZE_LIMIT = 1000;
@@ -61,14 +62,26 @@ class QuestionController {
             if (validationError) {
                 return res.status(400).json((0, helper_1.ReturnCode)(400, validationError));
             }
-            const { formId, page } = payload;
+            //Step 1.1: Content validity verify
+            const isValidContents = payload.data.flatMap((c) => FormValidationService_1.formValidationErrorByContentTypes[c.type](c));
+            if (isValidContents.length > 0) {
+                return res.status(400).json({
+                    ...(0, helper_1.ReturnCode)(400),
+                    data: payload.data.map((q) => ({
+                        ...q,
+                        validationIssues: isValidContents,
+                    })),
+                });
+            }
+            const { formId, page, title } = payload;
             let { data } = payload;
             // Step 2: Normalize date fields
             data = this.normalizeDateFields(data);
             // Step 3: Fetch existing content and check for changes
             const existingContent = await this.fetchExistingContent(formId, page);
             if (this.efficientChangeDetection(existingContent, data)) {
-                this.logDev("⚡ No changes detected - skipping database operations");
+                if (title)
+                    await Form_model_1.default.updateOne({ _id: formId }, { title });
                 return res.status(200).json((0, helper_1.ReturnCode)(200, "No changes detected"));
             }
             // Step 4: Generate IDs for new questions
@@ -79,7 +92,7 @@ class QuestionController {
                 return res.status(400).json((0, helper_1.ReturnCode)(400, scoreValidationError));
             }
             // Step 6: Build bulk operations for upsert
-            const bulkOps = this.buildBulkOperations(data, questionIdMap, formId, page);
+            const bulkOps = this.buildBulkOperations(data, questionIdMap, formId, page, existingContent);
             // Step 7: Handle deletions
             const idsToKeep = this.extractIdsToKeep(data);
             const deleteResult = await this.handleDeletions(formId, page, idsToKeep, existingContent);
@@ -88,27 +101,30 @@ class QuestionController {
             // Step 9: Initialize totalscore
             const form = await Form_model_1.default.findById(formId).select("totalscore");
             const isScoreChange = data.some((i) => i.score !== existingContent.find((j) => j._id === i._id)?.score);
-            if (isScoreChange || !form?.totalscore) {
-                const computedTotalScore = await this.calculateFormTotalScore(formId);
-                await Form_model_1.default.updateOne({ _id: formId }, { totalscore: computedTotalScore });
+            const isBonusChange = data.some((i) => i.isBonusScore !==
+                existingContent.find((j) => j._id === i._id)?.isBonusScore ||
+                i.useChildScoreSum !==
+                    existingContent.find((j) => j._id === i._id)?.useChildScoreSum);
+            if (isScoreChange || isBonusChange || !form?.totalscore) {
+                const { totalscore, extraScore } = await this.calculateFormTotalScore(formId);
+                await Form_model_1.default.updateOne({ _id: formId }, { totalscore, extraScore, ...(title ? { title } : {}) });
+            }
+            else if (title) {
+                await Form_model_1.default.updateOne({ _id: formId }, { title });
             }
             // Step 10: Return updated content
             const updatedContent = await this.fetchUpdatedContent(formId, page);
             // Get cumulative question count from previous pages for proper numbering
             const lastQuestionIdx = await (0, formHelpers_1.getLastQuestionIdx)(formId, page);
-            return res.status(200).json({
-                ...(0, helper_1.ReturnCode)(200, "Saved successfully"),
-                data: (0, helper_1.AddQuestionNumbering)({
-                    questions: updatedContent,
-                    lastIdx: lastQuestionIdx,
-                }),
-            });
+            return helper_1.SendResponse.success(res, (0, helper_1.AddQuestionNumbering)({
+                questions: updatedContent,
+                lastIdx: lastQuestionIdx,
+            }), "Saved Completed");
         }
         catch (error) {
             return this.handleSaveQuestionError(error, res);
         }
     };
-    // ==================== Helper Methods for SaveQuestion ====================
     /**
      * Validates the request payload for SaveQuestion
      */
@@ -165,17 +181,69 @@ class QuestionController {
         });
         return { questionIdMap, newIds };
     }
-    /**
-     * Validates that child question scores don't exceed parent scores
-     */
     validateChildQuestionScores(data, existingContent) {
+        const dataByStrId = new Map();
+        const dataByQIdx = new Map();
         for (const item of data) {
-            if (!item.parentcontent || !item.score)
-                continue;
-            const parent = existingContent.find((par) => (par._id?.toString() || par.qIdx) ===
-                (item.parentcontent?.qId || item.parentcontent?.qIdx));
-            if (parent?.score && item.score > parent.score) {
-                return `Condition of ${parent.qIdx} has wrong score`;
+            if (item._id)
+                dataByStrId.set(item._id.toString(), item);
+            if (item.qIdx !== undefined)
+                dataByQIdx.set(item.qIdx, item);
+        }
+        // Combined map: data takes precedence over existingContent for parent lookups
+        const combinedByKey = new Map();
+        for (const item of existingContent) {
+            const key = item._id ? item._id.toString() : item.qIdx;
+            if (key !== undefined)
+                combinedByKey.set(key, item);
+        }
+        for (const item of data) {
+            if (item._id)
+                combinedByKey.set(item._id.toString(), item);
+            if (item.qIdx !== undefined)
+                combinedByKey.set(item.qIdx, item);
+        }
+        for (const item of data) {
+            if (item.score && item.conditional?.length) {
+                if (!item.isBonusScore) {
+                    if (item.useChildScoreSum) {
+                        // Distributed scoring mode: sum of all children scores must equal parent score
+                        const childScoreSum = data.reduce((sum, child) => {
+                            const isChild = item.conditional?.find((c) => (c.contentId &&
+                                c.contentId.toString() === child._id?.toString()) ||
+                                (c.contentIdx !== undefined && c.contentIdx === child.qIdx));
+                            return isChild ? sum + (child.score ?? 0) : sum;
+                        }, 0);
+                        if (childScoreSum !== item.score) {
+                            return `Sum of children scores (${childScoreSum}) of question ${item.qIdx} must equal parent score (${item.score})`;
+                        }
+                    }
+                    else {
+                        // Default mode: each individual child score must not exceed parent score
+                        const isWrongScore = data.some((child) => item.conditional?.find((c) => (c.contentId &&
+                            c.contentId.toString() === child._id?.toString()) ||
+                            (c.contentIdx !== undefined && c.contentIdx === child.qIdx)) &&
+                            child.score &&
+                            item.score &&
+                            child.score > item.score);
+                        if (isWrongScore) {
+                            return `Children scores of question ${item.qIdx} must not exceed parent score`;
+                        }
+                    }
+                }
+            }
+            if (item.parentcontent && item.score) {
+                const parentKey = item.parentcontent.qId || item.parentcontent.qIdx;
+                if (parentKey !== undefined) {
+                    const parent = combinedByKey.get(parentKey);
+                    // Bonus parents allow any child score; non-bonus parents cap individual child scores (unless sum mode)
+                    if (!parent?.isBonusScore &&
+                        !parent?.useChildScoreSum &&
+                        parent?.score &&
+                        item.score > parent.score) {
+                        return `Condition of ${parent.qIdx} has wrong score`;
+                    }
+                }
             }
         }
         return null;
@@ -230,10 +298,37 @@ class QuestionController {
     /**
      * Builds bulk write operations for upserting questions
      */
-    buildBulkOperations(data, questionIdMap, formId, page) {
+    buildBulkOperations(data, questionIdMap, formId, page, existingContent = []) {
+        const existingMap = new Map();
+        let maxQIdx = -1;
+        for (const eq of existingContent) {
+            if (eq._id) {
+                existingMap.set(eq._id.toString(), eq);
+            }
+            if (typeof eq.qIdx === "number" && eq.qIdx > maxQIdx) {
+                maxQIdx = eq.qIdx;
+            }
+        }
+        for (const item of data) {
+            if (typeof item.qIdx === "number" && item.qIdx > maxQIdx) {
+                maxQIdx = item.qIdx;
+            }
+        }
         return data.map((item, index) => {
             const { _id, ...rest } = item;
             const documentId = _id || questionIdMap.get(index);
+            const existingItem = _id ? existingMap.get(_id.toString()) : undefined;
+            let qIdx;
+            if (typeof item.qIdx === "number") {
+                qIdx = item.qIdx;
+            }
+            else if (existingItem && typeof existingItem.qIdx === "number") {
+                qIdx = existingItem.qIdx;
+            }
+            else {
+                maxQIdx += 1;
+                qIdx = maxQIdx;
+            }
             const processedConditional = this.processConditionals(rest.conditional, data, questionIdMap);
             const processedParentContent = this.processParentContent(rest.parentcontent, data, questionIdMap);
             return {
@@ -242,6 +337,7 @@ class QuestionController {
                     update: {
                         $set: {
                             ...rest,
+                            qIdx,
                             conditional: processedConditional,
                             parentcontent: processedParentContent,
                             formId,
@@ -328,45 +424,21 @@ class QuestionController {
         }
         await Promise.all(operations);
     }
-    /**
-     * Updates total score if it has changed
-     * Calculates the score difference for current page and applies it to form's totalscore
-     */
-    async updateTotalScoreIfChanged(data, existingContent, formId) {
-        const scoreDiff = this.calculateScoreDifference(data, existingContent);
-        if (scoreDiff !== 0) {
-            await Form_model_1.default.updateOne({ _id: formId }, { $inc: { totalscore: scoreDiff } });
-        }
-    }
-    /**
-     * Fetches the updated content after save
-     */
     async fetchUpdatedContent(formId, page) {
         return Content_model_1.default.find({ formId, page }, null, {
             lean: true,
             sort: { qIdx: 1 },
         });
     }
-    /**
-     * Handles errors from SaveQuestion
-     */
     handleSaveQuestionError(error, res) {
         console.error("SaveQuestion Error:", error);
         if (error instanceof mongoose_1.default.Error.ValidationError) {
-            return res.status(400).json((0, helper_1.ReturnCode)(400, "Validation Error"));
+            return helper_1.SendResponse.badRequest(res);
         }
         if (error instanceof mongoose_1.default.Error.CastError) {
-            return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid ID Format"));
+            return helper_1.SendResponse.badRequest(res, "Invalid ID Format");
         }
-        return res.status(500).json((0, helper_1.ReturnCode)(500, "Internal Server Error"));
-    }
-    /**
-     * Logs message only in development environment
-     */
-    logDev(message) {
-        if (process.env.NODE_ENV === "DEV") {
-            console.log(message);
-        }
+        return helper_1.SendResponse.error(res);
     }
     async DeleteQuestion(req, res) {
         try {
@@ -400,45 +472,6 @@ class QuestionController {
             return res
                 .status(500)
                 .json((0, helper_1.ReturnCode)(500, "Error occurred while deleting question"));
-        }
-    }
-    async GetAllQuestion(req, res) {
-        try {
-            const { formid, page } = req.query;
-            if (!formid) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-            }
-            // Validate formid is a valid ObjectId
-            if (!mongoose_1.Types.ObjectId.isValid(formid)) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID format"));
-            }
-            // Build query - if page is provided, filter by page, otherwise get all
-            const query = { formId: new mongoose_1.Types.ObjectId(formid) };
-            if (page !== undefined && page !== null && page !== "") {
-                const pageNum = Number(page);
-                if (!isNaN(pageNum) && pageNum > 0) {
-                    query.page = pageNum;
-                }
-            }
-            const questions = await Content_model_1.default.find(query)
-                .select("_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent qIdx")
-                .lean()
-                .sort({ page: 1, qIdx: 1 }); // Sort by page first, then by question index
-            if (process.env.NODE_ENV === "DEV") {
-                console.log("GetAllQuestion:", {
-                    formid,
-                    page,
-                    query,
-                    questionsFound: questions.length,
-                });
-            }
-            return res.status(200).json({ ...(0, helper_1.ReturnCode)(200), data: questions });
-        }
-        catch (error) {
-            console.error("Get All Question Error:", error);
-            return res
-                .status(500)
-                .json((0, helper_1.ReturnCode)(500, "Failed to retrieve questions"));
         }
     }
     async SaveSolution(req, res) {
@@ -604,32 +637,17 @@ class QuestionController {
         }
         return true;
     }
-    /**
-     * Calculate the total score for a set of questions
-     * Excludes conditional/child questions (parentcontent) to avoid double counting
-     */
-    calculateTotalScore(items) {
-        return items
-            .filter((ques) => !ques.parentcontent)
-            .reduce((total, { score = 0 }) => total + score, 0);
-    }
-    /**
-     * Calculate the total score for all questions in a form
-     * Fetches all content from the database and calculates total
-     * Excludes conditional/child questions to avoid double counting
-     */
     async calculateFormTotalScore(formId) {
-        const allContent = await Content_model_1.default.find({ formId, parentcontent: { $exists: false } }, { score: 1 }, { lean: true });
-        return allContent.reduce((total, { score = 0 }) => total + score, 0);
-    }
-    /**
-     * Calculate the difference in score between incoming and existing content
-     * @Returns the difference (positive if score increased, negative if decreased)
-     */
-    calculateScoreDifference(incoming, prevContent) {
-        const incomingTotal = this.calculateTotalScore(incoming);
-        const prevTotal = this.calculateTotalScore(prevContent);
-        return incomingTotal - prevTotal;
+        const allContent = await Content_model_1.default.find({ formId, parentcontent: { $exists: false } }, { score: 1, isBonusScore: 1 }, { lean: true });
+        let totalscore = 0;
+        let extraScore = 0;
+        for (const { score = 0, isBonusScore } of allContent) {
+            if (isBonusScore)
+                extraScore += score;
+            else
+                totalscore += score;
+        }
+        return { totalscore, extraScore };
     }
 }
 exports.default = new QuestionController();

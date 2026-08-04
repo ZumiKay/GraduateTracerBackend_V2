@@ -17,27 +17,10 @@ export const UserValidate = z.object({
     name: z.string().optional(),
     password: z
       .string()
-      .refine((pass) => ValidatePassword(pass), "Some Data Has Invalid Format"),
+      .refine((pass) => ValidatePassword(pass), "Invalid Credential"),
     role: z.nativeEnum(ROLE).optional(),
   }),
 });
-
-export async function GetRespondentProfile(req: Request, res: Response) {
-  const data = req.body as { email: string };
-
-  try {
-    const profile = await User.findOne({ email: data.email })
-      .select("_id")
-      .lean();
-
-    if (profile) {
-      return res.status(200).json({ ...ReturnCode(200), data: profile });
-    }
-    return res.status(404).json(ReturnCode(404, "No User Found"));
-  } catch (error) {
-    return res.status(500).json(ReturnCode(500));
-  }
-}
 
 export async function GetUserProfile(req: CustomRequest, res: Response) {
   const user = req.user;

@@ -1,4 +1,4 @@
-import { Response } from "express";
+import { Request, Response } from "express";
 import { CustomRequest, UserToken } from "../../types/customType";
 import {
   ExtractTokenPaylod,
@@ -328,7 +328,7 @@ export default class FormsessionService {
    * - Session reactivation for existing users
    *
    */
-  public static RespondentLogin = async (req: CustomRequest, res: Response) => {
+  public static RespondentLogin = async (req: Request, res: Response) => {
     if (
       !process.env.RESPONDENT_TOKEN_JWT_SECRET ||
       !process.env.ACCESS_RESPONDENT_COOKIE ||
@@ -414,7 +414,7 @@ export default class FormsessionService {
           return res.status(401).json({
             success: false,
             status: 401,
-            message: "User not found",
+            message: "Incorrect Credential",
           });
         }
 
@@ -615,15 +615,29 @@ export default class FormsessionService {
     }
 
     const { code } = req.params as { code?: string };
-    const { skiplogin } = req.query as { skiplogin?: string };
+    const { skiplogin, verify } = req.query as {
+      skiplogin?: string;
+      verify?: string;
+    };
 
     if (!code) return res.status(404).json(ReturnCode(404));
 
+    if (verify && !Number(parseInt(verify, 10)) && verify !== "1")
+      return res.status(400).json(ReturnCode(400));
+    //Access Verification
+    if (verify) {
+      const isFormSession = await Formsession.countDocuments({
+        removeCode: code,
+      });
+      if (!isFormSession || isFormSession === 0) {
+        return res.status(403).json(ReturnCode(403));
+      }
+
+      return res.status(200).json(ReturnCode(200));
+    }
+
     const isSkipAutoLogin = skiplogin ? parseInt(skiplogin, 10) : undefined;
-    if (
-      isSkipAutoLogin &&
-      (isSkipAutoLogin !== 1 || (isSkipAutoLogin && isNaN(isSkipAutoLogin)))
-    ) {
+    if (isSkipAutoLogin && (isSkipAutoLogin !== 1 || isNaN(isSkipAutoLogin))) {
       return res.status(400).json(ReturnCode(400));
     }
 
@@ -651,7 +665,18 @@ export default class FormsessionService {
 
       if (isSkipAutoLogin === 1) {
         await Formsession.deleteOne({ _id: formsession._id }).lean();
-        return res.status(200).json(ReturnCode(200));
+
+        const clearOptions = {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "PROD",
+          sameSite: "strict" as const,
+        };
+        res.clearCookie(process.env.RESPONDENT_COOKIE as string, clearOptions);
+        res.clearCookie(
+          process.env.ACCESS_RESPONDENT_COOKIE as string,
+          clearOptions,
+        );
+        return res.status(200).json(ReturnCode(200, "Session Terminated"));
       }
 
       const [newUniqueSessionId, newUniqueAccessId] = await Promise.all([
@@ -815,9 +840,6 @@ export default class FormsessionService {
       ) {
         return res.status(401).json({
           ...ReturnCode(401, "Invalid Session"),
-          data: {
-            respondentEmail: session.respondentEmail,
-          },
         });
       }
 

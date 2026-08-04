@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { contentTitleToString, ReturnCode } from "../../utilities/helper";
-import SolutionValidationService from "../../services/SolutionValidationService";
+import SolutionValidationService from "../../services/ResponseContentValidationService";
 import EmailService from "../../services/EmailService";
 import FormLinkService from "../../services/FormLinkService";
 import User from "../../model/User.model";
@@ -18,36 +18,6 @@ import { CustomRequest } from "../../types/customType";
 import { generateResponseHTML } from "../../utilities/EmailTemplate/SendResponseEmail";
 
 export class FormResponseUtilityController {
-  public ValidateFormForSubmission = async (
-    req: CustomRequest,
-    res: Response,
-  ) => {
-    const { formId } = req.query;
-
-    if (!formId || typeof formId !== "string") {
-      return res.status(400).json(ReturnCode(400, "Form ID is required"));
-    }
-
-    try {
-      const validationSummary =
-        await SolutionValidationService.validateForm(formId);
-      const errors =
-        await SolutionValidationService.getFormValidationErrors(formId);
-
-      res.status(200).json({
-        ...ReturnCode(200),
-        data: {
-          ...validationSummary,
-          errors,
-          canSubmit: errors.length === 0,
-        },
-      });
-    } catch (error) {
-      console.error("Validate Form Error:", error);
-      res.status(500).json(ReturnCode(500, "Failed to validate form"));
-    }
-  };
-
   public SendFormLinks = async (req: CustomRequest, res: Response) => {
     try {
       const validation = await ResponseValidationService.validateRequest({

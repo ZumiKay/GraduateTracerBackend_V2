@@ -8,45 +8,50 @@ const fingerprint_1 = require("../utilities/fingerprint");
 const Response_model_1 = __importDefault(require("../model/Response.model"));
 const helper_1 = require("../utilities/helper");
 class RespondentTrackingService {
+    /**
+     * Converts seconds to a human-readable duration string (e.g., "1d 2h 30mn")
+     */
+    static formatCompletionTime(seconds) {
+        if (seconds < 0)
+            return "0mn";
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const parts = [];
+        if (days > 0)
+            parts.push(`${days}d`);
+        if (hours > 0)
+            parts.push(`${hours}h`);
+        if (minutes > 0)
+            parts.push(`${minutes}mn`);
+        return parts.length > 0 ? parts.join(" ") : "0mn";
+    }
     static async checkRespondentExists(respondentData) {
-        const { formId, respondentFingerprint, respondentIP, respondentEmail, fingerprintStrength, } = respondentData;
-        // Build common base result to avoid repetition
-        const baseResult = {
-            fingerprint: respondentFingerprint,
-            ipAddress: respondentIP,
-            fingerprintStrength,
-            respondentEmail,
-        };
-        // Attempt fingerprint lookup first (most reliable)
-        if (respondentFingerprint) {
-            const existingResponse = await Response_model_1.default.findOne({ formId, respondentFingerprint }, { _id: 1 }).lean();
-            if (existingResponse) {
-                return {
-                    hasResponded: true,
-                    trackingMethod: "fingerprint",
+        const { formId, respondentFingerprint, respondentIP, respondentEmail } = respondentData;
+        const orConditions = [];
+        if (respondentEmail)
+            orConditions.push({
+                respondentEmail,
+            });
+        if (respondentIP)
+            orConditions.push({ respondentIP });
+        if (respondentFingerprint)
+            orConditions.push({ respondentFingerprint });
+        if (orConditions.length === 0)
+            return { hasResponded: undefined };
+        console.dir({ orConditions }, { depth: null });
+        const existingResponse = await Response_model_1.default.findOne({ formId, $or: orConditions }, { _id: 1, maxScore: 1, totalScore: 1 }).lean();
+        if (existingResponse) {
+            return {
+                hasResponded: {
+                    message: "You already submitted response",
                     responseId: existingResponse._id.toString(),
-                    ...baseResult,
-                };
-            }
+                    maxScore: existingResponse.maxScore,
+                    totalScore: existingResponse.totalScore,
+                },
+            };
         }
-        // Fallback to IP + email lookup (requires both for reliability)
-        if (respondentIP && respondentEmail) {
-            const existingResponse = await Response_model_1.default.findOne({ formId, respondentIP, respondentEmail }, { _id: 1 }).lean();
-            if (existingResponse) {
-                return {
-                    hasResponded: true,
-                    trackingMethod: "ip",
-                    responseId: existingResponse._id.toString(),
-                    ...baseResult,
-                };
-            }
-        }
-        // No existing response found
-        return {
-            hasResponded: false,
-            trackingMethod: "none",
-            ...baseResult,
-        };
+        return { hasResponded: undefined };
     }
     static generateTrackingData(req) {
         const clientIP = fingerprint_1.FingerprintService.getClientIP(req);

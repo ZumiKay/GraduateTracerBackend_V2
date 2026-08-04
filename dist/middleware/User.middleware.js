@@ -66,7 +66,8 @@ class AuthenticateMiddleWare {
             };
         }
         catch (error) {
-            if (error.name === "TokenExpiredError") {
+            const err = error;
+            if (err.name === "TokenExpiredError") {
                 return { isValid: false, isExpired: true };
             }
             return { isValid: false, isExpired: false };
@@ -187,7 +188,7 @@ class AuthenticateMiddleWare {
             //Clean up invalid token
             if (!verifiedToken.isValid) {
                 await Usersession_model_1.default.deleteOne({
-                    session_id: verifiedToken,
+                    session_id: refreshToken,
                 });
                 //Clear Cookie
                 authenication_controller_1.default.clearRefreshTokenCookie(res);

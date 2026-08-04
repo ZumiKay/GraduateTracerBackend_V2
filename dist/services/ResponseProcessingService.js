@@ -41,7 +41,7 @@ const mongoose_1 = require("mongoose");
 const Response_model_1 = __importStar(require("../model/Response.model"));
 const Content_model_1 = __importStar(require("../model/Content.model"));
 const Form_model_1 = __importStar(require("../model/Form.model"));
-const SolutionValidationService_1 = __importDefault(require("./SolutionValidationService"));
+const ResponseContentValidationService_1 = __importDefault(require("./ResponseContentValidationService"));
 const EmailService_1 = __importDefault(require("./EmailService"));
 const User_model_1 = __importDefault(require("../model/User.model"));
 const RespondentTrackingService_1 = require("./RespondentTrackingService");
@@ -72,13 +72,13 @@ class ResponseProcessingService {
             //Verify required question
             if (question.require) {
                 if (!response ||
-                    SolutionValidationService_1.default.isAnswerisempty(response.response))
+                    ResponseContentValidationService_1.default.isAnswerisempty(response.response))
                     throw new Error("Require");
             }
             if (!response) {
                 throw new Error("Question not found");
             }
-            const toverify = SolutionValidationService_1.default.validateAnswerFormat(question.type, response.response, question);
+            const toverify = ResponseContentValidationService_1.default.validateAnswerFormat(question.type, response.response, question);
             if (!toverify.isValid)
                 throw new Error("Format");
         });
@@ -98,11 +98,19 @@ class ResponseProcessingService {
                 respondentType: isUser ? Response_model_1.RespondentType.user : Response_model_1.RespondentType.guest,
             }),
             userId: isUser,
+            completionTime: responseData.completionTime,
         });
         return {
             message: "Form Submitted",
         };
     }
+    /** Process Quiz Type Form
+     * @description
+     * - Validate Responses
+     * - Add Score
+     * - Send Copy of Response
+     * - Save Response to DB
+     */
     static async processFormSubmission(submissionData, form) {
         const { formId, responseset, respondentEmail, respondentName } = submissionData;
         if (!responseset || responseset.length === 0) {
@@ -113,12 +121,9 @@ class ResponseProcessingService {
         }
         //Verify if user alr respond for single response form
         if (form.setting?.submitonce) {
-            const hasResponse = await Response_model_1.default.findOne({
-                respondentEmail,
-                formId,
-            });
-            if (hasResponse) {
-                throw new Error("Form already exisited");
+            const trackingResult = await RespondentTrackingService_1.RespondentTrackingService.checkRespondentExists(submissionData);
+            if (trackingResult.hasResponded) {
+                throw new Error("Form already submitted");
             }
         }
         const user = await User_model_1.default.findOne({
@@ -132,11 +137,14 @@ class ResponseProcessingService {
         let isAutoScored = false;
         let isNonScore = false;
         // Auto-score
+        let hasUnansweredScoredQuestion = false;
         if (form.setting?.returnscore === Form_model_1.returnscore.partial) {
             const addscore = await this.addScore(responseset);
             isAutoScored = true;
             // Check if all questions have no score
             isNonScore = addscore.isNonScore || false;
+            hasUnansweredScoredQuestion =
+                addscore.hasUnansweredScoredQuestion || false;
             scoredResponses = addscore.response;
         }
         else {
@@ -146,31 +154,52 @@ class ResponseProcessingService {
                 //Verify required question
                 if (question.require) {
                     if (!response ||
-                        SolutionValidationService_1.default.isAnswerisempty(response.response))
+                        ResponseContentValidationService_1.default.isAnswerisempty(response.response))
                         throw new Error("Require");
                 }
                 if (!response) {
                     throw new Error("Question not found");
                 }
-                const toverify = SolutionValidationService_1.default.validateAnswerFormat(question.type, response.response, question);
+                const toverify = ResponseContentValidationService_1.default.validateAnswerFormat(question.type, response.response, question);
                 if (!toverify.isValid)
                     throw new Error("Format");
             });
         }
-        // Calculate total score
         totalScore =
-            SolutionValidationService_1.default.calcualteResponseTotalScore(scoredResponses);
-        // Determine completion status based on auto-scoring and scoring method
-        let completionStatus = Response_model_1.ResponseCompletionStatus.submitted;
-        if (isNonScore) {
-            completionStatus = Response_model_1.ResponseCompletionStatus.noscore;
+            ResponseContentValidationService_1.default.calcualteResponseTotalScore(scoredResponses);
+        //?Condition question extraScore procession
+        let extraScore;
+        if (isAutoScored && scoredResponses.length > 0) {
+            const allFormQuestions = await Content_model_1.default.find({ formId }).lean();
+            const extraScoreQIds = new Set();
+            for (const q of allFormQuestions) {
+                if (!q.parentcontent)
+                    continue;
+                const parentQ = allFormQuestions.find((p) => p._id.toString() === (q.parentcontent.qId?.toString() ?? ""));
+                //Extract extraScore question with parentQuestion flag isBonusScore
+                if (parentQ && parentQ.isBonusScore && (parentQ.score ?? 0) === 0) {
+                    extraScoreQIds.add(q._id.toString());
+                }
+            }
+            if (extraScoreQIds.size > 0) {
+                const scoredEntries = scoredResponses.filter((i) => typeof i.score === "number" && i.score > 0);
+                const baseScore = Math.min(scoredEntries
+                    .filter((i) => !extraScoreQIds.has(i.question.toString()))
+                    .reduce((s, r) => s + (r.score ?? 0), 0), form.totalscore ?? 0);
+                const extra = scoredEntries
+                    .filter((i) => extraScoreQIds.has(i.question.toString()))
+                    .reduce((s, r) => s + (r.score ?? 0), 0);
+                totalScore = baseScore;
+                if (extra > 0)
+                    extraScore = extra;
+            }
         }
-        else if (isAutoScored) {
-            // Check if there are any manual scoring responses
+        //Assign status to response
+        let completionStatus = Response_model_1.ResponseCompletionStatus.submitted;
+        if (isAutoScored) {
             const hasManualScoring = scoredResponses.some((i) => i.scoringMethod === Response_model_1.ScoringMethod.MANUAL);
-            completionStatus = hasManualScoring
-                ? Response_model_1.ResponseCompletionStatus.partial
-                : Response_model_1.ResponseCompletionStatus.autoscore;
+            if (!hasManualScoring)
+                completionStatus = Response_model_1.ResponseCompletionStatus.completed;
         }
         // Create response data
         const responseData = {
@@ -178,12 +207,18 @@ class ResponseProcessingService {
             responseset: scoredResponses,
             maxScore: form.totalscore,
             totalScore,
+            extraScore,
             submittedAt: new Date(),
             completionStatus: completionStatus,
             respondentType: user ? Response_model_1.RespondentType.user : Response_model_1.RespondentType.guest,
             respondentEmail: user ? user.email : respondentEmail,
             respondentName: respondentName,
+            respondentFingerprint: submissionData.respondentFingerprint,
+            deviceInfo: submissionData.deviceInfo,
+            respondentIP: submissionData.respondentIP,
+            fingerprintStrength: submissionData.fingerprintStrength,
             userId: user?._id,
+            completionTime: submissionData.completionTime,
         };
         if (user?._id) {
             responseData.userId = new mongoose_1.Types.ObjectId(user._id);
@@ -204,26 +239,38 @@ class ResponseProcessingService {
                 });
             }
         }
-        const isHavePartialScore = scoredResponses.some((i) => i.scoringMethod === Response_model_1.ScoringMethod.MANUAL) ||
-            isNonScore;
+        const isHavePartialScore = scoredResponses.some((i) => i.scoringMethod === Response_model_1.ScoringMethod.MANUAL);
+        let message;
+        if (!isAutoScored) {
+            message = "Score will be return by form owner";
+        }
+        else if (isHavePartialScore && hasUnansweredScoredQuestion) {
+            message =
+                "Some questions were left unanswered and could not be auto-scored. This is not your final score — the form owner will review and complete your score.";
+        }
+        else if (isHavePartialScore) {
+            message =
+                "Totalscore is partial only might change when form owner return your score.";
+        }
+        else {
+            message = "This your final score";
+        }
         return {
             isNonScore,
             totalScore,
+            extraScore,
             respondentEmail,
             responseId: savedResponse._id.toString(),
             maxScore: form.totalscore || 0,
-            message: !isAutoScored
-                ? "Score will be return by form owner"
-                : isHavePartialScore
-                    ? "Totalscore is partial only might change when form owner return your score."
-                    : "This your final score",
+            message,
+            hasUnansweredScoredQuestion,
         };
     }
     /**
      *Add Score Method
-     *@Feature
+     *@description
      * - Verify answer format
-     * - If all question have no score return isNonScore
+     * - All questions must have score and answer key to autoscored else isNonScore will be true
      * - Only avaliable if form returntype is PARTIAL
      */
     static async addScore(response) {
@@ -242,6 +289,7 @@ class ResponseProcessingService {
             }
             let result = [];
             let hasAnyScore = false;
+            let hasUnansweredScoredQuestion = false;
             //Scoring process
             for (let i = 0; i < content.length; i++) {
                 const question = content[i];
@@ -252,23 +300,34 @@ class ResponseProcessingService {
                 //Verify requried question
                 if (question.require) {
                     if (!userresponse ||
-                        SolutionValidationService_1.default.isAnswerisempty(userresponse.response)) {
+                        ResponseContentValidationService_1.default.isAnswerisempty(userresponse.response)) {
                         throw new Error("Require");
                     }
                 }
-                //Verify answer format and validity
-                const isVerify = SolutionValidationService_1.default.validateAnswerFormat(question.type, userresponse.response, question);
-                if (!isVerify.isValid) {
-                    throw new Error(isVerify.errors.join("||"));
+                const isEmpty = ResponseContentValidationService_1.default.isAnswerisempty(userresponse.response);
+                // Only validate format when there is an answer
+                if (!isEmpty) {
+                    const isVerify = ResponseContentValidationService_1.default.validateAnswerFormat(question.type, userresponse.response, question);
+                    if (!isVerify.isValid) {
+                        throw new Error(isVerify.errors.join("||"));
+                    }
                 }
                 const maxScore = question.score || 0;
                 // Track if any question has a score
                 if (maxScore > 0) {
                     hasAnyScore = true;
                 }
+                if (isEmpty && maxScore > 0 && question.answer?.answer) {
+                    hasUnansweredScoredQuestion = true;
+                    result.push({
+                        ...userresponse,
+                        score: 0,
+                        scoringMethod: Response_model_1.ScoringMethod.MANUAL,
+                    });
+                }
                 //Automically Score All Scoreable Questions
-                if (question.answer && question.answer?.answer) {
-                    const partialScored = SolutionValidationService_1.default.calculateResponseScore(userresponse.response, question.answer.answer, question.type, maxScore);
+                else if (!isEmpty && question.answer && question.answer?.answer) {
+                    const partialScored = ResponseContentValidationService_1.default.calculateResponseScore(userresponse.response, question.answer.answer, question.type, maxScore);
                     result.push({
                         ...userresponse,
                         score: partialScored,
@@ -284,11 +343,17 @@ class ResponseProcessingService {
             }
             // isNonScore is true when NO questions have scores (all maxScore = 0)
             const isNonScore = !hasAnyScore;
-            return { response: result, isNonScore };
+            const isNeedManuallyScore = result.some((i) => i.scoringMethod === Response_model_1.ScoringMethod.MANUAL);
+            return {
+                response: result,
+                isNonScore,
+                isNeedManuallyScore,
+                hasUnansweredScoredQuestion,
+            };
         }
         catch (error) {
             console.error("AddScore Error:", error);
-            return { response };
+            throw error;
         }
     }
     static async updateResponseScores({ responseId, scores, }) {
@@ -296,19 +361,16 @@ class ResponseProcessingService {
         if (!scores || !Array.isArray(scores) || scores.length === 0) {
             throw new Error("Invalid scores data");
         }
-        // Find response - not using lean() to maintain _id on subdocuments
         const response = await Response_model_1.default.findById(responseId).select("responseset totalScore maxScore formId");
         if (!response) {
             throw new Error("Response not found");
         }
-        // Create a map for efficient lookup
         const [questionScoreMap, questionCommentMap] = [
             new Map(scores.map((s) => [s.questionId.toString(), s.score])),
             new Map(scores.map((c) => [c.questionId.toString(), c.comment])),
         ];
         let updatedTotalScore = 0;
         let updatedCount = 0;
-        // Update scores and comment in the responseset array
         response.responseset.forEach((responseItem) => {
             const questionId = typeof responseItem.question === "string"
                 ? responseItem.question
@@ -333,10 +395,8 @@ class ResponseProcessingService {
                 message: "No matching questions found to update",
             };
         }
-        // Update totalScore and completionStatus
         response.totalScore = updatedTotalScore;
         response.completionStatus = Response_model_1.ResponseCompletionStatus.completed;
-        // Save all changes in a single operation with optimized write concern
         await response.save({ validateBeforeSave: false });
         return {
             success: true,
@@ -344,10 +404,6 @@ class ResponseProcessingService {
             totalScore: updatedTotalScore,
         };
     }
-    /**
-     * Batch update scores for multiple responses
-     * More efficient when updating multiple responses at once
-     */
     static async batchUpdateResponseScores(updates) {
         const results = await Promise.allSettled(updates.map((update) => this.updateResponseScores({
             responseId: update.responseId,
@@ -368,10 +424,6 @@ class ResponseProcessingService {
             })),
         };
     }
-    /**
-     * Recalculate total score for a response
-     * Useful for fixing inconsistencies or after data migration
-     */
     static async recalculateResponseTotalScore(responseId) {
         const response = await Response_model_1.default.findById(responseId).select("responseset totalScore");
         if (!response) {
@@ -505,16 +557,13 @@ class ResponseProcessingService {
      */
     static async validateFormSubmission(submissionData) {
         const { formId, responseset } = submissionData;
-        // Check if form exists
         const form = await Form_model_1.default.findById(formId);
         if (!form) {
             return { errormess: "Form not found" };
         }
-        // Check if form accepts responses
         if (!form.setting?.acceptResponses) {
             return { errormess: "Form is no longer accepting responses" };
         }
-        // Get form questions
         const questions = await Content_model_1.default.find({ formId }).lean();
         if (!questions || questions.length === 0) {
             return { errormess: "No questions found for this form" };
@@ -526,9 +575,6 @@ class ResponseProcessingService {
         });
         return validationResult;
     }
-    /**
-     * Checks if a response already exists for a user/form combination
-     */
     static async checkExistingResponse(formId, userId, guestEmail) {
         const query = { formId };
         if (userId) {
@@ -542,16 +588,10 @@ class ResponseProcessingService {
         }
         return await Response_model_1.default.findOne(query).lean();
     }
-    /**
-     * Calculates the maximum possible score for a form
-     */
     static async getFormMaxScore(formId) {
         const questions = await Content_model_1.default.find({ formId }).select("score").lean();
         return questions.reduce((total, question) => total + (question.score || 0), 0);
     }
-    /**
-     * Gets response statistics for a specific form
-     */
     static async getResponseStatistics(formId) {
         const totalResponses = await Response_model_1.default.countDocuments({ formId });
         const completedResponses = await Response_model_1.default.countDocuments({

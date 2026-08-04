@@ -44,6 +44,7 @@ const Content_model_1 = __importStar(require("../model/Content.model"));
 const Response_model_1 = __importStar(require("../model/Response.model"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const dotenv_1 = require("dotenv");
+const response_generate_1 = require("./seed-data/response-generate");
 (0, dotenv_1.configDotenv)({});
 async function seedFormData() {
     try {
@@ -55,7 +56,6 @@ async function seedFormData() {
             Form_model_1.default.deleteMany({}),
             User_model_1.default.deleteMany({}),
         ]);
-        console.log("✓ Cleared existing data");
         // 1. Create Users
         const hashedPassword = await bcrypt_1.default.hash("Password@123", 10);
         const users = await User_model_1.default.insertMany([
@@ -757,7 +757,22 @@ if (require.main === module) {
         .connect(mongoUri)
         .then(async () => {
         console.log("Connected to MongoDB");
-        await seedFormData();
+        //Analytics data seed
+        //Quiz type form
+        await (0, response_generate_1.GenerateFormResponse)({
+            formId: "6a213c42addc5c3edadabaf3",
+            responseCount: 30,
+            allUser: true,
+            addScore: true,
+        });
+        //Normal type form
+        await (0, response_generate_1.GenerateFormResponse)({
+            formId: "6a2fb2f821e3debb7d5f7eb5",
+            responseCount: 200,
+            allUser: true,
+        });
+        // ?Initial form data seed
+        // await seedFormData();
         await mongoose_1.default.disconnect();
         console.log("Disconnected from MongoDB");
         process.exit(0);

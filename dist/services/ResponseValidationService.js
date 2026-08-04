@@ -225,7 +225,6 @@ class ResponseValidationService {
         }
         // Extract IP address
         const clientIP = req.ip ||
-            req.connection?.remoteAddress ||
             req.socket?.remoteAddress ||
             req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
             req.headers["x-real-ip"] ||
@@ -261,6 +260,8 @@ class ResponseValidationService {
                 uid: req.query.uid ?? undefined,
                 rid: req.query.rid ?? undefined,
                 isValid: true,
+                message: req?.body?.message,
+                emails: req?.body?.emails,
             };
         }
         if (requireUserInfo) {

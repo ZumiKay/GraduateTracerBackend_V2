@@ -79,10 +79,18 @@ const ResponseSchema = new mongoose_1.Schema({
         type: Number,
         default: 0,
     },
+    extraScore: {
+        type: Number,
+        default: null,
+    },
     completionStatus: {
         type: String,
         enum: ResponseCompletionStatus,
         default: "partial",
+    },
+    completionTime: {
+        type: Number,
+        default: null,
     },
     respondentEmail: {
         type: String,
@@ -151,7 +159,6 @@ ResponseSchema.pre("save", function (next) {
             return total + (response.score || 0);
         }, 0);
     }
-    next();
 });
 const FormResponse = (0, mongoose_1.model)("Response", ResponseSchema);
 exports.default = FormResponse;

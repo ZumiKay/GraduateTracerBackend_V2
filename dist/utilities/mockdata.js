@@ -38,7 +38,7 @@ class MockContentFactory {
             score: 10,
             answer: {
                 _id: new mongoose_1.Types.ObjectId(),
-                answer: [0, 2], // Correct options indices
+                answer: 0,
                 isCorrect: true,
             },
             require: true,
@@ -208,7 +208,7 @@ class MockContentFactory {
             score: 5,
             answer: {
                 _id: new mongoose_1.Types.ObjectId(),
-                answer: [1], // Single selection
+                answer: 1, // Single selection
                 isCorrect: true,
             },
             require: true,

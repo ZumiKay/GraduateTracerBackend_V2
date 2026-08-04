@@ -36,251 +36,20 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ResponseAnalyticsService = exports.GraphType = void 0;
+exports.ResponseAnalyticsService = exports.FormOverViewAnalyticsService = void 0;
 const mongoose_1 = require("mongoose");
 const Response_model_1 = __importDefault(require("../model/Response.model"));
 const Content_model_1 = __importStar(require("../model/Content.model"));
-const Form_model_1 = __importDefault(require("../model/Form.model"));
 const respondentUtils_1 = require("../utilities/respondentUtils");
-var GraphType;
-(function (GraphType) {
-    GraphType["BAR"] = "bar";
-    GraphType["PIE"] = "pie";
-    GraphType["LINE"] = "line";
-    GraphType["DOUGHNUT"] = "doughnut";
-    GraphType["HORIZONTAL_BAR"] = "horizontalBar";
-})(GraphType || (exports.GraphType = GraphType = {}));
-class ResponseAnalyticsService {
-    // Color palette for charts
-    static CHART_COLORS = [
-        "#FF6384",
-        "#36A2EB",
-        "#FFCE56",
-        "#4BC0C0",
-        "#9966FF",
-        "#FF9F40",
-        "#FF6384",
-        "#C9CBCF",
-        "#4BC0C0",
-        "#FF9F40",
-        "#36A2EB",
-        "#FFCE56",
-        "#9966FF",
-        "#FF6384",
-        "#4BC0C0",
-        "#FF9F40",
-        "#36A2EB",
-        "#FFCE56",
-        "#9966FF",
-        "#C9CBCF",
-    ];
-    static async getChoiceQuestionAnalytics(formId, questionId) {
-        const form = await Form_model_1.default.findById(formId).populate("contentIds");
-        if (!form) {
-            throw new Error("Form not found");
-        }
-        // Get all responses for the form
-        const responses = await Response_model_1.default.find({
-            formId: new mongoose_1.Types.ObjectId(formId),
-        }).lean();
-        const questions = questionId
-            ? await Content_model_1.default.find({
-                _id: new mongoose_1.Types.ObjectId(questionId),
-                formId: new mongoose_1.Types.ObjectId(formId),
-            })
-            : await Content_model_1.default.find({
-                formId: new mongoose_1.Types.ObjectId(formId),
-                type: {
-                    $in: [
-                        Content_model_1.QuestionType.MultipleChoice,
-                        Content_model_1.QuestionType.CheckBox,
-                        Content_model_1.QuestionType.Selection,
-                    ],
-                },
-            });
-        const analytics = [];
-        for (const question of questions) {
-            if (![
-                Content_model_1.QuestionType.MultipleChoice,
-                Content_model_1.QuestionType.CheckBox,
-                Content_model_1.QuestionType.Selection,
-            ].includes(question.type)) {
-                continue;
-            }
-            const questionAnalytics = await this.generateMultiGraphAnalytics(question, responses);
-            analytics.push(questionAnalytics);
-        }
-        return analytics;
-    }
-    static async generateMultiGraphAnalytics(question, responses) {
-        const questionId = question._id?.toString() ?? "";
-        const choices = question.multiple || question.checkbox || question.selection || [];
-        // Extract responses for this question
-        const questionResponses = responses
-            .map((response) => {
-            const responseSet = response.responseset.find((rs) => rs.question.toString() === questionId);
-            return responseSet;
-        })
-            .filter(Boolean);
-        // Count responses for each choice
-        const choiceDistribution = this.calculateChoiceDistribution(choices, questionResponses);
-        // Generate different graph formats
-        const barChart = this.generateBarChartData(choiceDistribution);
-        const pieChart = this.generatePieChartData(choiceDistribution);
-        const horizontalBarChart = this.generateHorizontalBarChartData(choiceDistribution);
-        const doughnutChart = this.generateDoughnutChartData(choiceDistribution);
-        // Proccess Question Title to string
-        const questionTitle = this.extractQuestionTitle(question.title);
-        return {
-            questionId,
-            questionTitle,
-            questionType: question.type,
-            totalResponses: questionResponses.length,
-            availableGraphTypes: [
-                GraphType.BAR,
-                GraphType.PIE,
-                GraphType.HORIZONTAL_BAR,
-                GraphType.DOUGHNUT,
-            ],
-            barChart,
-            pieChart,
-            horizontalBarChart,
-            doughnutChart,
-            rawData: choiceDistribution,
-        };
-    }
-    /**
-     * Calculate distribution of choices with counts and percentages
-     * @description  Example: Choice A with 3 persons selected with percentages of overall choices for ChoiceQuestionType
-     */
-    static calculateChoiceDistribution(choices, questionResponses) {
-        const totalResponses = questionResponses.length;
-        const choiceCounts = new Map();
-        // Initialize counts for all choices
-        choices.forEach((choice) => {
-            choiceCounts.set(choice.idx, 0);
-        });
-        // Count responses
-        questionResponses.forEach((response) => {
-            if (!response?.response)
-                return;
-            const responseValue = response.response;
-            // Handle both single and multiple selections
-            if (Array.isArray(responseValue)) {
-                responseValue.forEach((idx) => {
-                    choiceCounts.set(idx, (choiceCounts.get(idx) || 0) + 1);
-                });
-            }
-            else if (typeof responseValue === "number") {
-                choiceCounts.set(responseValue, (choiceCounts.get(responseValue) || 0) + 1);
-            }
-            else if (typeof responseValue === "object" && "key" in responseValue) {
-                // Handle ResponseAnswerReturnType format
-                const key = responseValue.key;
-                if (Array.isArray(key)) {
-                    key.forEach((idx) => {
-                        choiceCounts.set(idx, (choiceCounts.get(idx) || 0) + 1);
-                    });
-                }
-                else {
-                    choiceCounts.set(key, (choiceCounts.get(key) || 0) + 1);
-                }
-            }
-        });
-        // Generate distribution data
-        return choices.map((choice, index) => {
-            const count = choiceCounts.get(choice.idx) || 0;
-            const percentage = totalResponses > 0 ? (count / totalResponses) * 100 : 0;
-            return {
-                choiceIdx: choice.idx,
-                choiceContent: choice.content,
-                count,
-                percentage: Math.round(percentage * 100) / 100, // Round to 2 decimal places
-                color: this.CHART_COLORS[index % this.CHART_COLORS.length], //Assign Color Base on Index
-            };
-        });
-    }
-    /**
-     * Generate Bar Chart data
-     */
-    static generateBarChartData(distribution) {
-        return {
-            labels: distribution.map((d) => d.choiceContent),
-            datasets: [
-                {
-                    label: "Response Count",
-                    data: distribution.map((d) => d.count),
-                    backgroundColor: distribution.map((d) => d.color + "CC"), // Add transparency
-                    borderColor: distribution.map((d) => d.color),
-                    borderWidth: 2,
-                },
-            ],
-        };
-    }
-    /**
-     * Generate Pie Chart data
-     */
-    static generatePieChartData(distribution) {
-        // Filter out zero counts for cleaner pie chart
-        const nonZeroData = distribution.filter((d) => d.count > 0);
-        return {
-            labels: nonZeroData.map((d) => d.choiceContent),
-            datasets: [
-                {
-                    data: nonZeroData.map((d) => d.count),
-                    backgroundColor: nonZeroData.map((d) => d.color + "CC"),
-                    borderColor: nonZeroData.map((d) => d.color),
-                    borderWidth: 2,
-                },
-            ],
-        };
-    }
-    /**
-     * Generate Horizontal Bar Chart data
-     */
-    static generateHorizontalBarChartData(distribution) {
-        // Sort by count for better visualization
-        const sorted = [...distribution].sort((a, b) => b.count - a.count);
-        return {
-            labels: sorted.map((d) => d.choiceContent),
-            datasets: [
-                {
-                    label: "Response Count",
-                    data: sorted.map((d) => d.count),
-                    backgroundColor: sorted.map((d) => d.color + "CC"),
-                    borderColor: sorted.map((d) => d.color),
-                    borderWidth: 2,
-                },
-            ],
-        };
-    }
-    /**
-     * Generate Doughnut Chart data (similar to pie but with hole in center)
-     */
-    static generateDoughnutChartData(distribution) {
-        // Filter out zero counts
-        const nonZeroData = distribution.filter((d) => d.count > 0);
-        return {
-            labels: nonZeroData.map((d) => `${d.choiceContent} (${d.percentage.toFixed(1)}%)`),
-            datasets: [
-                {
-                    data: nonZeroData.map((d) => d.count),
-                    backgroundColor: nonZeroData.map((d) => d.color + "DD"),
-                    borderColor: nonZeroData.map((d) => d.color),
-                    borderWidth: 2,
-                },
-            ],
-        };
-    }
-    /**
-     * Extract plain text from ContentTitle structure
-     */
+const RespondentTrackingService_1 = require("./RespondentTrackingService");
+const helper_1 = require("../utilities/helper");
+class FormOverViewAnalyticsService {
     static extractQuestionTitle(title) {
         if (typeof title === "string") {
             return title;
         }
         if (title && typeof title === "object") {
-            // Handle TipTap/ProseMirror JSON structure
+            // Handle TipTap JSON structure
             if (title.content && Array.isArray(title.content)) {
                 return title.content
                     .map((node) => {
@@ -300,6 +69,45 @@ class ResponseAnalyticsService {
         }
         return "Question";
     }
+    /**
+     * Calculate comprehensive completion time statistics
+     * @param completionTimes Array of completion times in seconds
+     * @returns Object with average, min, max times in seconds
+     */
+    static calculateAverageCompletionTime(completionTimes) {
+        // Validate input
+        if (!completionTimes || completionTimes.length === 0) {
+            return {
+                average: 0,
+                median: 0,
+                min: 0,
+                max: 0,
+                count: 0,
+            };
+        }
+        const validTimes = completionTimes.filter((time) => time >= 0);
+        if (validTimes.length === 0) {
+            return {
+                average: 0,
+                median: 0,
+                min: 0,
+                max: 0,
+                count: 0,
+            };
+        }
+        // Calculate average
+        const sum = validTimes.reduce((acc, time) => acc + time, 0);
+        const average = Math.round(sum / validTimes.length);
+        // Get min and max
+        const min = Math.min(...validTimes);
+        const max = Math.max(...validTimes);
+        return {
+            average,
+            min,
+            max,
+            count: validTimes.length,
+        };
+    }
     /* ------------------------ Analytics Metries Methods ----------------------- */
     /**Get analytics data for filtering the data base on the period with included all the data for graphs and metries*/
     static async getFormAnalytics(formId, period = "7d") {
@@ -308,39 +116,17 @@ class ResponseAnalyticsService {
         const responses = await Response_model_1.default.find({
             formId: new mongoose_1.Types.ObjectId(formId),
             createdAt: { $gte: startDate },
-        }).sort({ createdAt: -1 });
+        })
+            .sort({ createdAt: -1 })
+            .lean();
         const questions = await Content_model_1.default.find({
             formId: new mongoose_1.Types.ObjectId(formId),
-        });
-        const form = await Form_model_1.default.findById(formId).lean();
+        }).lean();
         return {
             ...this.calculateBasicMetrics(responses),
-            questionAnalytics: await this.generateQuestionAnalytics(responses, questions),
-            scoreDistribution: this.generateScoreDistribution(responses, form?.totalscore || 100),
             timeSeriesData: this.generateTimeSeriesData(responses, startDate, now),
-            performanceMetrics: this.generatePerformanceMetrics(responses, questions),
+            performanceMetrics: this.generatePerformanceMetrics(responses, (0, helper_1.AddQuestionNumbering)({ questions })),
         };
-    }
-    static async getResponseAnalytics(responses, form) {
-        const analytics = {};
-        if (form.contentIds && Array.isArray(form.contents)) {
-            for (const content of form.contents) {
-                const questionId = content._id?.toString();
-                //Skip question with no _id
-                if (!questionId)
-                    continue;
-                const questionResponses = responses
-                    .map((response) => response.responseset.find((r) => r.questionId.toString() === questionId))
-                    .filter(Boolean);
-                if (["multiple", "checkbox", "selection"].includes(content.type)) {
-                    analytics[questionId] = this.analyzeChoiceQuestion(content, questionResponses);
-                }
-                else if (["rangedate", "rangenumber"].includes(content.type)) {
-                    analytics[questionId] = this.analyzeRangeQuestion(content, questionResponses);
-                }
-            }
-        }
-        return analytics;
     }
     static calculateStartDate(period, now) {
         const periodMap = {
@@ -355,196 +141,32 @@ class ResponseAnalyticsService {
     }
     static calculateBasicMetrics(responses) {
         const totalResponses = responses.length;
+        //Filtered For Completed Form Responses only
         const completedResponses = responses.filter((r) => r.completionStatus === "completed").length;
         const averageScore = responses.reduce((sum, r) => sum + (r.totalScore || 0), 0) /
             totalResponses || 0;
         const responseRate = totalResponses > 0 ? (completedResponses / totalResponses) * 100 : 0;
+        // Extract completion times from responses (assuming completionTime is in seconds or parseable)
+        const completionTimes = responses
+            .map((r) => {
+            if (typeof r.completionTime === "number") {
+                return r.completionTime;
+            }
+            // If it's a string like "1d 2h 30mn", you can parse it or skip
+            return null;
+        })
+            .filter((time) => time !== null);
+        const completionTimeStats = this.calculateAverageCompletionTime(completionTimes);
         return {
             totalResponses,
             completedResponses,
             averageScore,
             responseRate,
-            averageCompletionTime: 8, // Mock data
+            averageCompletionTime: RespondentTrackingService_1.RespondentTrackingService.formatCompletionTime(completionTimeStats.average),
+            completionTimeStats, // Return full stats for detailed analytics
         };
     }
-    static async generateQuestionAnalytics(responses, questions) {
-        return Promise.all(questions.map(async (question) => {
-            const questionResponses = responses.filter((r) => r.responseset.some((rs) => rs.questionId.toString() === question._id?.toString()));
-            const questionResponsesData = questionResponses
-                .map((r) => r.responseset.find((rs) => rs.questionId.toString() === question._id?.toString()))
-                .filter(Boolean);
-            const correctResponses = questionResponsesData.filter((r) => r?.score && r.score > 0).length;
-            const accuracy = questionResponsesData.length > 0
-                ? (correctResponses / questionResponsesData.length) * 100
-                : 0;
-            const avgScore = questionResponsesData.reduce((sum, r) => sum + (r?.score || 0), 0) /
-                questionResponsesData.length || 0;
-            const responseDistribution = this.generateResponseDistribution(questionResponsesData);
-            return {
-                questionId: question._id?.toString() || "",
-                questionTitle: typeof question.title === "string" ? question.title : "Question",
-                questionType: question.type,
-                totalResponses: questionResponsesData.length,
-                correctResponses,
-                accuracy,
-                averageScore: avgScore,
-                responseDistribution,
-                commonAnswers: responseDistribution
-                    .map((r) => r.option)
-                    .slice(0, 5),
-            };
-        }));
-    }
-    static analyzeChoiceQuestion(contentObj, questionResponses) {
-        const choices = contentObj.multiple || contentObj.checkbox || contentObj.selection || [];
-        const answerCounts = {};
-        questionResponses.forEach((response) => {
-            if (response) {
-                if (Array.isArray(response.response)) {
-                    response.response.forEach((answer) => {
-                        const key = answer.toString();
-                        answerCounts[key] = (answerCounts[key] || 0) + 1;
-                    });
-                }
-                else if (typeof response.response === "object" &&
-                    "key" in response.response) {
-                    const key = response.response.key;
-                    if (Array.isArray(key)) {
-                        key.forEach((idx) => {
-                            answerCounts[idx.toString()] =
-                                (answerCounts[idx.toString()] || 0) + 1;
-                        });
-                    }
-                    else {
-                        answerCounts[key.toString()] =
-                            (answerCounts[key.toString()] || 0) + 1;
-                    }
-                }
-                else {
-                    const key = response.response.toString();
-                    answerCounts[key] = (answerCounts[key] || 0) + 1;
-                }
-            }
-        });
-        // Generate chart data with choice labels
-        const chartData = Object.entries(answerCounts).map(([answer, count]) => {
-            const choiceIdx = parseInt(answer);
-            const choice = choices.find((c) => c.idx === choiceIdx);
-            const percentage = (count / questionResponses.length) * 100;
-            return {
-                answer: choice?.content || answer,
-                answerIdx: choiceIdx,
-                count,
-                percentage: percentage.toFixed(1),
-            };
-        });
-        // Generate multi-graph format
-        const labels = chartData.map((d) => d.answer);
-        const data = chartData.map((d) => d.count);
-        const colors = chartData.map((_, idx) => this.CHART_COLORS[idx % this.CHART_COLORS.length]);
-        return {
-            type: contentObj.type,
-            title: this.extractQuestionTitle(contentObj.title),
-            totalResponses: questionResponses.length,
-            answerCounts,
-            chartData,
-            // Multiple graph formats
-            graphs: {
-                barChart: {
-                    labels,
-                    datasets: [
-                        {
-                            label: "Response Count",
-                            data,
-                            backgroundColor: colors.map((c) => c + "CC"),
-                            borderColor: colors,
-                            borderWidth: 2,
-                        },
-                    ],
-                },
-                pieChart: {
-                    labels,
-                    datasets: [
-                        {
-                            data,
-                            backgroundColor: colors.map((c) => c + "CC"),
-                            borderColor: colors,
-                            borderWidth: 2,
-                        },
-                    ],
-                },
-                horizontalBarChart: {
-                    labels,
-                    datasets: [
-                        {
-                            label: "Response Count",
-                            data,
-                            backgroundColor: colors.map((c) => c + "CC"),
-                            borderColor: colors,
-                            borderWidth: 2,
-                        },
-                    ],
-                },
-                doughnutChart: {
-                    labels: labels.map((label, idx) => `${label} (${chartData[idx].percentage}%)`),
-                    datasets: [
-                        {
-                            data,
-                            backgroundColor: colors.map((c) => c + "DD"),
-                            borderColor: colors,
-                            borderWidth: 2,
-                        },
-                    ],
-                },
-            },
-        };
-    }
-    static analyzeRangeQuestion(contentObj, questionResponses) {
-        const ranges = questionResponses
-            .map((response) => response?.response)
-            .filter(Boolean);
-        return {
-            type: contentObj.type,
-            title: contentObj.title,
-            totalResponses: questionResponses.length,
-            ranges,
-        };
-    }
-    static generateResponseDistribution(responses) {
-        const distribution = {};
-        responses.forEach((response) => {
-            if (response?.response) {
-                const answer = Array.isArray(response.response)
-                    ? response.response.join(", ")
-                    : response.response.toString();
-                distribution[answer] = (distribution[answer] || 0) + 1;
-            }
-        });
-        return Object.entries(distribution)
-            .map(([option, count]) => ({
-            option,
-            count,
-            percentage: (count / responses.length) * 100,
-        }))
-            .sort((a, b) => b.count - a.count);
-    }
-    static generateScoreDistribution(responses, maxScore) {
-        const ranges = [
-            { min: 0, max: 0.2 * maxScore, label: "0-20%" },
-            { min: 0.2 * maxScore, max: 0.4 * maxScore, label: "21-40%" },
-            { min: 0.4 * maxScore, max: 0.6 * maxScore, label: "41-60%" },
-            { min: 0.6 * maxScore, max: 0.8 * maxScore, label: "61-80%" },
-            { min: 0.8 * maxScore, max: maxScore, label: "81-100%" },
-        ];
-        return ranges.map((range) => {
-            const count = responses.filter((r) => (r.totalScore || 0) >= range.min && (r.totalScore || 0) <= range.max).length;
-            return {
-                scoreRange: range.label,
-                count,
-                percentage: responses.length > 0 ? (count / responses.length) * 100 : 0,
-            };
-        });
-    }
+    /**Analytics data for responses overview for sepcific times */
     static generateTimeSeriesData(responses, startDate, endDate) {
         const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
         const data = [];
@@ -552,7 +174,7 @@ class ResponseAnalyticsService {
             const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
             const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
             const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
-            const dayResponses = responses.filter((r) => r.createdAt && r.createdAt >= dayStart && r.createdAt < dayEnd);
+            const dayResponses = responses.filter((r) => r.submittedAt && r.submittedAt >= dayStart && r.submittedAt < dayEnd);
             const avgScore = dayResponses.length > 0
                 ? dayResponses.reduce((sum, r) => sum + (r.totalScore || 0), 0) /
                     dayResponses.length
@@ -566,39 +188,104 @@ class ResponseAnalyticsService {
         return data;
     }
     static generatePerformanceMetrics(responses, questions) {
-        const topPerformers = responses
-            .filter((r) => (r.respondentName || r.respondentEmail) && r.respondentEmail)
-            .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0))
+        const scoredStatuses = new Set([
+            "completed",
+            "autoscore",
+            "noscore",
+            "submitted",
+        ]);
+        const scoredResponses = responses.filter((r) => r.respondentEmail &&
+            r.totalScore != null &&
+            r.completionStatus &&
+            scoredStatuses.has(r.completionStatus));
+        const topPerformers = scoredResponses
+            .sort((a, b) => {
+            const aPercent = a.maxScore && a.maxScore > 0
+                ? (a.totalScore / a.maxScore) * 100
+                : a.totalScore;
+            const bPercent = b.maxScore && b.maxScore > 0
+                ? (b.totalScore / b.maxScore) * 100
+                : b.totalScore;
+            return bPercent - aPercent;
+        })
             .slice(0, 5)
             .map((r) => ({
             name: (0, respondentUtils_1.getResponseDisplayName)(r),
             email: r.respondentEmail,
-            score: r.totalScore || 0,
+            score: r.totalScore ?? 0,
+            maxScore: r.maxScore ?? null,
+            percentScore: r.maxScore && r.maxScore > 0
+                ? Math.round((r.totalScore / r.maxScore) * 100 * 10) / 10
+                : null,
         }));
-        const difficultQuestions = questions
+        // Only score-bearing question types
+        const scoredQuestions = questions.filter((q) => q.type !== Content_model_1.QuestionType.Text &&
+            !q.isBonusScore &&
+            q.score != null &&
+            q.score > 0);
+        const difficultQuestions = scoredQuestions
             .map((q) => {
-            const questionResponses = responses.filter((r) => r.responseset.some((rs) => rs.question.toString() === q._id?.toString()));
-            const correctCount = questionResponses.filter((r) => {
-                const questionResponse = r.responseset.find((rs) => rs.questionId.toString() === q._id?.toString());
-                return (questionResponse &&
-                    questionResponse.score &&
-                    questionResponse.score > 0);
-            }).length;
-            const accuracy = questionResponses.length > 0
-                ? (correctCount / questionResponses.length) * 100
-                : 0;
-            const avgScore = questionResponses.reduce((sum, r) => {
-                const questionResponse = r.responseset.find((rs) => rs.questionId.toString() === q._id?.toString());
-                return sum + (questionResponse?.score || 0);
-            }, 0) / questionResponses.length || 0;
+            const qIdStr = q._id?.toString();
+            const questionResponses = responses.filter((r) => r.responseset.some((rs) => {
+                const rsQId = rs.question instanceof mongoose_1.Types.ObjectId ||
+                    typeof rs.question === "string"
+                    ? rs.question.toString()
+                    : rs.question?._id?.toString();
+                return rsQId === qIdStr;
+            }));
+            const responseCount = questionResponses.length;
+            if (responseCount === 0) {
+                return {
+                    _id: q._id,
+                    questionId: q.questionId,
+                    title: this.extractQuestionTitle(q.title),
+                    accuracy: 0,
+                    partialAccuracy: 0,
+                    averageScore: 0,
+                    maxScore: q.score,
+                    averagePercent: 0,
+                    responseCount: 0,
+                    isConditional: !!q.parentcontent,
+                };
+            }
+            let fullMarkCount = 0;
+            let anyMarkCount = 0;
+            let totalEarned = 0;
+            //Count score of the current question
+            for (const res of questionResponses) {
+                const rs = res.responseset.find((rs) => {
+                    const rsQId = rs.question instanceof mongoose_1.Types.ObjectId ||
+                        typeof rs.question === "string"
+                        ? rs.question.toString()
+                        : rs.question?._id?.toString();
+                    return rsQId === qIdStr;
+                });
+                const earned = rs?.score ?? 0;
+                totalEarned += earned;
+                if (earned >= q.score)
+                    fullMarkCount++;
+                if (earned > 0)
+                    anyMarkCount++;
+            }
+            const accuracy = fullMarkCount / responseCount;
+            const partialAccuracy = anyMarkCount / responseCount;
+            const averageScore = totalEarned / responseCount;
+            const averagePercent = Math.round((averageScore / q.score) * 100 * 10) / 10;
             return {
-                questionId: q._id?.toString() || "",
-                title: typeof q.title === "string" ? q.title : "Question",
+                _id: q._id,
+                questionId: q.questionId,
+                title: this.extractQuestionTitle(q.title),
                 accuracy,
-                averageScore: avgScore,
+                partialAccuracy,
+                averageScore: Math.round(averageScore * 100) / 100,
+                maxScore: q.score,
+                averagePercent,
+                responseCount,
+                isConditional: !!q.parentcontent,
             };
         })
-            .sort((a, b) => a.accuracy - b.accuracy)
+            .filter((q) => q.responseCount > 0)
+            .sort((a, b) => a.accuracy - b.accuracy) // lowest accuracy = most difficult
             .slice(0, 5);
         return { topPerformers, difficultQuestions };
     }
@@ -627,5 +314,7 @@ class ResponseAnalyticsService {
         });
         return csvRows.join("\n");
     }
+    static async getResponseStatusSummary() { }
 }
-exports.ResponseAnalyticsService = ResponseAnalyticsService;
+exports.FormOverViewAnalyticsService = FormOverViewAnalyticsService;
+exports.ResponseAnalyticsService = FormOverViewAnalyticsService;

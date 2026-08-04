@@ -52,7 +52,7 @@ export function isPrimaryOwner(form: FormType, userId: string): boolean {
 export function verifyRole(
   role: CollaboratorType,
   form: FormType,
-  userId: Types.ObjectId
+  userId: Types.ObjectId,
 ): boolean {
   const user_id = userId.toString();
 
@@ -61,8 +61,8 @@ export function verifyRole(
   }
 
   return role === CollaboratorType.editor
-    ? form.editors?.some((i) => i.toString() === user_id) ?? false
-    : form.owners?.some((i) => i.toString() === user_id) ?? false;
+    ? (form.editors?.some((i) => i.toString() === user_id) ?? false)
+    : (form.owners?.some((i) => i.toString() === user_id) ?? false);
 }
 
 // Centralized access validation helper
@@ -80,9 +80,9 @@ export function validateAccess(form: any, userId: Types.ObjectId) {
 export const projections = {
   basic: "title type createdAt updatedAt user owners",
   detail:
-    "title type createdAt updatedAt totalpage totalscore setting contentIds user owners editors",
+    "title type createdAt updatedAt totalpage totalscore extraScore setting contentIds user owners editors",
   minimal: "_id title type user owners editors",
-  total: "totalpage totalscore contentIds user owners editors",
+  total: "totalpage totalscore extraScore contentIds user owners editors",
   setting: "_id title type setting user owners editors",
 };
 
@@ -114,7 +114,7 @@ export function validateFormRequest(formId: string, userId?: string) {
  */
 export async function getLastQuestionIdx(
   formId: string | Types.ObjectId,
-  page: number
+  page: number,
 ): Promise<number> {
   if (!page || page <= 1) {
     return 0;
@@ -125,19 +125,6 @@ export async function getLastQuestionIdx(
     page: { $lt: page },
     $or: [{ parentcontent: { $exists: false } }, { parentcontent: null }],
   });
-}
-
-/**
- * Convert ISO date string to day-month-year format
- * @param isoString - ISO date string (e.g., "2024-01-15T10:30:00.000Z")
- * @returns Formatted date string in "DD-MM-YYYY" format
- */
-export function formatISOToDateString(isoString: string): string {
-  const date = new Date(isoString);
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}-${month}-${year}`;
 }
 
 export function formatResponseValue({

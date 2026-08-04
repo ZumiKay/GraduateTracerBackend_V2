@@ -1,5 +1,9 @@
 import { Request, Response } from "express";
-import { AddQuestionNumbering, ReturnCode } from "../../utilities/helper";
+import {
+  AddQuestionNumbering,
+  ReturnCode,
+  SendResponse,
+} from "../../utilities/helper";
 import { getLastQuestionIdx } from "../../utilities/formHelpers";
 import Content, {
   AnswerKey,
@@ -8,6 +12,10 @@ import Content, {
 } from "../../model/Content.model";
 import Form from "../../model/Form.model";
 import mongoose, { Types } from "mongoose";
+import {
+  formValidationErrorByContentTypes,
+  FormValidationService,
+} from "../../services/FormValidationService";
 
 interface SaveQuestionPayload {
   data: Array<ContentType>;
@@ -44,6 +52,21 @@ class QuestionController {
         return res.status(400).json(ReturnCode(400, validationError));
       }
 
+      //Step 1.1: Content validity verify
+      const isValidContents = payload.data.flatMap((c) =>
+        formValidationErrorByContentTypes[c.type](c),
+      );
+
+      if (isValidContents.length > 0) {
+        return res.status(400).json({
+          ...ReturnCode(400),
+          data: payload.data.map((q) => ({
+            ...q,
+            validationIssues: isValidContents,
+          })),
+        });
+      }
+
       const { formId, page, title } = payload;
       let { data } = payload;
 
@@ -76,6 +99,7 @@ class QuestionController {
         questionIdMap,
         formId,
         page!,
+        existingContent,
       );
 
       // Step 7: Handle deletions
@@ -104,7 +128,9 @@ class QuestionController {
       const isBonusChange = data.some(
         (i) =>
           i.isBonusScore !==
-          existingContent.find((j) => j._id === i._id)?.isBonusScore,
+            existingContent.find((j) => j._id === i._id)?.isBonusScore ||
+          i.useChildScoreSum !==
+            existingContent.find((j) => j._id === i._id)?.useChildScoreSum,
       );
 
       if (isScoreChange || isBonusChange || !form?.totalscore) {
@@ -123,13 +149,14 @@ class QuestionController {
       // Get cumulative question count from previous pages for proper numbering
       const lastQuestionIdx = await getLastQuestionIdx(formId, page!);
 
-      return res.status(200).json({
-        ...ReturnCode(200, "Saved successfully"),
-        data: AddQuestionNumbering({
+      return SendResponse.success(
+        res,
+        AddQuestionNumbering({
           questions: updatedContent,
           lastIdx: lastQuestionIdx,
         }),
-      });
+        "Saved Completed",
+      );
     } catch (error) {
       return this.handleSaveQuestionError(error, res);
     }
@@ -236,22 +263,39 @@ class QuestionController {
     for (const item of data) {
       if (item.score && item.conditional?.length) {
         if (!item.isBonusScore) {
-          // Non-bonus: sum of children must exactly equal parent score
-          let totalChildScore = 0;
+          if (item.useChildScoreSum) {
+            // Distributed scoring mode: sum of all children scores must equal parent score
+            const childScoreSum = data.reduce((sum, child) => {
+              const isChild = item.conditional?.find(
+                (c) =>
+                  (c.contentId &&
+                    c.contentId.toString() === child._id?.toString()) ||
+                  (c.contentIdx !== undefined && c.contentIdx === child.qIdx),
+              );
+              return isChild ? sum + (child.score ?? 0) : sum;
+            }, 0);
 
-          for (const cond of item.conditional) {
-            const child =
-              cond.contentId !== undefined
-                ? dataByStrId.get(cond.contentId.toString())
-                : cond.contentIdx !== undefined
-                  ? dataByQIdx.get(cond.contentIdx)
-                  : undefined;
+            if (childScoreSum !== item.score) {
+              return `Sum of children scores (${childScoreSum}) of question ${item.qIdx} must equal parent score (${item.score})`;
+            }
+          } else {
+            // Default mode: each individual child score must not exceed parent score
+            const isWrongScore = data.some(
+              (child) =>
+                item.conditional?.find(
+                  (c) =>
+                    (c.contentId &&
+                      c.contentId.toString() === child._id?.toString()) ||
+                    (c.contentIdx !== undefined && c.contentIdx === child.qIdx),
+                ) &&
+                child.score &&
+                item.score &&
+                child.score > item.score,
+            );
 
-            if (child?.score) totalChildScore += child.score;
-          }
-
-          if (totalChildScore > 0 && totalChildScore !== item.score) {
-            return `Children scores of question ${item.qIdx} must equal parent score (${totalChildScore} ≠ ${item.score})`;
+            if (isWrongScore) {
+              return `Children scores of question ${item.qIdx} must not exceed parent score`;
+            }
           }
         }
       }
@@ -260,9 +304,10 @@ class QuestionController {
         const parentKey = item.parentcontent.qId || item.parentcontent.qIdx;
         if (parentKey !== undefined) {
           const parent = combinedByKey.get(parentKey);
-          // Bonus parents allow any child score; non-bonus parents cap individual child scores
+          // Bonus parents allow any child score; non-bonus parents cap individual child scores (unless sum mode)
           if (
             !parent?.isBonusScore &&
+            !parent?.useChildScoreSum &&
             parent?.score &&
             item.score > parent.score
           ) {
@@ -348,10 +393,41 @@ class QuestionController {
     questionIdMap: Map<number, Types.ObjectId>,
     formId: string,
     page: number,
+    existingContent: ContentType[] = [],
   ): any[] {
+    const existingMap = new Map<string, ContentType>();
+    let maxQIdx = -1;
+
+    for (const eq of existingContent) {
+      if (eq._id) {
+        existingMap.set(eq._id.toString(), eq);
+      }
+      if (typeof eq.qIdx === "number" && eq.qIdx > maxQIdx) {
+        maxQIdx = eq.qIdx;
+      }
+    }
+
+    for (const item of data) {
+      if (typeof item.qIdx === "number" && item.qIdx > maxQIdx) {
+        maxQIdx = item.qIdx;
+      }
+    }
+
     return data.map((item, index) => {
       const { _id, ...rest } = item;
       const documentId = _id || questionIdMap.get(index);
+      const existingItem = _id ? existingMap.get(_id.toString()) : undefined;
+
+      let qIdx: number;
+      if (typeof item.qIdx === "number") {
+        qIdx = item.qIdx;
+      } else if (existingItem && typeof existingItem.qIdx === "number") {
+        qIdx = existingItem.qIdx;
+      } else {
+        maxQIdx += 1;
+        qIdx = maxQIdx;
+      }
+
       const processedConditional = this.processConditionals(
         rest.conditional,
         data,
@@ -369,6 +445,7 @@ class QuestionController {
           update: {
             $set: {
               ...rest,
+              qIdx,
               conditional: processedConditional,
               parentcontent: processedParentContent,
               formId,
@@ -534,19 +611,13 @@ class QuestionController {
     console.error("SaveQuestion Error:", error);
 
     if (error instanceof mongoose.Error.ValidationError) {
-      return res.status(400).json(ReturnCode(400, "Validation Error"));
+      return SendResponse.badRequest(res);
     }
     if (error instanceof mongoose.Error.CastError) {
-      return res.status(400).json(ReturnCode(400, "Invalid ID Format"));
+      return SendResponse.badRequest(res, "Invalid ID Format");
     }
 
-    return res.status(500).json(ReturnCode(500, "Internal Server Error"));
-  }
-
-  private logDev(message: string): void {
-    if (process.env.NODE_ENV === "DEV") {
-      console.log(message);
-    }
+    return SendResponse.error(res);
   }
 
   public async DeleteQuestion(req: Request, res: Response) {
@@ -605,54 +676,6 @@ class QuestionController {
       return res
         .status(500)
         .json(ReturnCode(500, "Error occurred while deleting question"));
-    }
-  }
-
-  public async GetAllQuestion(req: Request, res: Response) {
-    try {
-      const { formid, page } = req.query;
-
-      if (!formid) {
-        return res.status(400).json(ReturnCode(400, "Form ID is required"));
-      }
-
-      // Validate formid is a valid ObjectId
-      if (!Types.ObjectId.isValid(formid as string)) {
-        return res.status(400).json(ReturnCode(400, "Invalid form ID format"));
-      }
-
-      // Build query - if page is provided, filter by page, otherwise get all
-      const query: any = { formId: new Types.ObjectId(formid as string) };
-
-      if (page !== undefined && page !== null && page !== "") {
-        const pageNum = Number(page);
-        if (!isNaN(pageNum) && pageNum > 0) {
-          query.page = pageNum;
-        }
-      }
-
-      const questions = await Content.find(query)
-        .select(
-          "_id idx title type text multiple checkbox rangedate rangenumber date require page conditional parentcontent qIdx",
-        )
-        .lean()
-        .sort({ page: 1, qIdx: 1 }); // Sort by page first, then by question index
-
-      if (process.env.NODE_ENV === "DEV") {
-        console.log("GetAllQuestion:", {
-          formid,
-          page,
-          query,
-          questionsFound: questions.length,
-        });
-      }
-
-      return res.status(200).json({ ...ReturnCode(200), data: questions });
-    } catch (error) {
-      console.error("Get All Question Error:", error);
-      return res
-        .status(500)
-        .json(ReturnCode(500, "Failed to retrieve questions"));
     }
   }
 
@@ -871,12 +894,6 @@ class QuestionController {
     return true;
   }
 
-  private calculateTotalScore(items: Array<ContentType>): number {
-    return items
-      .filter((ques) => !ques.parentcontent)
-      .reduce((total, { score = 0 }) => total + score, 0);
-  }
-
   private async calculateFormTotalScore(
     formId: string,
   ): Promise<{ totalscore: number; extraScore: number }> {
@@ -894,16 +911,6 @@ class QuestionController {
     }
 
     return { totalscore, extraScore };
-  }
-
-  private calculateScoreDifference(
-    incoming: ContentType[],
-    prevContent: ContentType[],
-  ): number {
-    const incomingTotal = this.calculateTotalScore(incoming);
-    const prevTotal = this.calculateTotalScore(prevContent);
-
-    return incomingTotal - prevTotal;
   }
 }
 

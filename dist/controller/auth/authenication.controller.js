@@ -35,7 +35,6 @@ class AuthenticationController {
                 session_id: RefreshToken,
                 expireAt: (0, helper_1.getDateByNumDay)(1),
                 user: user._id,
-                guest: null,
             });
             //Set Authentication Cookie
             this.setAccessTokenCookie(res, AccessToken);
@@ -80,7 +79,7 @@ class AuthenticationController {
                         let generateCode = (0, helper_1.RandomNumber)(6);
                         let isUnqiue = false;
                         while (!isUnqiue) {
-                            const isCode = await User_model_1.default.findOne({ code: generateCode });
+                            const isCode = await User_model_1.default.findOne({ code: String(generateCode) });
                             if (!isCode) {
                                 isUnqiue = true;
                             }

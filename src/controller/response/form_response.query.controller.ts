@@ -117,7 +117,6 @@ export class FormResponseQueryController {
     if (!req.user) return res.status(403).json(ReturnCode(403));
 
     const { formId } = req.params as { formId: string };
-    const { group } = req.query as { group?: string };
 
     if (!formId || !isValidObjectIdString(formId))
       return res.status(400).json(ReturnCode(400));

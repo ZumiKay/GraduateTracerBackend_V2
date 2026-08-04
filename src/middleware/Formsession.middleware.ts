@@ -155,6 +155,8 @@ export default class FormsessionMiddleware {
       const accessToken =
         req.cookies[process.env.ACCESS_RESPONDENT_COOKIE as string];
 
+      console.log({ sessionToken, accessToken });
+
       if (!sessionToken) {
         return res.status(401).json(RESPONSES.missingSessionToken());
       }
@@ -181,6 +183,9 @@ export default class FormsessionMiddleware {
         const isSession = await Formsession.findOne(sessionQuery).lean();
 
         if (!isSession) {
+          res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
+          res.clearCookie(process.env.RESPONDENT_COOKIE as string);
+
           return res.status(401).json(RESPONSES.sessionNotFound());
         }
 
@@ -227,7 +232,6 @@ export default class FormsessionMiddleware {
           });
 
           req.formsession = {
-            ...extractedSessionToken,
             sub: sessionToken,
             access_token: newAccessId,
             access_payload: newExtractedAccessToken,
@@ -245,7 +249,6 @@ export default class FormsessionMiddleware {
 
         // No renewal needed - use existing tokens
         req.formsession = {
-          ...extractedSessionToken,
           sub: sessionToken,
           access_token: accessToken,
           access_payload: verifiedAccessToken.data,

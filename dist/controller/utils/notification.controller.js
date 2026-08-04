@@ -117,7 +117,6 @@ class NotificationController {
     // Mark notification as read
     MarkAsRead = async (req, res) => {
         const { notificationId } = req.params;
-        const user = req.user;
         try {
             const notification = await Notification_model_1.default.findById(notificationId);
             if (!notification) {

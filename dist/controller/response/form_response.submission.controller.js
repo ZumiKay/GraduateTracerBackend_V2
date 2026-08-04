@@ -45,8 +45,8 @@ const ResponseProcessingService_1 = require("../../services/ResponseProcessingSe
 const RespondentTrackingService_1 = require("../../services/RespondentTrackingService");
 const ResponseQueryService_1 = require("../../services/ResponseQueryService");
 const Formsession_model_1 = __importDefault(require("../../model/Formsession.model"));
-const User_middleware_1 = require("../../middleware/User.middleware");
 const notification_controller_1 = require("../utils/notification.controller");
+const fingerprint_1 = require("../../utilities/fingerprint");
 class FormResponseSubmissionController {
     static publicSubmitValidate = zod_1.default.object({
         body: zod_1.default.object({
@@ -79,6 +79,7 @@ class FormResponseSubmissionController {
             if (!form) {
                 return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
             }
+            //Prepare submission data
             let submissionDataWithTracking;
             const baseSubmissionData = {
                 formId: new mongoose_1.Types.ObjectId(formId),
@@ -139,26 +140,16 @@ class FormResponseSubmissionController {
             });
         }
         catch (error) {
-            console.error(`[${submissionId}] Unexpected error in SubmitFormResponse:`, {
-                error: error instanceof Error
-                    ? {
-                        name: error.name,
-                        message: error.message,
-                        stack: error.stack,
-                    }
-                    : error,
-                requestBody: req.body,
-                userAgent: req.headers["user-agent"],
-                ip: req.ip,
-            });
             if (error instanceof Error) {
-                if (error.name === "ValidationError" || error.name === "CastError") {
+                //Catch validation error
+                if (error.name === "ValidationError") {
                     return res.status(400).json({
                         ...(0, helper_1.ReturnCode)(400, "Invalid data provided"),
                         submissionId,
                         error: error.message,
                     });
                 }
+                //Handle timeout error
                 if (error.message.includes("timeout") ||
                     error.name === "TimeoutError") {
                     return res.status(408).json({
@@ -168,6 +159,7 @@ class FormResponseSubmissionController {
                     });
                 }
             }
+            //Critical Error
             return res.status(500).json({
                 ...(0, helper_1.ReturnCode)(500, "An unexpected error occurred during form submission"),
                 submissionId,
@@ -347,9 +339,6 @@ class FormResponseSubmissionController {
             }
             const page = Number(p ?? "1");
             const isUserAlreadyAuthenticated = !!req.formsession;
-            if (req.formsession) {
-                ty = User_middleware_1.GetPublicFormDataTyEnum.data;
-            }
             switch (ty) {
                 case "initial": {
                     const initialData = await Form_model_1.default.findById(formId)
@@ -359,6 +348,34 @@ class FormResponseSubmissionController {
                         return res
                             .status(404)
                             .json((0, helper_1.ReturnCode)(404, initialData ? "Form is closed" : "Form not found"));
+                    }
+                    //Check if the respondent already response
+                    if (initialData.setting.submitonce) {
+                        const respondentFingerPrint = fingerprint_1.FingerprintService.extractFingerprintFromRequest(req);
+                        const fingerprintHash = fingerprint_1.FingerprintService.generateFingerprint(respondentFingerPrint);
+                        const trackingResult = await RespondentTrackingService_1.RespondentTrackingService.checkRespondentExists({
+                            formId: new mongoose_1.Types.ObjectId(formId),
+                            ...(!isUserAlreadyAuthenticated
+                                ? {
+                                    respondentFingerprint: fingerprintHash,
+                                    respondentIP: fingerprint_1.FingerprintService.getClientIP(req),
+                                    fingerprintStrength: fingerprint_1.FingerprintService.getFingerprintStrength(respondentFingerPrint),
+                                }
+                                : {}),
+                            respondentEmail: isUserAlreadyAuthenticated
+                                ? req.formsession?.access_payload?.email
+                                : undefined,
+                        });
+                        if (trackingResult?.hasResponded) {
+                            return res.status(200).json({
+                                ...(0, helper_1.ReturnCode)(200),
+                                data: {
+                                    ...initialData,
+                                    isAuthenticated: true,
+                                    isResponsed: trackingResult.hasResponded,
+                                },
+                            });
+                        }
                     }
                     let isAuthenticated = false;
                     if (initialData.setting?.email) {

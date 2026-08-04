@@ -11,7 +11,7 @@ import FormResponse, {
 } from "../model/Response.model";
 import Content, { ContentType, QuestionType } from "../model/Content.model";
 import Form, { FormType, returnscore } from "../model/Form.model";
-import SolutionValidationService from "./SolutionValidationService";
+import SolutionValidationService from "./ResponseContentValidationService";
 import EmailService from "./EmailService";
 import User from "../model/User.model";
 import { RespondentTrackingService } from "./RespondentTrackingService";

@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isRangeValueValid = exports.contentTitleToString = exports.GetAnswerKeyForQuestion = exports.GetAnswerKeyPairValue = exports.AddQuestionNumbering = exports.groupContentByParent = exports.FormatToGeneralDate = exports.getDateByMinute = exports.getDateByNumDay = exports.ExtractTokenPaylod = exports.ExtractTokenPayload = exports.GenerateToken = exports.RandomNumber = exports.hashedPassword = exports.ValidatePassword = exports.convertResponseToString = exports.convertTitleToString = exports.formatDateToDDMMYYYY = void 0;
 exports.ReturnCode = ReturnCode;
+exports.SendResponse = SendResponse;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const Content_model_1 = require("../model/Content.model");
@@ -38,11 +39,45 @@ function ReturnCode(code, custommess) {
             break;
         case 500:
             message = "Server Error";
+            break;
         default:
             return;
     }
     return returnValue(code, custommess ?? message);
 }
+/**
+ * Reusable helper method to replace `res.status(...).json(...)`.
+ * Standardizes API responses across Express controllers and middlewares.
+ *
+ * @example
+ * SendResponse(res, 200, data)
+ * SendResponse(res, 404, undefined, "User Not Found")
+ * SendResponse.success(res, data)
+ * SendResponse.badRequest(res, "Invalid input")
+ */
+function SendResponse(res, code, data, message) {
+    const returnObj = ReturnCode(code, message);
+    if (code === 204) {
+        return res.status(204).send();
+    }
+    if (data !== undefined) {
+        return res.status(code).json({
+            ...returnObj,
+            data,
+        });
+    }
+    return res.status(code).json(returnObj);
+}
+// Convenient helper shortcuts
+SendResponse.success = (res, data, message) => SendResponse(res, 200, data, message);
+SendResponse.created = (res, data, message) => SendResponse(res, 201, data, message);
+SendResponse.noContent = (res) => SendResponse(res, 204);
+SendResponse.badRequest = (res, message, data) => SendResponse(res, 400, data, message);
+SendResponse.unauthorized = (res, message) => SendResponse(res, 401, undefined, message);
+SendResponse.forbidden = (res, message) => SendResponse(res, 403, undefined, message);
+SendResponse.notFound = (res, message) => SendResponse(res, 404, undefined, message);
+SendResponse.conflict = (res, message) => SendResponse(res, 409, undefined, message);
+SendResponse.error = (res, message) => SendResponse(res, 500, undefined, message);
 /**
  * Formats a date to dd-mm-yyyy format
  *
@@ -375,7 +410,6 @@ const AddQuestionNumbering = ({ questions, lastIdx, }) => {
     const buildQuestionNumber = (question, index, lastIndexWihoutParentCount) => {
         //QuestionId for non conditional question (top-level)
         if (isTopLevelQuestion(question)) {
-            // Count how many top-level questions come before this one (inclusive)
             let topLevelCount = 0;
             for (let i = 0; i <= index; i++) {
                 if (isTopLevelQuestion(questions[i])) {
@@ -608,8 +642,11 @@ const ISODateToNumber = (isoString) => {
  *
  */
 const isRangeValueValid = (value, isDate) => {
-    // Check if both start and end exist
-    if (!value.start || !value.end) {
+    // Check if both start and end exist (0 is a valid value)
+    if (value.start === null ||
+        value.start === undefined ||
+        value.end === null ||
+        value.end === undefined) {
         console.warn("isRangeValueValid: Missing start or end value", value);
         return false;
     }
@@ -636,9 +673,9 @@ const isRangeValueValid = (value, isDate) => {
                 return false;
             }
         }
-        const isValid = startValue < endValue;
+        const isValid = startValue <= endValue;
         if (!isValid) {
-            console.warn("isRangeValueValid: Start value is not less than end value", {
+            console.warn("isRangeValueValid: Start value is greater than end value", {
                 start: startValue,
                 end: endValue,
             });

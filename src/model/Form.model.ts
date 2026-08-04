@@ -61,6 +61,13 @@ export interface PendingOwnershipTransferType {
   code: string;
 }
 
+export interface SummaryFormType {
+  totalQuestion: number;
+  totalConditions: number;
+  dynamicTotalScore: number;
+  lastQuestionIdx: number;
+}
+
 export interface FormType {
   _id: Types.ObjectId;
   title: string;
@@ -84,6 +91,7 @@ export interface FormType {
   pendingCollarborators: Array<PendingCollarboratorsType>;
   pendingOwnershipTransfer?: PendingOwnershipTransferType;
   pendingInvite?: Array<string>;
+  lastQuestionIdx?: number;
 }
 
 const FormSettingSchema = new Schema<FromSettingType>({
