@@ -426,9 +426,7 @@ export class FormValidationService {
 
       //Add warning
 
-      if (
-        MAYBE_AUTO_SCORABLE_TYPES.union(AUTO_SCORABLE_TYPES).has(content.type)
-      ) {
+      if (AUTO_SCORABLE_TYPES.has(content.type)) {
         if (!content.score || !content.answer) {
           warnings.push({
             ...errorItem,
@@ -441,7 +439,6 @@ export class FormValidationService {
       }
     }
 
-    console.log({ errors, missingAnswers, missingScores, wrongScores });
     const isValid =
       errors.length === 0 &&
       missingAnswers.length === 0 &&

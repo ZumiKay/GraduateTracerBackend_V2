@@ -2143,7 +2143,7 @@ class EmailService {
           &lt;/div&gt;
           &lt;div class="content"&gt;
             &lt;h2&gt;${this.escapeHtml(
-              this.convertTitleToString(data.formTitle)
+              this.convertTitleToString(data.formTitle),
             )}&lt;/h2&gt;
             &lt;p&gt;Hello!&lt;/p&gt;
             &lt;p&gt;You have been invited by &lt;strong&gt;${
@@ -2371,8 +2371,8 @@ class EmailService {
           &lt;div class="total-score-section"&gt;
             &lt;div class="total-score-card"&gt;
               &lt;div class="score-number"&gt;${data.totalScore}/${
-      data.maxScore
-    }&lt;/div&gt;
+                data.maxScore
+              }&lt;/div&gt;
               &lt;div class="score-percentage"&gt;${scorePercentage}%&lt;/div&gt;
               &lt;p class="score-label"&gt;Overall Score&lt;/p&gt;
             &lt;/div&gt;
@@ -2413,8 +2413,8 @@ class EmailService {
                     &lt;h4 class="question-title"&gt;Question ${
                       index + 1
                     }: ${this.escapeHtml(
-                    this.convertTitleToString(question.title)
-                  )}&lt;/h4&gt;
+                      this.convertTitleToString(question.title),
+                    )}&lt;/h4&gt;
                     &lt;span class="question-type"&gt;${question.type}&lt;/span&gt;
                   &lt;/div&gt;
                   
@@ -2446,8 +2446,8 @@ class EmailService {
                         isCorrect
                           ? "score-correct"
                           : isPartial
-                          ? "score-partial"
-                          : "score-incorrect"
+                            ? "score-partial"
+                            : "score-incorrect"
                       }"&gt;
                         ${question.score}/${question.maxScore} points
                       &lt;/div&gt;
@@ -2455,15 +2455,15 @@ class EmailService {
                         isCorrect
                           ? "badge-correct"
                           : isPartial
-                          ? "badge-partial"
-                          : "badge-incorrect"
+                            ? "badge-partial"
+                            : "badge-incorrect"
                       }"&gt;
                         ${
                           isCorrect
                             ? "✓ Correct"
                             : isPartial
-                            ? "~ Partial"
-                            : "✗ Incorrect"
+                              ? "~ Partial"
+                              : "✗ Incorrect"
                         }
                       &lt;/div&gt;
                     &lt;/div&gt;
@@ -2515,7 +2515,7 @@ class EmailService {
       : new Date().toLocaleDateString();
 &nbsp;
     const getScoreGrade = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(</span></span>
-      percentage: number
+      percentage: number,
     ): { grade: string; color: string; bgColor: string; emoji: string } =&gt; {
 <span class="cstat-no" title="statement not covered" >      if (percentage &gt;= 90)</span>
 <span class="cstat-no" title="statement not covered" >        return {</span>
@@ -2563,7 +2563,7 @@ class EmailService {
     const gradeInfo = <span class="cstat-no" title="statement not covered" >getScoreGrade(data.scorePercentage);</span>
 &nbsp;
     const formatUserResponse = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(</span></span>
-      question: (typeof data.questions)[0]
+      question: (typeof data.questions)[0],
     ): string =&gt; {
       const response = <span class="cstat-no" title="statement not covered" >question.userResponse;</span>
 &nbsp;
@@ -2611,7 +2611,7 @@ class EmailService {
     };
 &nbsp;
     const formatCorrectAnswer = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(</span></span>
-      question: (typeof data.questions)[0]
+      question: (typeof data.questions)[0],
     ): string =&gt; {
 <span class="cstat-no" title="statement not covered" >      if (!question.answer) <span class="cstat-no" title="statement not covered" >return "";</span></span>
 &nbsp;
@@ -2644,7 +2644,7 @@ class EmailService {
         &lt;meta charset="UTF-8"&gt;
         &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
         &lt;title&gt;Response Results - ${this.escapeHtml(
-          this.convertTitleToString(data.formTitle)
+          this.convertTitleToString(data.formTitle),
         )}&lt;/title&gt;
         &lt;!--[if mso]&gt;
         &lt;style type="text/css"&gt;
@@ -2698,7 +2698,7 @@ class EmailService {
                       gradeInfo.emoji
                     }&lt;/div&gt;
                     &lt;h1 style="color: white; font-size: 24px; font-weight: 700; margin: 0 0 8px 0;"&gt;${this.escapeHtml(
-                      this.convertTitleToString(data.formTitle)
+                      this.convertTitleToString(data.formTitle),
                     )}&lt;/h1&gt;
                     &lt;p style="color: rgba(255,255,255,0.9); font-size: 15px; margin: 0;"&gt;Your Response Results Are Ready&lt;/p&gt;
                   &lt;/td&gt;
@@ -2713,8 +2713,8 @@ class EmailService {
                           &lt;div class="score-circle" style="width: 130px; height: 130px; border-radius: 50%; background: ${
                             gradeInfo.bgColor
                           }; border: 5px solid ${
-      gradeInfo.color
-    }; display: inline-block; text-align: center; padding-top: 32px; box-sizing: border-box; margin-bottom: 12px;"&gt;
+                            gradeInfo.color
+                          }; display: inline-block; text-align: center; padding-top: 32px; box-sizing: border-box; margin-bottom: 12px;"&gt;
                             &lt;span class="score-value" style="display: block; font-size: 32px; font-weight: 800; color: ${
                               gradeInfo.color
                             };"&gt;${data.scorePercentage.toFixed(0)}%&lt;/span&gt;
@@ -2725,10 +2725,10 @@ class EmailService {
                           &lt;div style="display: inline-block; background: ${
                             gradeInfo.bgColor
                           }; color: ${
-      gradeInfo.color
-    }; padding: 8px 18px; border-radius: 20px; font-weight: 600; font-size: 15px;"&gt;${
-      gradeInfo.emoji
-    } ${gradeInfo.grade}&lt;/div&gt;
+                            gradeInfo.color
+                          }; padding: 8px 18px; border-radius: 20px; font-weight: 600; font-size: 15px;"&gt;${
+                            gradeInfo.emoji
+                          } ${gradeInfo.grade}&lt;/div&gt;
                         &lt;/td&gt;
                       &lt;/tr&gt;
                       &lt;tr&gt;
@@ -2769,7 +2769,7 @@ class EmailService {
                         &lt;td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;"&gt;
                           &lt;div style="font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;"&gt;👤 Respondent&lt;/div&gt;
                           &lt;div style="font-size: 14px; font-weight: 600; color: #1f2937; word-break: break-word;"&gt;${this.escapeHtml(
-                            data.respondentName || "Anonymous"
+                            data.respondentName || "Anonymous",
                           )}&lt;/div&gt;
                         &lt;/td&gt;
                         &lt;td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;"&gt;
@@ -2817,24 +2817,24 @@ class EmailService {
                         const statusBgColor = <span class="cstat-no" title="statement not covered" >isNoScore</span>
                           ? ""
                           : isCorrect
-                          ? "#d1fae5"
-                          : isPartial
-                          ? "#fef3c7"
-                          : "#fee2e2";
+                            ? "#d1fae5"
+                            : isPartial
+                              ? "#fef3c7"
+                              : "#fee2e2";
                         const statusTextColor = <span class="cstat-no" title="statement not covered" >isNoScore</span>
                           ? ""
                           : isCorrect
-                          ? "#065f46"
-                          : isPartial
-                          ? "#92400e"
-                          : "#991b1b";
+                            ? "#065f46"
+                            : isPartial
+                              ? "#92400e"
+                              : "#991b1b";
                         const statusText = <span class="cstat-no" title="statement not covered" >isNoScore</span>
                           ? ""
                           : isCorrect
-                          ? "✓ Correct"
-                          : isPartial
-                          ? "~ Partial"
-                          : "✗ Incorrect";
+                            ? "✓ Correct"
+                            : isPartial
+                              ? "~ Partial"
+                              : "✗ Incorrect";
 &nbsp;
 <span class="cstat-no" title="statement not covered" >                        return `</span>
                     &lt;table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 12px; overflow: hidden;"&gt;
@@ -2844,7 +2844,7 @@ class EmailService {
                             index + 1
                           }&lt;/span&gt;
                           &lt;span style="font-size: 15px; font-weight: 600; color: #1f2937; vertical-align: middle;"&gt;${this.escapeHtml(
-                            question.title
+                            question.title,
                           )}&lt;/span&gt;
                           &lt;span style="float: right; font-size: 10px; padding: 3px 8px; background: #e5e7eb; color: #4b5563; border-radius: 10px; text-transform: uppercase; font-weight: 500;"&gt;${
                             question.type
@@ -2856,7 +2856,7 @@ class EmailService {
                           &lt;div style="padding: 14px; border-radius: 8px; margin-bottom: 10px; background: #f0f9ff; border-left: 4px solid #3b82f6;"&gt;
                             &lt;div style="font-size: 11px; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; color: #1d4ed8;"&gt;👤 Your Answer&lt;/div&gt;
                             &lt;div style="font-size: 14px; line-height: 1.5; color: #1f2937;"&gt;${formatUserResponse(
-                              question
+                              question,
                             )}&lt;/div&gt;
                           &lt;/div&gt;
                           
@@ -2866,7 +2866,7 @@ class EmailService {
                           &lt;div style="padding: 14px; border-radius: 8px; background: #ecfdf5; border-left: 4px solid #10b981;"&gt;
                             &lt;div style="font-size: 11px; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; color: #059669;"&gt;✓ Correct Answer&lt;/div&gt;
                             &lt;div style="font-size: 14px; line-height: 1.5; color: #1f2937;"&gt;${formatCorrectAnswer(
-                              question
+                              question,
                             )}&lt;/div&gt;
                           &lt;/div&gt;
                           `
@@ -2941,7 +2941,7 @@ class EmailService {
 <span class="cstat-no" title="statement not covered" >    return await this.sendEmail({</span>
       to: [data.to],
       subject: `${gradeInfo.emoji} Your Results: ${this.convertTitleToString(
-        data.formTitle
+        data.formTitle,
       )} (${data.scorePercentage.toFixed(0)}%)`,
       html,
     });
@@ -2992,7 +2992,7 @@ export default EmailService;
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-02T15:41:44.472Z
+                at 2026-08-05T08:06:56.979Z
             </div>
         <script src="../prettify.js"></script>
         <script>
