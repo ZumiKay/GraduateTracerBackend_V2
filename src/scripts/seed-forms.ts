@@ -754,7 +754,7 @@ export async function seedFormData(): Promise<SeededData> {
 // Execute seeding if run directly
 if (require.main === module) {
   const mongoUri =
-    "mongodb+srv://Graduate:8WP26uoL6qaEgpGo@graduatetracer.pzdpgky.mongodb.net/?retryWrites=true&w=majority&appName=GraduateTracer";
+    "URI";
 
   mongoose
     .connect(mongoUri)
