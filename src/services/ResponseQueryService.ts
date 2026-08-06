@@ -25,10 +25,15 @@ import {
   ReturnCode,
 } from "../utilities/helper";
 import {
+  ErrorValidatePropsType,
+  ValidationResult,
+} from "../types/validation.types";
+import {
   formatResponseValue,
   getLastQuestionIdx,
 } from "../utilities/formHelpers";
 import { compareSync } from "bcrypt";
+import { FormValidationService } from "./FormValidationService";
 
 export interface GroupResponseListItemType {
   respondentEmail?: string;
@@ -357,7 +362,6 @@ export class ResponseQueryService {
     formId: string,
     page: number = 1,
     req: CustomRequest,
-    res: Response,
   ) {
     if (!Types.ObjectId.isValid(formId)) {
       throw new Error("Invalid form ID");
@@ -423,14 +427,144 @@ export class ResponseQueryService {
 
     const lastQuestionIdx = await getLastQuestionIdx(formObjectId, page);
 
+    const numberedContents = AddQuestionNumbering({
+      questions: resultContents,
+      lastIdx: lastQuestionIdx,
+    });
+    const contentValidation = numberedContents.map((c) => {
+      const parentQ = numberedContents.find(
+        (ques) =>
+          ques?._id?.toString() === c.parentcontent?.qId ||
+          ques.qIdx === c.parentcontent?.qIdx,
+      );
+
+      const siblingSumScore = contents
+        .filter((c) => c.parentcontent?.qId === parentQ?._id?.toString())
+        .reduce((sum, c) => sum + (c.score || 0), 0);
+
+      return FormValidationService.validateContent({
+        content: c,
+        parentScore: parentQ?.score,
+        siblingSumScore,
+      });
+    });
+
+    if (contentValidation.some((i) => !i.isValid)) {
+      return { contentValidation };
+    }
+
+    //?Validation for QUIZ Form Content Before Public Access
+
     return {
       ...form,
       contentIds: undefined,
       //Return questions with valid numbering
-      contents: AddQuestionNumbering({
-        questions: resultContents,
-        lastIdx: lastQuestionIdx,
-      }),
+      contents: numberedContents,
+    };
+  }
+
+  /**
+   * Validates the content items on a public form page.
+   * Checks for common structural issues per question type and collects
+   * typed error entries. Returns `isValid: true` when no errors are found.
+   */
+  private static validateContents(contents: ContentType[]): ValidationResult {
+    const errors: ErrorValidatePropsType[] = [];
+
+    for (const content of contents) {
+      const questionId = content._id?.toString() ?? "";
+      const page = content.page ?? 1;
+      const qIdx = content.qIdx;
+
+      const baseEntry = (): Omit<ErrorValidatePropsType, "message"> => ({
+        _id: questionId,
+        qIdx,
+        questionId,
+        page,
+      });
+
+      // Choice-based questions must have at least one option
+      if (
+        content.type === QuestionType.MultipleChoice ||
+        content.type === QuestionType.MultipleSelection
+      ) {
+        if (!content.multiple || content.multiple.length === 0) {
+          errors.push({
+            ...baseEntry(),
+            message: {
+              name: "FORMAT" as never,
+              message: "Multiple choice question has no options defined",
+            },
+          });
+        }
+      }
+
+      if (content.type === QuestionType.CheckBox) {
+        if (!content.checkbox || content.checkbox.length === 0) {
+          errors.push({
+            ...baseEntry(),
+            message: {
+              name: "FORMAT" as never,
+              message: "Checkbox question has no options defined",
+            },
+          });
+        }
+      }
+
+      if (content.type === QuestionType.Selection) {
+        if (!content.selection || content.selection.length === 0) {
+          errors.push({
+            ...baseEntry(),
+            message: {
+              name: "FORMAT" as never,
+              message: "Selection question has no options defined",
+            },
+          });
+        }
+      }
+
+      // Range questions must have both start and end bounds
+      if (content.type === QuestionType.RangeDate) {
+        if (!content.rangedate?.start || !content.rangedate?.end) {
+          errors.push({
+            ...baseEntry(),
+            message: {
+              name: "FORMAT" as never,
+              message: "Range date question is missing start or end bound",
+            },
+          });
+        }
+      }
+
+      if (content.type === QuestionType.RangeNumber) {
+        if (
+          content.rangenumber?.start === undefined ||
+          content.rangenumber?.end === undefined
+        ) {
+          errors.push({
+            ...baseEntry(),
+            message: {
+              name: "FORMAT" as never,
+              message: "Range number question is missing start or end bound",
+            },
+          });
+        }
+      }
+
+      // Surface pre-stored validation issues from the content document
+      if (content.validationIssues && content.validationIssues.length > 0) {
+        for (const issue of content.validationIssues) {
+          errors.push({
+            ...baseEntry(),
+            message: issue,
+          });
+        }
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
     };
   }
 

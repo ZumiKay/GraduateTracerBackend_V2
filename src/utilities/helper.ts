@@ -13,10 +13,7 @@ import { Response } from "express";
 
 export type StatusCode = 200 | 201 | 204 | 400 | 401 | 403 | 404 | 409 | 500;
 
-export function ReturnCode(
-  code: StatusCode,
-  custommess?: string,
-) {
+export function ReturnCode(code: StatusCode, custommess?: string) {
   const returnValue = (code: number, message: string) => ({ code, message });
 
   let message = "";
@@ -56,16 +53,6 @@ export function ReturnCode(
   return returnValue(code, custommess ?? message);
 }
 
-/**
- * Reusable helper method to replace `res.status(...).json(...)`.
- * Standardizes API responses across Express controllers and middlewares.
- *
- * @example
- * SendResponse(res, 200, data)
- * SendResponse(res, 404, undefined, "User Not Found")
- * SendResponse.success(res, data)
- * SendResponse.badRequest(res, "Invalid input")
- */
 export function SendResponse<T = any>(
   res: Response,
   code: StatusCode,

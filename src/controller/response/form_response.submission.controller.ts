@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { ReturnCode } from "../../utilities/helper";
+import { ReturnCode, SendResponse } from "../../utilities/helper";
 import Zod from "zod";
 import { Types } from "mongoose";
 import Form, { TypeForm } from "../../model/Form.model";
@@ -419,14 +419,10 @@ export class FormResponseSubmissionController {
             .lean();
 
           if (!initialData || !initialData.setting?.acceptResponses) {
-            return res
-              .status(404)
-              .json(
-                ReturnCode(
-                  404,
-                  initialData ? "Form is closed" : "Form not found",
-                ),
-              );
+            return SendResponse.notFound(
+              res,
+              initialData ? "Form is closed" : "Form not found",
+            );
           }
 
           //Check if the respondent already response
@@ -470,40 +466,35 @@ export class FormResponseSubmissionController {
 
           if (initialData.setting?.email) {
             if (isUserAlreadyAuthenticated) {
-              try {
-                const formData = await ResponseQueryService.getPublicFormData(
-                  formId,
-                  page,
-                  req,
-                  res,
-                );
+              const formData = await ResponseQueryService.getPublicFormData(
+                formId,
+                page,
+                req,
+              );
 
-                return res.status(200).json({
-                  ...ReturnCode(200),
+              if (formData.contentValidation?.some((i) => !i.isValid)) {
+                return SendResponse(res, 400, {
                   data: {
-                    ...initialData,
-                    isAuthenticated: true,
-                    isLoggedin: true,
-                    ...formData,
+                    contentValidation: formData.contentValidation.filter(
+                      (i) => !i.isValid,
+                    ),
                   },
                 });
-              } catch (error) {
-                console.warn(
-                  "Failed to fetch form content for authenticated user:",
-                  error,
-                );
-                return res.status(200).json(ReturnCode(500));
               }
+
+              return SendResponse.success(res, {
+                ...initialData,
+                isAuthenticated: true,
+                isLoggedin: true,
+                ...formData,
+              });
             }
             isAuthenticated = false;
           } else {
             isAuthenticated = true;
           }
 
-          return res.status(200).json({
-            ...ReturnCode(200),
-            data: { ...initialData, isAuthenticated },
-          });
+          return SendResponse.success(res, { ...initialData, isAuthenticated });
         }
 
         case "data": {
@@ -515,8 +506,17 @@ export class FormResponseSubmissionController {
             formId,
             page,
             req,
-            res,
           );
+
+          if (formData.contentValidation?.some((i) => !i.isValid)) {
+            return SendResponse(res, 400, {
+              data: {
+                contentValidation: formData.contentValidation.filter(
+                  (i) => !i.isValid,
+                ),
+              },
+            });
+          }
 
           return res.status(200).json({
             ...ReturnCode(200),
@@ -528,22 +528,16 @@ export class FormResponseSubmissionController {
           });
         }
         default:
-          res.status(204).json(ReturnCode(204));
+          return SendResponse.badRequest(res);
       }
     } catch (error) {
       console.error("Get Public Form Data Error:", error);
       if (error instanceof Error) {
-        if (error.message === "Form not found") {
-          return res.status(404).json(ReturnCode(404, error.message));
-        }
-        if (error.message === "Form is no longer accepting responses") {
-          return res.status(403).json(ReturnCode(403, error.message));
-        }
         if (error.message === "You already submitted this form") {
-          return res.status(400).json(ReturnCode(400, error.message));
+          return SendResponse.badRequest(res, error.message);
         }
       }
-      res.status(500).json(ReturnCode(500, "Failed to retrieve form data"));
+      return SendResponse.error(res);
     }
   };
 }
