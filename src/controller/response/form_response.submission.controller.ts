@@ -1,8 +1,12 @@
 import { Response } from "express";
-import { ReturnCode, SendResponse } from "../../utilities/helper";
+import {
+  AddQuestionNumbering,
+  ReturnCode,
+  SendResponse,
+} from "../../utilities/helper";
 import Zod from "zod";
 import { Types } from "mongoose";
-import Form, { TypeForm } from "../../model/Form.model";
+import Form, { FormType, TypeForm } from "../../model/Form.model";
 import {
   ProcessNormalFormSubmissionType,
   ResponseProcessingService,
@@ -15,10 +19,19 @@ import {
   ResponseSetType,
   SubmitionProcessionReturnType,
 } from "../../model/Response.model";
-import { GetPublicFormDataType } from "../../middleware/User.middleware";
+import {
+  GetPublicFormDataTyEnum,
+  GetPublicFormDataType,
+} from "../../middleware/User.middleware";
 import { CustomRequest } from "../../types/customType";
 import { NotificationController } from "../utils/notification.controller";
 import { FingerprintService } from "../../utilities/fingerprint";
+import {
+  getLastQuestionIdx,
+  hasFormAccess,
+  isValidObjectIdString,
+} from "../../utilities/formHelpers";
+import Content from "../../model/Content.model";
 
 interface SubmitResponseBodyType {
   responseSet?: Array<ResponseSetType>;
@@ -527,6 +540,52 @@ export class FormResponseSubmissionController {
             },
           });
         }
+
+        case GetPublicFormDataTyEnum.preview: {
+          if (!req.user?.sub || !isValidObjectIdString(req.user?.sub)) {
+            return SendResponse.unauthorized(res);
+          }
+
+          const isForm = await Form.findById(formId).lean();
+          const isAccess = hasFormAccess(
+            isForm as FormType,
+            new Types.ObjectId(req.user.sub),
+          );
+
+          if (!isAccess) return SendResponse.forbidden(res);
+
+          const contents = await Content.find({ formId, page })
+            .select(
+              "_id qIdx title type text multiple selection checkbox rangedate rangenumber date require page conditional parentcontent score",
+            )
+            .lean();
+
+          const resultContents = contents.map((content) => ({
+            ...content,
+            parentcontent:
+              content.parentcontent?.qId === content._id.toString()
+                ? undefined
+                : content.parentcontent,
+            answer: undefined,
+          }));
+
+          const lastQuestionIdx = await getLastQuestionIdx(
+            new Types.ObjectId(formId),
+            page,
+          );
+
+          const numberedContents = AddQuestionNumbering({
+            questions: resultContents,
+            lastIdx: lastQuestionIdx,
+          });
+
+          return SendResponse.success(res, {
+            ...isForm,
+            contents: numberedContents,
+            isAuthenticated: true,
+          });
+        }
+
         default:
           return SendResponse.badRequest(res);
       }

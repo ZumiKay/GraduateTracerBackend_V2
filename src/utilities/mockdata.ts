@@ -2,10 +2,12 @@ import { Types } from "mongoose";
 import {
   ChoiceQuestionType,
   ContentType,
+  ParentContentType,
   QuestionType,
   RangeType,
   ConditionalType,
 } from "../model/Content.model";
+
 import { ResponseAnswerType } from "../model/Response.model";
 
 export class MockContentFactory {
@@ -311,6 +313,106 @@ export class MockContentFactory {
       isValidated: true,
       ...overrides,
     };
+  }
+
+  /**
+ 
+   * @param depth          - How many levels to generate (1 = root only, max 20)
+   * @param formId         - Shared formId for all nodes (generated if omitted)
+   * @param startQIdx      - qIdx for the root; children increment from there
+   * @param optionCount    - Number of choice options per node
+   * @param triggerKey     - Which option index (key) triggers the child at each level
+   * @param parentOverrides - Partial<ContentType> applied only to the root node
+   * @param childOverrides  - Array of Partial<ContentType> indexed by depth (0 = root).
+   *                          Entries beyond the array length are ignored.
+   */
+  static createNestedContent({
+    depth = 1,
+    formId,
+    startQIdx = 0,
+    optionCount = 3,
+    triggerKey = 0,
+    parentOverrides,
+    childOverrides = [],
+  }: {
+    depth?: number;
+    formId?: Types.ObjectId;
+    startQIdx?: number;
+    optionCount?: number;
+    triggerKey?: number;
+    parentOverrides?: Partial<ContentType>;
+    childOverrides?: Partial<ContentType>[];
+  } = {}): ContentType[] {
+    const MAX_DEPTH = 20;
+    const clampedDepth = Math.min(Math.max(depth, 1), MAX_DEPTH);
+    const sharedFormId = formId ?? this.createFormId();
+    const result: ContentType[] = [];
+
+    let parentNode: ContentType | null = null;
+
+    for (let level = 0; level < clampedDepth; level++) {
+      const nodeId = new Types.ObjectId();
+      const qIdx = startQIdx + level;
+      const choices = this.createChoiceOptions(optionCount);
+
+      // Build parentcontent linking back to the previous level's node
+      const parentcontent: ParentContentType | undefined = parentNode
+        ? {
+            _id: parentNode._id!.toString(),
+            qId: parentNode._id!.toString(),
+            qIdx: parentNode.qIdx,
+            optIdx: triggerKey,
+            ...(level === 1 ? (parentOverrides?.parentcontent ?? {}) : {}),
+          }
+        : undefined;
+
+      // The previous node needs a conditional entry pointing to this new node
+      if (parentNode) {
+        parentNode.conditional = [
+          ...(parentNode.conditional ?? []),
+          {
+            _id: new Types.ObjectId(),
+            key: triggerKey,
+            contentId: nodeId,
+            contentIdx: qIdx,
+          },
+        ];
+      }
+
+      const levelOverride: Partial<ContentType> = childOverrides[level] ?? {};
+
+      const node: ContentType = Object.assign(
+        {
+          _id: nodeId,
+          title: this.createContentTitle(
+            levelOverride.title
+              ? ""
+              : level === 0
+                ? "Root Question"
+                : `Child Question – Level ${level}`,
+          ),
+          type: QuestionType.MultipleChoice,
+          multiple: choices,
+          qIdx,
+          formId: sharedFormId,
+          page: 1,
+          score: 0,
+          require: false,
+          hasAnswer: false,
+          isValidated: false,
+          conditional: [],
+          ...(level === 0 ? (parentOverrides ?? {}) : {}),
+          ...levelOverride,
+        } as ContentType,
+        // Pin structural identity fields — always wins over any override
+        { _id: nodeId, qIdx, formId: sharedFormId, parentcontent },
+      );
+
+      result.push(node);
+      parentNode = node;
+    }
+
+    return result;
   }
 
   static createSampleForm(): ContentType[] {

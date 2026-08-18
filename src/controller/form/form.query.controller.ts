@@ -89,6 +89,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
     switch (ty) {
       case GetFilterTypeEnum.detail:
       case GetFilterTypeEnum.solution:
+      case GetFilterTypeEnum.preview:
         return await handleDetailQuery(
           res,
           ty,

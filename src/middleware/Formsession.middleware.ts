@@ -295,6 +295,11 @@ export default class FormsessionMiddleware {
           return;
         }
 
+        case GetPublicFormDataTyEnum.preview: {
+          await UserMiddleware.VerifyToken(req, res, next);
+          return;
+        }
+
         default:
           return res.status(400).json(RESPONSES.invalidRequestType());
       }

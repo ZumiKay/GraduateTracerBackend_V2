@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { CustomRequest, UserToken } from "../../types/customType";
 import {
-  ExtractTokenPaylod,
+  ExtractTokenPayload,
   GenerateToken,
   getDateByMinute,
   getDateByNumDay,
@@ -454,7 +454,7 @@ export default class FormsessionService {
 
       //Check usersession if existed login
       if (existedUserRefreshToken) {
-        const isVerified = ExtractTokenPaylod({
+        const isVerified = ExtractTokenPayload({
           token: existedUserRefreshToken as string,
         });
 
@@ -868,6 +868,7 @@ export default class FormsessionService {
           respondentEmail: session.respondentEmail,
           respondentName: session.respondentName,
           isGuest: session.isGuest,
+          expiresAt: session.expiredAt,
         },
       });
     } catch (error) {

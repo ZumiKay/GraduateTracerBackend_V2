@@ -11,6 +11,7 @@ export enum GetPublicFormDataTyEnum {
   initial = "initial",
   verify = "verify",
   data = "data",
+  preview = "preview",
 }
 
 export interface GetPublicFormDataType {

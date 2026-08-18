@@ -15,7 +15,6 @@ import {
   ResendPendingInvitation,
   DeletePendingCollaborator,
 } from "../controller/form/form.controller";
-
 import { createFormValidate } from "../model/Form.model";
 import { validate } from "../middleware/Validatetor";
 import authenicationController from "../controller/auth/authenication.controller";

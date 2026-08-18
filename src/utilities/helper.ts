@@ -4,6 +4,7 @@ import {
   ChoiceQuestionType,
   ContentTitle,
   ContentType,
+  ParentContentType,
   QuestionType,
   RangeType,
 } from "../model/Content.model";
@@ -108,8 +109,6 @@ SendResponse.error = (res: Response, message?: string) =>
 /**
  * Formats a date to dd-mm-yyyy format
  *
- * @param date - Date object, string, or timestamp
- * @returns Formatted date string in dd-mm-yyyy format
  */
 export const formatDateToDDMMYYYY = (date: Date | string | number): string => {
   if (!date) return "";
@@ -126,11 +125,6 @@ export const formatDateToDDMMYYYY = (date: Date | string | number): string => {
 
 /**
  * Converts a ContentTitle object or string to a plain string
- * Extracts text from ContentTitle structure recursively
- *
- * @param title - ContentTitle object or string
- * @param fallback - Fallback text if title is empty (default: "Question")
- * @returns Plain string representation of the title
  */
 export const convertTitleToString = (
   title: ContentTitle | string | undefined | null,
@@ -189,7 +183,7 @@ export const convertResponseToString = (value: any): string => {
     // Handle arrays
     if (Array.isArray(value)) {
       return value.map((v) => convertResponseToString(v)).join(", ");
-    }
+  }
 
     // Handle objects with key/val structure (like CheckBox)
     if (value.key && value.val) {
@@ -263,20 +257,10 @@ export const GenerateToken = (
 };
 
 /**
- * Extracts and verifies JWT token payload with enhanced error handling
- *
  * @param token - JWT token string to verify and decode
  * @param customSecret - Optional custom secret key (defaults to process.env.JWT_SECRET)
  * @param ignoreExpiration - If true, will not throw error for expired tokens (default: false)
- * @returns Decoded token payload or null if verification fails
  *
- * @example
- * ```typescript
- * const payload = ExtractTokenPayload({ token: "eyJhbGc..." });
- * if (payload) {
- *   console.log(payload.userId);
- * }
- * ```
  */
 export const ExtractTokenPayload = ({
   token,
@@ -327,9 +311,6 @@ export const ExtractTokenPayload = ({
     return null;
   }
 };
-
-// Alias for backward compatibility (fixing typo)
-export const ExtractTokenPaylod = ExtractTokenPayload;
 
 export const getDateByNumDay = (add: number): Date => {
   const today = new Date();
@@ -431,6 +412,80 @@ export const groupContentByParent = (data: Array<ContentType>) => {
  * @param questions - Array of questions
  * @returns Array of questions with (questionId)
  */
+
+export const MAX_QUESTION_DEPTH = 20;
+
+/**
+ * Returns the nesting depth of a single question (1 = top-level, 2 = first
+ * conditional child, etc.)
+ */
+export const getQuestionDepth = (
+  question: ContentType,
+  byId: Map<string, ContentType>,
+  byQIdx: Map<number, ContentType>,
+): number => {
+  let depth = 1;
+  const visited = new Set<string>();
+  let current: ContentType = question;
+
+  while (current.parentcontent) {
+    const key =
+      current.parentcontent.qId ||
+      (current.parentcontent.qIdx !== undefined
+        ? `qIdx_${current.parentcontent.qIdx}`
+        : null);
+
+    if (!key || visited.has(key)) break; //Break loop
+    visited.add(key);
+
+    const parent =
+      byId.get(current.parentcontent.qId ?? "") ||
+      (current.parentcontent.qIdx !== undefined
+        ? byQIdx.get(current.parentcontent.qIdx)
+        : undefined);
+
+    if (!parent) break;
+    depth++;
+    current = parent;
+  }
+
+  return depth;
+};
+
+/**
+ * Validates that no question in the array exceeds `maxDepth` nesting levels.
+ */
+export const validateNestingDepth = (
+  questions: ContentType[],
+  maxDepth: number = MAX_QUESTION_DEPTH,
+): string | null => {
+  if (!questions || questions.length === 0) return null;
+
+  // Build lookup maps once
+  const byId = new Map<string, ContentType>();
+  const byQIdx = new Map<number, ContentType>();
+  for (const q of questions) {
+    if (q._id) byId.set(q._id.toString(), q);
+    if (q.qIdx !== undefined) byQIdx.set(q.qIdx, q);
+  }
+
+  const exceedDepth: string[] = [];
+  for (const q of questions) {
+    const depth = getQuestionDepth(q, byId, byQIdx);
+    if (depth > maxDepth) {
+      const label =
+        q.qIdx !== undefined
+          ? `qIdx ${q.qIdx}`
+          : (q._id?.toString() ?? "unknown");
+      exceedDepth.push(`${label} (depth ${depth})`);
+    }
+  }
+
+  return exceedDepth.length > 0
+    ? `Question nesting exceeds maximum depth of ${maxDepth}: ${exceedDepth.join(", ")}`
+    : null;
+};
+
 export const AddQuestionNumbering = ({
   questions,
   lastIdx,
@@ -438,169 +493,84 @@ export const AddQuestionNumbering = ({
   questions: Array<ContentType>;
   lastIdx?: number;
 }): Array<ContentType> => {
-  if (!questions || questions.length === 0) {
-    return [];
-  }
+  if (!questions || questions.length === 0) return [];
 
   const questionIdMap = new Map<string, string>();
 
-  const questionIndexMap = new Map<ContentType, number>();
-  questions.forEach((q, index) => {
-    questionIndexMap.set(q, index);
-  });
-
-  // Helper to get parent identifier (qId or fallback to qIdx-based temp id)
-  const getParentIdentifier = (question: ContentType): string | null => {
+  const getParentId = (question: ContentType): string | null => {
     if (!question.parentcontent) return null;
-
-    // If qId exists, use it
-    if (question.parentcontent.qId) {
-      return question.parentcontent.qId;
-    }
-
-    // Fallback to qIdx-based identifier for unsaved data
-    if (question.parentcontent.qIdx !== undefined) {
+    if (question.parentcontent.qId) return question.parentcontent.qId;
+    if (question.parentcontent.qIdx !== undefined)
       return `temp_${question.parentcontent.qIdx}`;
-    }
-
     return null;
   };
 
-  // Helper to get question identifier
-  const getQuestionIdentifier = (question: ContentType): string => {
-    if (question._id) return question._id.toString();
-    return `temp_${question.qIdx}`;
-  };
+  const getQuestionId = (question: ContentType): string =>
+    question._id ? question._id.toString() : `temp_${question.qIdx}`;
 
-  // Check if question is top-level (no parent)
-  const isTopLevelQuestion = (question: ContentType): boolean => {
-    return (
-      !question.parentcontent ||
-      (question.parentcontent.qIdx === undefined && !question.parentcontent.qId)
-    );
-  };
+  const isTopLevel = (question: ContentType): boolean =>
+    !question.parentcontent ||
+    (question.parentcontent.qIdx === undefined && !question.parentcontent.qId);
 
+  // Build parent → sorted children map
   const parentChildrenMap = new Map<
     string,
     Array<{ question: ContentType; index: number }>
   >();
-
   questions.forEach((question, index) => {
-    const parentId = getParentIdentifier(question);
+    const parentId = getParentId(question);
     if (parentId) {
-      if (!parentChildrenMap.has(parentId)) {
-        parentChildrenMap.set(parentId, []);
-      }
+      if (!parentChildrenMap.has(parentId)) parentChildrenMap.set(parentId, []);
       parentChildrenMap.get(parentId)!.push({ question, index });
     }
   });
-
-  // Sort sibling groups once upfront by qIdx and original index
-  parentChildrenMap.forEach((siblings) => {
+  parentChildrenMap.forEach((siblings) =>
     siblings.sort((a, b) => {
-      const qIdxDiff = (a.question.qIdx || 0) - (b.question.qIdx || 0);
-      return qIdxDiff !== 0 ? qIdxDiff : a.index - b.index;
-    });
-  });
+      const diff = (a.question.qIdx ?? 0) - (b.question.qIdx ?? 0);
+      return diff !== 0 ? diff : a.index - b.index;
+    }),
+  );
 
-  // Helper function to build hierarchical number
-  const buildQuestionNumber = (
-    question: ContentType,
-    index: number,
-    lastIndexWihoutParentCount?: number,
-  ): string => {
-    //QuestionId for non conditional question (top-level)
-    if (isTopLevelQuestion(question)) {
-      let topLevelCount = 0;
-      for (let i = 0; i <= index; i++) {
-        if (isTopLevelQuestion(questions[i])) {
-          topLevelCount++;
-        }
-      }
-      // Add lastIdx to account for questions from previous pages
-      const offset = lastIdx ?? 0;
-      return `${topLevelCount + offset}`;
-    }
+  let topLevelCount = lastIdx ?? 0;
 
-    // Find parent question number
-    const parentId = getParentIdentifier(question);
-    if (!parentId) {
-      return `${index + 1}`;
-    }
+  const buildNumber = (question: ContentType, index: number): string => {
+    if (isTopLevel(question)) return `${++topLevelCount}`;
 
-    let parentNumber = questionIdMap.get(parentId);
+    const parentId = getParentId(question)!;
+    const parentNumber =
+      questionIdMap.get(parentId) ??
+      questions.find(
+        (q) =>
+          q._id?.toString() === parentId ||
+          (parentId.startsWith("temp_") &&
+            q.qIdx === parseInt(parentId.replace("temp_", ""), 10)),
+      )?.questionId ??
+      `${index + 1}`;
 
-    if (!parentNumber) {
-      // Try to find parent by _id first
-      let parentQuestion = questions.find(
-        (q) => q._id?.toString() === parentId,
-      );
-
-      // If not found, try by temp identifier (qIdx-based)
-      if (!parentQuestion && parentId.startsWith("temp_")) {
-        const parentQIdx = parseInt(parentId.replace("temp_", ""), 10);
-        parentQuestion = questions.find((q) => q.qIdx === parentQIdx);
-      }
-
-      if (parentQuestion) {
-        parentNumber = parentQuestion.questionId || `${index + 1}`;
-      } else {
-        parentNumber = `${index + 1}`;
-      }
-    }
-
-    const siblings = parentChildrenMap.get(parentId);
-    let position = 1;
-
-    if (siblings) {
-      for (const sibling of siblings) {
-        const siblingId = getQuestionIdentifier(sibling.question);
-        const currentId = getQuestionIdentifier(question);
-        if (siblingId === currentId) {
-          break;
-        }
-        position++;
-      }
-    }
+    const siblings = parentChildrenMap.get(parentId) ?? [];
+    const position =
+      siblings.findIndex(
+        (s) => getQuestionId(s.question) === getQuestionId(question),
+      ) + 1;
 
     return `${parentNumber}.${position}`;
   };
 
-  let lastIndexWihoutParentCount = 0;
-  // Process questions and assign questionId
-  const result = questions.map((question, index) => {
-    const questionId = buildQuestionNumber(
-      question,
-      index, // Use array index, not offset
-      lastIdx ? undefined : lastIndexWihoutParentCount,
-    );
+  return questions.map((question, index) => {
+    const questionId = buildNumber(question, index);
+    questionIdMap.set(getQuestionId(question), questionId);
 
-    // Store in map for reference by child questions using identifier
-    const qIdentifier = getQuestionIdentifier(question);
-    questionIdMap.set(qIdentifier, questionId);
-
-    // Update parentcontent with parent's questionId if it exists
-    let updatedParentContent = question.parentcontent;
-    if (question.parentcontent) {
-      const parentId = getParentIdentifier(question);
-      const parentQuestionId = parentId
-        ? questionIdMap.get(parentId)
-        : undefined;
-      updatedParentContent = {
-        ...question.parentcontent,
-        questionId: parentQuestionId || undefined,
-      };
-      lastIndexWihoutParentCount += 1;
-    }
+    const parentId = getParentId(question);
+    const updatedParentContent = parentId
+      ? { ...question.parentcontent, questionId: questionIdMap.get(parentId) }
+      : question.parentcontent;
 
     return {
       ...question,
       questionId,
-      parentcontent: updatedParentContent,
+      parentcontent: updatedParentContent as ParentContentType,
     };
   });
-
-  return result;
 };
 
 //Extract Answer Key Value

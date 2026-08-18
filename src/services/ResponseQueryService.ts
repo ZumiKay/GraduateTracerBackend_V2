@@ -362,6 +362,7 @@ export class ResponseQueryService {
     formId: string,
     page: number = 1,
     req: CustomRequest,
+    isPreview: boolean = false,
   ) {
     if (!Types.ObjectId.isValid(formId)) {
       throw new Error("Invalid form ID");
@@ -389,12 +390,12 @@ export class ResponseQueryService {
       throw new Error("Form not found");
     }
 
-    if (form.setting?.acceptResponses === false) {
+    if (!isPreview && form.setting?.acceptResponses === false) {
       throw new Error("Form is no longer accepting responses");
     }
 
     //Check if the user has submitted (Single Form)
-    if (form.setting?.submitonce) {
+    if (!isPreview && form.setting?.submitonce) {
       const existingResponse = await this.checkExistingResponse(
         formId,
         form.setting.email as boolean,

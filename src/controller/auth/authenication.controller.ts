@@ -56,10 +56,14 @@ class AuthenticationController {
         rememberMe ? "7d" : "1d",
       );
 
+      const sessionExpireAt = rememberMe
+        ? getDateByNumDay(7)
+        : getDateByNumDay(1);
+
       //Create Login Session
       await Usersession.create({
         session_id: RefreshToken,
-        expireAt: getDateByNumDay(1),
+        expireAt: sessionExpireAt,
         user: user._id,
       });
 
@@ -71,6 +75,7 @@ class AuthenticationController {
         ...ReturnCode(200),
         data: {
           ...user,
+          expiresAt: sessionExpireAt.toISOString(),
         },
       });
     } catch (error) {
@@ -202,6 +207,7 @@ class AuthenticationController {
               name: cachedSession.name,
               role: cachedSession.role,
             },
+            expiresAt: cachedSession.expiresAt,
             isAuthenticated: true,
           },
         });
@@ -235,6 +241,9 @@ class AuthenticationController {
       }
 
       const user = userSession.user as any;
+      const expireAtStr = userSession.expireAt
+        ? new Date(userSession.expireAt).toISOString()
+        : undefined;
 
       // Cache the session data for future requests
       sessionCache.set(refreshToken, {
@@ -242,6 +251,7 @@ class AuthenticationController {
         email: user.email,
         name: user.name,
         role: user.role,
+        expiresAt: expireAtStr,
       });
 
       return res.status(200).json({
@@ -253,6 +263,7 @@ class AuthenticationController {
             name: user.name,
             role: user.role,
           },
+          expiresAt: expireAtStr,
           isAuthenticated: true,
         },
       });
