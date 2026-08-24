@@ -1,8 +1,9 @@
 import { Types } from "mongoose";
-import Content, { ContentType, QuestionType } from "../../model/Content.model";
+import Content, { ContentType } from "../../model/Content.model";
 import Form from "../../model/Form.model";
 import { QuestionService } from "../Question.Service";
 import { MockContentFactory } from "../../utilities/mockdata";
+import { AddQuestionNumbering } from "../../utilities/helper";
 
 // Mock dependencies
 jest.mock("../../model/Content.model");
@@ -14,8 +15,10 @@ describe("QuestionService", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (QuestionService as any).comparisonCache?.clear?.();
   });
 
+  //save question
   describe("saveQuestion", () => {
     test("returns error for invalid payload", async () => {
       const result = await QuestionService.saveQuestion({
@@ -143,8 +146,336 @@ describe("QuestionService", () => {
         expect.objectContaining({ totalscore: 10, title: "My Form" }),
       );
     });
+
+    test("detects useChildScoreSum change and recalculates form score", async () => {
+      const parentQId = new Types.ObjectId();
+      const existingQuestion = MockContentFactory.createCheckboxContent({
+        _id: parentQId,
+        formId: new Types.ObjectId(formId),
+        score: 10,
+        useChildScoreSum: false,
+        qIdx: 0,
+      });
+
+      const updatedQuestion = MockContentFactory.createCheckboxContent({
+        _id: parentQId,
+        formId: new Types.ObjectId(formId),
+        score: 10,
+        useChildScoreSum: true,
+        qIdx: 0,
+      });
+
+      (Content.find as jest.Mock)
+        .mockResolvedValueOnce([existingQuestion]) // existingContent
+        .mockResolvedValueOnce([]) // toBeDeleted
+        .mockResolvedValueOnce([{ score: 10, isBonusScore: false }]) // calculateFormTotalScore
+        .mockResolvedValueOnce([updatedQuestion]); // fetchUpdatedContent
+
+      (Content.bulkWrite as jest.Mock).mockResolvedValue({ ok: 1 });
+      (Form.findById as jest.Mock).mockReturnValue({
+        select: jest.fn().mockResolvedValue({ totalscore: 10 }),
+      });
+      (Form.updateOne as jest.Mock).mockResolvedValue({ modifiedCount: 1 });
+
+      const result = await QuestionService.saveQuestion({
+        formId,
+        page: 1,
+        data: [updatedQuestion],
+      });
+
+      expect(result.success).toBe(true);
+      expect(Form.updateOne).toHaveBeenCalledWith(
+        { _id: formId },
+        expect.objectContaining({ totalscore: 10 }),
+      );
+    });
   });
 
+  describe("Condition question valdiation test", () => {
+    const validationChildQuestionScore =
+      QuestionService.validateChildQuestionScores;
+
+    test("should return null If question is invalid or have no score", () => {
+      const parentQuestion = MockContentFactory.createMultipleChoiceContent({});
+      const childsQuestion = [
+        MockContentFactory.createTextContent(),
+        MockContentFactory.createParagraphContent({ score: 0 }),
+      ];
+
+      const conditonedContents =
+        MockContentFactory.createConditionQuestionWithChilds({
+          parent: parentQuestion,
+          childs: childsQuestion,
+        });
+      const isValid = validationChildQuestionScore(
+        conditonedContents as never,
+        conditonedContents as never,
+      );
+      expect(isValid).toBe(null);
+    });
+
+    describe("useChildSum test", () => {
+      let parent: ContentType;
+      let childs: Array<ContentType>;
+
+      beforeEach(() => {
+        //Checkbox with 5 opt and 100 scores
+        parent = MockContentFactory.createCheckboxContent({
+          score: 100,
+          useChildScoreSum: true,
+        });
+
+        //Childs with the sum of score of 100
+        childs = [
+          MockContentFactory.createMultipleChoiceContent({ score: 10 }),
+          MockContentFactory.createSelectionContent({ score: 20 }),
+          MockContentFactory.createRangeNumberContent({ score: 30 }),
+          MockContentFactory.createDateContent({ score: 20 }),
+          MockContentFactory.createRangeNumberContent({ score: 20 }),
+        ];
+      });
+      test("shoud return null score if all the contents is correct", () => {
+        //Checkbox with 5 options with 100 score
+        const conditionalContents =
+          MockContentFactory.createConditionQuestionWithChilds({
+            parent,
+            childs,
+          }) as Array<ContentType>;
+        const isValid = validationChildQuestionScore(
+          conditionalContents,
+          conditionalContents,
+        );
+        expect(isValid).toBeNull();
+      });
+
+      test("should return message if score is invalid", () => {
+        childs[2].score = 0;
+        childs[3].score = 10;
+
+        const conditionalContents = AddQuestionNumbering({
+          questions: MockContentFactory.createConditionQuestionWithChilds({
+            parent,
+            childs,
+          }) as Array<ContentType>,
+        });
+
+        const isValid = validationChildQuestionScore(
+          conditionalContents,
+          conditionalContents,
+        );
+
+        expect(isValid).not.toBeNull();
+        expect(isValid?.length).toBeGreaterThan(0);
+        expect(isValid).toContain("Sum of children scores");
+      });
+
+      test("should return error message when child scores sum exceeds parent score", () => {
+        childs[0].score = 50; // Sum becomes 50 + 20 + 30 + 20 + 20 = 140
+
+        const conditionalContents =
+          MockContentFactory.createConditionQuestionWithChilds({
+            parent,
+            childs,
+          }) as Array<ContentType>;
+
+        const isValid = validationChildQuestionScore(
+          conditionalContents,
+          conditionalContents,
+        );
+
+        expect(isValid).not.toBeNull();
+        expect(isValid).toBe(
+          `Sum of children scores (140) of question ${parent.qIdx} must equal parent score (${parent.score})`,
+        );
+      });
+
+      test("should return error message when child scores sum is less than parent score", () => {
+        childs[0].score = 5; // Sum becomes 5 + 20 + 30 + 20 + 20 = 95
+
+        const conditionalContents =
+          MockContentFactory.createConditionQuestionWithChilds({
+            parent,
+            childs,
+          }) as Array<ContentType>;
+
+        const isValid = validationChildQuestionScore(
+          conditionalContents,
+          conditionalContents,
+        );
+
+        expect(isValid).not.toBeNull();
+        expect(isValid).toBe(
+          `Sum of children scores (95) of question ${parent.qIdx} must equal parent score (${parent.score})`,
+        );
+      });
+
+      test("should return null when a single child has score equal to parent score and others have 0", () => {
+        childs[0].score = 100;
+        childs[1].score = 0;
+        childs[2].score = 0;
+        childs[3].score = 0;
+        childs[4].score = 0;
+
+        const conditionalContents =
+          MockContentFactory.createConditionQuestionWithChilds({
+            parent,
+            childs,
+          }) as Array<ContentType>;
+
+        const isValid = validationChildQuestionScore(
+          conditionalContents,
+          conditionalContents,
+        );
+
+        expect(isValid).toBeNull();
+      });
+
+      test("should return null when some children have undefined score and defined scores sum to parent score", () => {
+        childs[0].score = 50;
+        childs[1].score = 50;
+        childs[2].score = undefined;
+        childs[3].score = undefined;
+        childs[4].score = undefined;
+
+        const conditionalContents =
+          MockContentFactory.createConditionQuestionWithChilds({
+            parent,
+            childs,
+          }) as Array<ContentType>;
+
+        const isValid = validationChildQuestionScore(
+          conditionalContents,
+          conditionalContents,
+        );
+
+        expect(isValid).toBeNull();
+      });
+
+      test("should bypass sum validation when parent has isBonusScore: true", () => {
+        parent.isBonusScore = true;
+        childs[0].score = 500; // Sum is 590, != 100
+
+        const conditionalContents =
+          MockContentFactory.createConditionQuestionWithChilds({
+            parent,
+            childs,
+          }) as Array<ContentType>;
+
+        const isValid = validationChildQuestionScore(
+          conditionalContents,
+          conditionalContents,
+        );
+
+        expect(isValid).toBeNull();
+      });
+
+      test("should correctly validate child score sum matching via contentIdx", () => {
+        const parentId = new Types.ObjectId();
+        const customParent = MockContentFactory.createCheckboxContent({
+          _id: parentId,
+          qIdx: 0,
+          score: 50,
+          useChildScoreSum: true,
+          conditional: [
+            {
+              _id: new Types.ObjectId(),
+              key: 0,
+              contentId: undefined as never,
+              contentIdx: 1,
+            },
+            {
+              _id: new Types.ObjectId(),
+              key: 1,
+              contentId: undefined as never,
+              contentIdx: 2,
+            },
+          ],
+        });
+
+        const child1 = MockContentFactory.createTextContent({
+          qIdx: 1,
+          score: 20,
+          parentcontent: {
+            qId: parentId.toString(),
+            optIdx: 0,
+          },
+        });
+
+        const child2 = MockContentFactory.createTextContent({
+          qIdx: 2,
+          score: 30,
+          parentcontent: {
+            qId: parentId.toString(),
+            optIdx: 1,
+          },
+        });
+
+        const data = [customParent, child1, child2];
+
+        // Valid sum (20 + 30 = 50)
+        expect(validationChildQuestionScore(data, data)).toBeNull();
+
+        // Invalid sum (20 + 40 = 60 != 50)
+        child2.score = 40;
+        expect(validationChildQuestionScore(data, data)).toBe(
+          `Sum of children scores (60) of question ${customParent.qIdx} must equal parent score (${customParent.score})`,
+        );
+      });
+
+      test("should validate multiple parents with different useChildScoreSum configurations independently", () => {
+        const parent1 = MockContentFactory.createCheckboxContent({
+          _id: new Types.ObjectId(),
+          qIdx: 0,
+          score: 60,
+          useChildScoreSum: true,
+        });
+        const p1Child1 = MockContentFactory.createMultipleChoiceContent({
+          score: 40,
+        });
+        const p1Child2 = MockContentFactory.createMultipleChoiceContent({
+          score: 20,
+        });
+        const p1Tree = MockContentFactory.createConditionQuestionWithChilds({
+          parent: parent1,
+          childs: [p1Child1, p1Child2],
+        }) as Array<ContentType>;
+
+        const parent2 = MockContentFactory.createCheckboxContent({
+          _id: new Types.ObjectId(),
+          qIdx: 3,
+          score: 50,
+          useChildScoreSum: false,
+        });
+        const p2Child1 = MockContentFactory.createMultipleChoiceContent({
+          score: 40,
+        });
+        const p2Child2 = MockContentFactory.createMultipleChoiceContent({
+          score: 30,
+        });
+        const p2Tree = MockContentFactory.createConditionQuestionWithChilds({
+          parent: parent2,
+          childs: [p2Child1, p2Child2],
+        }) as Array<ContentType>;
+
+        const combinedData = [...p1Tree, ...p2Tree];
+
+        // Both trees valid under their respective rules
+        expect(
+          validationChildQuestionScore(combinedData, combinedData),
+        ).toBeNull();
+
+        // Breaking parent1's sum validation (40 + 30 = 70 != 60)
+        p1Tree[2].score = 30;
+        expect(
+          validationChildQuestionScore(combinedData, combinedData),
+        ).toContain(
+          `Sum of children scores (70) of question ${parent1.qIdx} must equal parent score (${parent1.score})`,
+        );
+      });
+    });
+  });
+
+  //Delete question
   describe("deleteQuestion", () => {
     test("returns error for missing id or formId", async () => {
       const result = await QuestionService.deleteQuestion("", formId);

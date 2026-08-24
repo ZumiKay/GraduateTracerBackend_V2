@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GetFormDetails = exports.GetFilledForm = exports.GetFilterForm = exports.DeletePendingCollaborator = exports.ResendPendingInvitation = exports.CancelOwnershipTransfer = exports.ConfirmOwnershipTransfer = exports.ChangePrimaryOwner = exports.RemoveSelfFromForm = exports.GetFormCollaborators = exports.ManageFormCollaborator = void 0;
+exports.GetFilterForm = exports.GetFormDetails = exports.GetFilledForm = exports.DeletePendingCollaborator = exports.ResendPendingInvitation = exports.CancelOwnershipTransfer = exports.ConfirmOwnershipTransfer = exports.ChangePrimaryOwner = exports.RemoveSelfFromForm = exports.GetFormCollaborators = exports.ManageFormCollaborator = void 0;
 exports.CreateForm = CreateForm;
 exports.EditForm = EditForm;
 exports.DeleteForm = DeleteForm;
@@ -22,11 +22,11 @@ Object.defineProperty(exports, "ConfirmOwnershipTransfer", { enumerable: true, g
 Object.defineProperty(exports, "CancelOwnershipTransfer", { enumerable: true, get: function () { return form_collaborator_controller_1.CancelOwnershipTransfer; } });
 Object.defineProperty(exports, "ResendPendingInvitation", { enumerable: true, get: function () { return form_collaborator_controller_1.ResendPendingInvitation; } });
 Object.defineProperty(exports, "DeletePendingCollaborator", { enumerable: true, get: function () { return form_collaborator_controller_1.DeletePendingCollaborator; } });
-var form_query_controller_1 = require("./form.query.controller");
-Object.defineProperty(exports, "GetFilterForm", { enumerable: true, get: function () { return form_query_controller_1.GetFilterForm; } });
 var form_response_controller_1 = require("./form.response.controller");
 Object.defineProperty(exports, "GetFilledForm", { enumerable: true, get: function () { return form_response_controller_1.GetFilledForm; } });
 Object.defineProperty(exports, "GetFormDetails", { enumerable: true, get: function () { return form_response_controller_1.GetFormDetails; } });
+var form_query_controller_1 = require("./form.query.controller");
+Object.defineProperty(exports, "GetFilterForm", { enumerable: true, get: function () { return form_query_controller_1.GetFilterForm; } });
 async function CreateForm(req, res) {
     const formdata = req.body;
     const user = req.user;

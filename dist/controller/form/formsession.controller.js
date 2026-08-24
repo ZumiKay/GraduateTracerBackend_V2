@@ -348,7 +348,7 @@ class FormsessionService {
             }
             //Check usersession if existed login
             if (existedUserRefreshToken) {
-                const isVerified = (0, helper_1.ExtractTokenPaylod)({
+                const isVerified = (0, helper_1.ExtractTokenPayload)({
                     token: existedUserRefreshToken,
                 });
                 if (!isVerified)
@@ -670,6 +670,7 @@ class FormsessionService {
                     respondentEmail: session.respondentEmail,
                     respondentName: session.respondentName,
                     isGuest: session.isGuest,
+                    expiresAt: session.expiredAt,
                 },
             });
         }

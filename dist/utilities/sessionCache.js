@@ -1,9 +1,6 @@
 "use strict";
-/**
- * In-memory cache for session data to reduce database queries
- * Optimized for frequent CheckSession calls
- */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.SessionCache = void 0;
 class SessionCache {
     cache = new Map();
     TTL = 2 * 60 * 1000; // 2 minutes TTL
@@ -28,7 +25,6 @@ class SessionCache {
      * Set session data in cache
      */
     set(sessionId, data) {
-        // Implement LRU-style eviction if cache is full
         if (this.cache.size >= this.MAX_SIZE) {
             // Remove oldest entry
             const firstKey = this.cache.keys().next().value;
@@ -78,6 +74,7 @@ class SessionCache {
         return removed;
     }
 }
+exports.SessionCache = SessionCache;
 // Singleton instance
 const sessionCache = new SessionCache();
 // Run cleanup every 5 minutes
@@ -86,5 +83,5 @@ setInterval(() => {
     if (removed > 0) {
         console.log(`[SessionCache] Cleaned up ${removed} expired entries`);
     }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 exports.default = sessionCache;

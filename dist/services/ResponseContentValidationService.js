@@ -1,57 +1,69 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ResponseContentValidationService = exports.ResponseContentValidateErrorCode = void 0;
+exports.ResponseContentValidationService = void 0;
 const Content_model_1 = require("../model/Content.model");
 const validation_types_1 = require("../types/validation.types");
-const helper_1 = require("../utilities/helper");
-exports.ResponseContentValidateErrorCode = [
-    {
-        name: validation_types_1.ValidationErrorCodeEnum.format,
-        message: "Invalid format",
-    },
-    {
-        name: validation_types_1.ValidationErrorCodeEnum.answerformat,
-        message: "Invalid answer format",
-    },
-];
 class ResponseContentValidationService {
-    //Check the valid of question answers and scores
-    /**
-     * Normalizes a choice answer to a plain number array.
-     * Handles both Array<number> and {key: number | number[], val: ...} (ResponseAnswerReturnType) formats.
-     */
-    static normalizeChoiceAnswer(answer) {
-        if (Array.isArray(answer))
-            return answer;
-        if (answer !== null &&
-            typeof answer === "object" &&
-            !Array.isArray(answer) &&
-            "key" in answer) {
-            const key = answer.key;
-            if (Array.isArray(key))
-                return key;
-            if (typeof key === "number")
-                return [key];
+    static validateAnswerFormat(arg1, arg2, arg3) {
+        let questionType;
+        let answer;
+        let content;
+        if (typeof arg1 === "object" && arg1 !== null) {
+            content = arg1;
+            questionType = content.type;
+            answer = content.answer?.answer;
+            if (answer === undefined || !content.hasAnswer) {
+                return { isValid: true, errors: [] };
+            }
         }
-        return null;
-    }
-    static validateAnswerFormat(questionType, answer, content) {
-        const errors = [];
-        const questionId = `Question ${content.questionId}`;
-        const { _id, page, qIdx } = content;
+        else {
+            questionType = arg1;
+            answer = arg2;
+            content = arg3;
+            if (answer === undefined) {
+                return { isValid: true, errors: [] };
+            }
+        }
+        const _id = content?._id?.toString();
+        const qIdx = content?.qIdx;
+        const page = content?.page ?? 1;
+        let questionId;
+        if (content?.questionId !== undefined && content?.questionId !== null) {
+            const qIdStr = String(content.questionId);
+            questionId = qIdStr.startsWith("Question ")
+                ? qIdStr
+                : `Question ${qIdStr}`;
+        }
+        else if (qIdx !== undefined) {
+            questionId = `Question ${qIdx}`;
+        }
+        else {
+            questionId = "Question";
+        }
         const errorProps = {
-            _id: _id?.toString(),
+            _id,
             qIdx,
-            page: page ?? 1,
+            page,
             questionId,
             message: (0, validation_types_1.PredefinedErrorMessage)()[validation_types_1.ValidationErrorCodeEnum.answerformat],
         };
+        const errors = [];
         switch (questionType) {
             case Content_model_1.QuestionType.MultipleChoice:
             case Content_model_1.QuestionType.Selection:
             case Content_model_1.QuestionType.CheckBox:
             case Content_model_1.QuestionType.MultipleSelection:
-                if (this.normalizeChoiceAnswer(answer) === null) {
+                if (Array.isArray(answer)) {
+                    if (answer.some((i) => typeof i !== "number" || isNaN(i))) {
+                        errors.push(errorProps);
+                    }
+                }
+                else if (typeof answer === "number") {
+                    if (isNaN(answer)) {
+                        errors.push(errorProps);
+                    }
+                }
+                else {
                     errors.push(errorProps);
                 }
                 break;
@@ -63,41 +75,61 @@ class ResponseContentValidationService {
                 }
                 break;
             case Content_model_1.QuestionType.Number:
-                if (typeof answer !== "number") {
+                if (typeof answer !== "number" || isNaN(answer)) {
                     errors.push(errorProps);
                 }
                 break;
             case Content_model_1.QuestionType.Date:
-                if (typeof answer !== "string") {
+                if ((typeof answer !== "string" && !(answer instanceof Date)) ||
+                    isNaN(new Date(answer).getTime())) {
                     errors.push(errorProps);
                 }
                 break;
-            case Content_model_1.QuestionType.RangeDate:
-                {
-                    if (!this.isValidRangeObject(answer)) {
-                        errors.push(errorProps);
-                    }
-                    //Verify if range date value is correct format
-                    if (!(0, helper_1.isRangeValueValid)(answer, true)) {
+            case Content_model_1.QuestionType.RangeDate: {
+                if (!ResponseContentValidationService.isValidRangeObject(answer)) {
+                    errors.push(errorProps);
+                }
+                else {
+                    const range = answer;
+                    const startDate = range.start instanceof Date
+                        ? range.start
+                        : typeof range.start === "string"
+                            ? new Date(range.start)
+                            : null;
+                    const endDate = range.end instanceof Date
+                        ? range.end
+                        : typeof range.end === "string"
+                            ? new Date(range.end)
+                            : null;
+                    if (!startDate ||
+                        !endDate ||
+                        isNaN(startDate.getTime()) ||
+                        isNaN(endDate.getTime()) ||
+                        startDate.getTime() > endDate.getTime()) {
                         errors.push(errorProps);
                     }
                 }
                 break;
-            case Content_model_1.QuestionType.RangeNumber:
-                {
+            }
+            case Content_model_1.QuestionType.RangeNumber: {
+                if (!ResponseContentValidationService.isValidRangeObject(answer)) {
+                    errors.push(errorProps);
+                }
+                else {
                     const localAnswer = answer;
-                    if (!this.isValidRangeObject(answer) ||
-                        typeof localAnswer.start !== "number" ||
-                        typeof localAnswer.end !== "number") {
-                        errors.push(errorProps);
-                    }
-                    if (!(0, helper_1.isRangeValueValid)(localAnswer)) {
+                    if (typeof localAnswer.start !== "number" ||
+                        typeof localAnswer.end !== "number" ||
+                        isNaN(localAnswer.start) ||
+                        isNaN(localAnswer.end) ||
+                        localAnswer.start > localAnswer.end) {
                         errors.push(errorProps);
                     }
                 }
                 break;
+            }
             default:
                 errors.push(errorProps);
+                break;
         }
         return { isValid: errors.length === 0, errors };
     }
@@ -134,9 +166,17 @@ class ResponseContentValidationService {
         return false;
     }
     static isValidRangeObject(obj) {
-        return obj && typeof obj === "object" && "start" in obj && "end" in obj;
+        return (obj !== null &&
+            typeof obj === "object" &&
+            !Array.isArray(obj) &&
+            "start" in obj &&
+            "end" in obj &&
+            obj.start !== null &&
+            obj.start !== undefined &&
+            obj.end !== null &&
+            obj.end !== undefined);
     }
-    static calcualteResponseTotalScore(responseSet) {
+    static calculateResponseTotalScore(responseSet) {
         let totalscore = 0;
         for (let r = 0; r < responseSet.length; r++) {
             const res = responseSet[r];
@@ -150,6 +190,13 @@ class ResponseContentValidationService {
         }
         return totalscore;
     }
+    // Backward compatibility alias for typo
+    static calcualteResponseTotalScore(responseSet) {
+        return ResponseContentValidationService.calculateResponseTotalScore(responseSet);
+    }
+    static normalizeChoiceAnswer = (answer) => {
+        return answer;
+    };
     static calculateResponseScore(userAnswer, correctAnswer, questionType, maxScore) {
         if (!correctAnswer || maxScore === 0)
             return 0;
@@ -159,22 +206,22 @@ class ResponseContentValidationService {
             case Content_model_1.QuestionType.MultipleChoice:
             case Content_model_1.QuestionType.CheckBox:
             case Content_model_1.QuestionType.Selection: {
-                const normalizedUser = this.normalizeChoiceAnswer(userAnswer);
-                const normalizedCorrect = this.normalizeChoiceAnswer(correctAnswer);
+                const normalizedUser = ResponseContentValidationService.normalizeChoiceAnswer(userAnswer);
+                const normalizedCorrect = ResponseContentValidationService.normalizeChoiceAnswer(correctAnswer);
                 if (!normalizedUser || !normalizedCorrect)
                     return 0;
-                return this.calculateChoiceQuestionScore(normalizedUser, normalizedCorrect, maxScore);
+                return ResponseContentValidationService.calculateChoiceQuestionScore(normalizedUser, normalizedCorrect, maxScore);
             }
             case Content_model_1.QuestionType.ShortAnswer:
             case Content_model_1.QuestionType.Paragraph:
-                return this.calculateTextScore(userAnswer, correctAnswer, maxScore);
+                return ResponseContentValidationService.calculateTextScore(userAnswer, correctAnswer, maxScore);
             case Content_model_1.QuestionType.Number:
                 return userAnswer === correctAnswer ? maxScore : 0;
             case Content_model_1.QuestionType.Date:
-                return this.calculateDateScore(userAnswer, correctAnswer, maxScore);
+                return ResponseContentValidationService.calculateDateScore(userAnswer, correctAnswer, maxScore);
             case Content_model_1.QuestionType.RangeDate:
             case Content_model_1.QuestionType.RangeNumber:
-                return this.calculateRangeScore(userAnswer, correctAnswer, maxScore);
+                return ResponseContentValidationService.calculateRangeScore(userAnswer, correctAnswer, maxScore);
             default:
                 return 0;
         }
@@ -207,7 +254,7 @@ class ResponseContentValidationService {
         const correctText = correctAnswer.trim().toLowerCase();
         if (userText === correctText)
             return maxScore;
-        const similarity = this.calculateTextSimilarity(userText, correctText);
+        const similarity = ResponseContentValidationService.calculateTextSimilarity(userText, correctText);
         return similarity > 0.8 ? maxScore : 0;
     }
     /**
@@ -224,8 +271,8 @@ class ResponseContentValidationService {
      * Calculate score for range answers
      */
     static calculateRangeScore(userAnswer, correctAnswer, maxScore) {
-        if (!this.isValidRangeObject(userAnswer) ||
-            !this.isValidRangeObject(correctAnswer))
+        if (!ResponseContentValidationService.isValidRangeObject(userAnswer) ||
+            !ResponseContentValidationService.isValidRangeObject(correctAnswer))
             return 0;
         const userStart = userAnswer.start;
         const userEnd = userAnswer.end;

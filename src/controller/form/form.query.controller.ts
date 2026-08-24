@@ -20,7 +20,6 @@ import {
 } from "../../utilities/formHelpers";
 import FormResponse from "../../model/Response.model";
 import {
-  formValidationErrorByContentType,
   FormValidationService,
   FormValidationSummary,
 } from "../../services/FormValidationService";

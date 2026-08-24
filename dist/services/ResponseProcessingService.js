@@ -166,7 +166,7 @@ class ResponseProcessingService {
             });
         }
         totalScore =
-            ResponseContentValidationService_1.default.calcualteResponseTotalScore(scoredResponses);
+            ResponseContentValidationService_1.default.calculateResponseTotalScore(scoredResponses);
         //?Condition question extraScore procession
         let extraScore;
         if (isAutoScored && scoredResponses.length > 0) {

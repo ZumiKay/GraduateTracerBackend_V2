@@ -124,43 +124,6 @@ export const formatDateToDDMMYYYY = (date: Date | string | number): string => {
 };
 
 /**
- * Converts a ContentTitle object or string to a plain string
- */
-export const convertTitleToString = (
-  title: ContentTitle | string | undefined | null,
-  fallback: string = "Question",
-): string => {
-  if (!title) return fallback;
-
-  if (typeof title === "string") return title;
-
-  // If title has a text property directly
-  if (title.text) return title.text;
-
-  // If title has content array, extract text from it
-  if (title.content && Array.isArray(title.content)) {
-    const texts: string[] = [];
-
-    const extractText = (items: ContentTitle[]): void => {
-      for (const item of items) {
-        if (item.text) {
-          texts.push(item.text);
-        }
-        if (item.content && Array.isArray(item.content)) {
-          extractText(item.content);
-        }
-      }
-    };
-
-    extractText(title.content);
-    const result = texts.join(" ").trim();
-    return result || fallback;
-  }
-
-  return fallback;
-};
-
-/**
  * Converts response value to string, handling object types
  *
  * @param value - Response value (can be string, number, object, etc.)
@@ -183,7 +146,7 @@ export const convertResponseToString = (value: any): string => {
     // Handle arrays
     if (Array.isArray(value)) {
       return value.map((v) => convertResponseToString(v)).join(", ");
-  }
+    }
 
     // Handle objects with key/val structure (like CheckBox)
     if (value.key && value.val) {
@@ -499,7 +462,8 @@ export const AddQuestionNumbering = ({
 
   const getParentId = (question: ContentType): string | null => {
     if (!question.parentcontent) return null;
-    if (question.parentcontent.qId) return question.parentcontent.qId;
+    if (question.parentcontent.qId)
+      return question.parentcontent.qId.toString();
     if (question.parentcontent.qIdx !== undefined)
       return `temp_${question.parentcontent.qIdx}`;
     return null;
@@ -638,12 +602,291 @@ export const GetAnswerKeyForQuestion = (content: ContentType) => {
 };
 
 /**
+ * Helper to match balanced curly braces { ... }
+ */
+const extractBalancedBraces = (
+  str: string,
+  startIndex: number,
+): { content: string; endIndex: number } | null => {
+  if (str[startIndex] !== "{") return null;
+  let depth = 0;
+  const start = startIndex + 1;
+  for (let i = startIndex; i < str.length; i++) {
+    if (str[i] === "{") depth++;
+    else if (str[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        return { content: str.slice(start, i), endIndex: i };
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * Converts a LaTeX formula string into a readable Unicode math string representation.
+ * Useful for email templates, notifications, and plaintext contexts where client-side Math rendering is unavailable.
+ */
+export const latexToUnicode = (latex: string): string => {
+  if (!latex || typeof latex !== "string") return "";
+
+  const superscripts: Record<string, string> = {
+    "0": "⁰",
+    "1": "¹",
+    "2": "²",
+    "3": "³",
+    "4": "⁴",
+    "5": "⁵",
+    "6": "⁶",
+    "7": "⁷",
+    "8": "⁸",
+    "9": "⁹",
+    "+": "⁺",
+    "-": "⁻",
+    "=": "⁼",
+    "(": "⁽",
+    ")": "⁾",
+    n: "ⁿ",
+    i: "ⁱ",
+    j: "ʲ",
+    k: "ᵏ",
+    x: "ˣ",
+    y: "ʸ",
+    z: "ᶻ",
+    a: "ᵃ",
+    b: "ᵇ",
+    c: "ᶜ",
+    d: "ᵈ",
+    e: "ᵉ",
+    m: "ᵐ",
+    p: "ᵖ",
+    t: "ᵗ",
+  };
+
+  const subscripts: Record<string, string> = {
+    "0": "₀",
+    "1": "₁",
+    "2": "₂",
+    "3": "₃",
+    "4": "₄",
+    "5": "₅",
+    "6": "₆",
+    "7": "₇",
+    "8": "₈",
+    "9": "₉",
+    "+": "₊",
+    "-": "₋",
+    "=": "₌",
+    "(": "₍",
+    ")": "₎",
+    a: "ₐ",
+    e: "ₑ",
+    h: "ₕ",
+    i: "ᵢ",
+    j: "ⱼ",
+    k: "ₖ",
+    l: "ₗ",
+    m: "ₘ",
+    n: "ₙ",
+    o: "ₒ",
+    p: "ₚ",
+    r: "ᵣ",
+    s: "ₛ",
+    t: "ₜ",
+    u: "ᵤ",
+    v: "ᵥ",
+    x: "ₓ",
+  };
+
+  const greekAndSymbols: [RegExp, string][] = [
+    // Multi-char / standard symbols
+    [/\\rightarrow|\\to(?![a-zA-Z])/g, "→"],
+    [/\\leftarrow|\\gets(?![a-zA-Z])/g, "←"],
+    [/\\Rightarrow(?![a-zA-Z])/g, "⇒"],
+    [/\\Leftarrow(?![a-zA-Z])/g, "⇐"],
+    [/\\Leftrightarrow|\\iff(?![a-zA-Z])/g, "⇔"],
+    [/\\leq|\\le(?![a-zA-Z])/g, "≤"],
+    [/\\geq|\\ge(?![a-zA-Z])/g, "≥"],
+    [/\\neq|\\ne(?![a-zA-Z])/g, "≠"],
+    [/\\approx(?![a-zA-Z])/g, "≈"],
+    [/\\equiv(?![a-zA-Z])/g, "≡"],
+    [/\\pm(?![a-zA-Z])/g, "±"],
+    [/\\mp(?![a-zA-Z])/g, "∓"],
+    [/\\times(?![a-zA-Z])/g, "×"],
+    [/\\div(?![a-zA-Z])/g, "÷"],
+    [/\\cdot(?![a-zA-Z])/g, "·"],
+    [/\\circ|\\degree(?![a-zA-Z])/g, "°"],
+    [/\\infty(?![a-zA-Z])/g, "∞"],
+    [/\\propto(?![a-zA-Z])/g, "∝"],
+    [/\\partial(?![a-zA-Z])/g, "∂"],
+    [/\\nabla(?![a-zA-Z])/g, "∇"],
+    [/\\forall(?![a-zA-Z])/g, "∀"],
+    [/\\exists(?![a-zA-Z])/g, "∃"],
+    [/\\in(?![a-zA-Z])/g, "∈"],
+    [/\\notin(?![a-zA-Z])/g, "∉"],
+    [/\\subset(?![a-zA-Z])/g, "⊂"],
+    [/\\subseteq(?![a-zA-Z])/g, "⊆"],
+    [/\\cup(?![a-zA-Z])/g, "∪"],
+    [/\\cap(?![a-zA-Z])/g, "∩"],
+    [/\\int(?![a-zA-Z])/g, "∫"],
+    [/\\iint(?![a-zA-Z])/g, "∬"],
+    [/\\sum(?![a-zA-Z])/g, "∑"],
+    [/\\prod(?![a-zA-Z])/g, "∏"],
+    // Lowercase Greek
+    [/\\alpha(?![a-zA-Z])/g, "α"],
+    [/\\beta(?![a-zA-Z])/g, "β"],
+    [/\\gamma(?![a-zA-Z])/g, "γ"],
+    [/\\delta(?![a-zA-Z])/g, "δ"],
+    [/\\epsilon|\\varepsilon(?![a-zA-Z])/g, "ε"],
+    [/\\zeta(?![a-zA-Z])/g, "ζ"],
+    [/\\eta(?![a-zA-Z])/g, "η"],
+    [/\\theta|\\vartheta(?![a-zA-Z])/g, "θ"],
+    [/\\iota(?![a-zA-Z])/g, "ι"],
+    [/\\kappa(?![a-zA-Z])/g, "κ"],
+    [/\\lambda(?![a-zA-Z])/g, "λ"],
+    [/\\mu(?![a-zA-Z])/g, "μ"],
+    [/\\nu(?![a-zA-Z])/g, "ν"],
+    [/\\xi(?![a-zA-Z])/g, "ξ"],
+    [/\\pi(?![a-zA-Z])/g, "π"],
+    [/\\rho(?![a-zA-Z])/g, "ρ"],
+    [/\\sigma(?![a-zA-Z])/g, "σ"],
+    [/\\tau(?![a-zA-Z])/g, "τ"],
+    [/\\upsilon(?![a-zA-Z])/g, "υ"],
+    [/\\phi|\\varphi(?![a-zA-Z])/g, "φ"],
+    [/\\chi(?![a-zA-Z])/g, "χ"],
+    [/\\psi(?![a-zA-Z])/g, "ψ"],
+    [/\\omega(?![a-zA-Z])/g, "ω"],
+    // Uppercase Greek
+    [/\\Gamma(?![a-zA-Z])/g, "Γ"],
+    [/\\Delta(?![a-zA-Z])/g, "Δ"],
+    [/\\Theta(?![a-zA-Z])/g, "Θ"],
+    [/\\Lambda(?![a-zA-Z])/g, "Λ"],
+    [/\\Xi(?![a-zA-Z])/g, "Ξ"],
+    [/\\Pi(?![a-zA-Z])/g, "Π"],
+    [/\\Sigma(?![a-zA-Z])/g, "Σ"],
+    [/\\Upsilon(?![a-zA-Z])/g, "Υ"],
+    [/\\Phi(?![a-zA-Z])/g, "Φ"],
+    [/\\Psi(?![a-zA-Z])/g, "Ψ"],
+    [/\\Omega(?![a-zA-Z])/g, "Ω"],
+  ];
+
+  let result = latex;
+
+  // 1. Process Fractions: \frac{num}{den} with balanced brace support
+  while (result.includes("\\frac")) {
+    const fracIdx = result.indexOf("\\frac");
+    const afterFrac = fracIdx + 5;
+    const numMatch = extractBalancedBraces(result, afterFrac);
+    if (!numMatch) break;
+    const denMatch = extractBalancedBraces(result, numMatch.endIndex + 1);
+    if (!denMatch) break;
+
+    const numUnicode = latexToUnicode(numMatch.content);
+    const denUnicode = latexToUnicode(denMatch.content);
+    const replacement = `(${numUnicode} / ${denUnicode})`;
+
+    result =
+      result.slice(0, fracIdx) +
+      replacement +
+      result.slice(denMatch.endIndex + 1);
+  }
+
+  // 2. Process Square roots: \sqrt[3]{...}, \sqrt{...} with balanced brace support
+  while (result.includes("\\sqrt")) {
+    const sqrtIdx = result.indexOf("\\sqrt");
+    let afterSqrt = sqrtIdx + 5;
+    let rootPrefix = "√";
+
+    if (result.startsWith("[3]", afterSqrt)) {
+      rootPrefix = "∛";
+      afterSqrt += 3;
+    } else if (result[afterSqrt] === "[") {
+      const closeBracket = result.indexOf("]", afterSqrt);
+      if (closeBracket !== -1) {
+        rootPrefix = `${result.slice(afterSqrt + 1, closeBracket)}√`;
+        afterSqrt = closeBracket + 1;
+      }
+    }
+
+    const contentMatch = extractBalancedBraces(result, afterSqrt);
+    if (!contentMatch) break;
+
+    const innerUnicode = latexToUnicode(contentMatch.content);
+    const replacement = `${rootPrefix}(${innerUnicode})`;
+
+    result =
+      result.slice(0, sqrtIdx) +
+      replacement +
+      result.slice(contentMatch.endIndex + 1);
+  }
+
+  // 3. Greek letters and Math Operators
+  for (const [regex, symbol] of greekAndSymbols) {
+    result = result.replace(regex, symbol);
+  }
+
+  // Handle common limit expressions like ^{\infty}, _{-\infty}
+  result = result.replace(/\^\{[ \t]*\\infty[ \t]*\}|\^\\infty/g, "^∞");
+  result = result.replace(/_\{[ \t]*-\\infty[ \t]*\}|_-\\infty/g, "₋∞");
+  result = result.replace(/_\{[ \t]*\\infty[ \t]*\}|_\\infty/g, "∞");
+
+  // 4. Superscripts: x^{2} or x^2 -> x²
+  result = result.replace(
+    /\^\{([^{}]+)\}|\^([0-9a-zA-Z+-=()])/g,
+    (_, p1, p2) => {
+      let chars = p1 || p2 || "";
+      chars = chars.replace(
+        /\^([0-9a-zA-Z+-=()])/g,
+        (__: string, c: string) => superscripts[c] || c,
+      );
+      return chars
+        .split("")
+        .map((c: string) => superscripts[c] || c)
+        .join("");
+    },
+  );
+
+  // 5. Subscripts: x_{i} or x_i -> xᵢ
+  result = result.replace(/_\{([^{}]+)\}|_([0-9a-zA-Z+-=()])/g, (_, p1, p2) => {
+    let chars = p1 || p2 || "";
+    chars = chars.replace(
+      /_([0-9a-zA-Z+-=()])/g,
+      (__: string, c: string) => subscripts[c] || c,
+    );
+    return chars
+      .split("")
+      .map((c: string) => subscripts[c] || c)
+      .join("");
+  });
+
+  // 6. Common functions: \sin, \cos, \tan, \log, \ln, \lim, \exp, etc.
+  result = result.replace(
+    /\\(sin|cos|tan|sec|csc|cot|log|ln|exp|lim|max|min|det|deg)(?![a-zA-Z])/g,
+    "$1",
+  );
+
+  // 7. Text wrappers: \text{...}, \mathrm{...}, \mathbf{...}, \mathit{...}
+  result = result.replace(/\\[a-zA-Z]+\{([^{}]+)\}/g, "$1");
+
+  // 8. Spaces and formatting
+  result = result.replace(/\\quad|\\qquad|\\;|\\,|\\:/g, " ");
+  result = result.replace(/\\\\/g, " ");
+  result = result.replace(/[{}]/g, "");
+
+  return result.replace(/[ \t]+/g, " ").trim();
+};
+
+/**
  *Convert TipTab JSON Content to string  */
 export const contentTitleToString = (
-  contentTitle: ContentTitle | null | undefined,
+  contentTitle: ContentTitle | string | null | undefined,
 ): string => {
   if (!contentTitle) {
     return "";
+  }
+
+  if (typeof contentTitle === "string") {
+    return contentTitle;
   }
 
   const result = processContentTitleInternal(contentTitle);
@@ -715,6 +958,13 @@ const processContentTitleInternal = (contentTitle: ContentTitle): string => {
 
     case "horizontalRule":
       return "\n---\n";
+
+    case "inlineMath":
+    case "displayMath":
+    case "math":
+    case "math_inline":
+    case "math_display":
+      return latexToUnicode(contentTitle.attrs?.latex || "");
 
     case "image":
       const alt = contentTitle.attrs?.alt || "";

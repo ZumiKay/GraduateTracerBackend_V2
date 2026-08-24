@@ -152,15 +152,23 @@ export class QuestionService {
     // Step 9: Initialize totalscore
     const form = await Form.findById(formId).select("totalscore");
     const isScoreChange = data.some(
-      (i) => i.score !== existingContent.find((j) => j._id === i._id)?.score,
+      (i) =>
+        i.score !==
+        existingContent.find(
+          (j) => j._id?.toString() === i._id?.toString() || j._id === i._id,
+        )?.score,
     );
 
     const isBonusChange = data.some(
       (i) =>
         i.isBonusScore !==
-          existingContent.find((j) => j._id === i._id)?.isBonusScore ||
+          existingContent.find(
+            (j) => j._id?.toString() === i._id?.toString() || j._id === i._id,
+          )?.isBonusScore ||
         i.useChildScoreSum !==
-          existingContent.find((j) => j._id === i._id)?.useChildScoreSum,
+          existingContent.find(
+            (j) => j._id?.toString() === i._id?.toString() || j._id === i._id,
+          )?.useChildScoreSum,
     );
 
     if (isScoreChange || isBonusChange || !form?.totalscore) {
@@ -803,14 +811,7 @@ export class QuestionService {
 
   private static generateCacheKey(obj1: any, obj2: any): string {
     try {
-      const type1 = typeof obj1;
-      const type2 = typeof obj2;
-      const isArray1 = Array.isArray(obj1);
-      const isArray2 = Array.isArray(obj2);
-
-      return `${type1}_${type2}_${isArray1}_${isArray2}_${
-        obj1?.constructor?.name || "none"
-      }_${obj2?.constructor?.name || "none"}`;
+      return JSON.stringify([obj1, obj2]);
     } catch {
       return `fallback_${Math.random()}`;
     }

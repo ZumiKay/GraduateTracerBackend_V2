@@ -4,53 +4,79 @@ import {
   ErrorValidatePropsType,
   PredefinedErrorMessage,
   ValidationErrorCodeEnum,
-  ValidationErrorCodeType,
 } from "../types/validation.types";
 import { isRangeValueValid } from "../utilities/helper";
-
-export const ResponseContentValidateErrorCode: Array<ValidationErrorCodeType> =
-  [
-    {
-      name: ValidationErrorCodeEnum.format,
-      message: "Invalid format",
-    },
-    {
-      name: ValidationErrorCodeEnum.answerformat,
-      message: "Invalid answer format",
-    },
-  ];
 
 export class ResponseContentValidationService {
   //Check the valid of question answers and scores
 
   static validateAnswerFormat(
-    questionType: QuestionType,
-    answer: ResponseAnswerType,
-    content: ContentType,
-  ): { isValid: boolean; errors: Array<ErrorValidatePropsType> } {
-    const errors: Array<ErrorValidatePropsType> = [];
+    arg1: QuestionType | ContentType,
+    arg2?: ResponseAnswerType,
+    arg3?: ContentType,
+  ): {
+    isValid: boolean;
+    errors: Array<ErrorValidatePropsType>;
+  } {
+    let questionType: QuestionType;
+    let answer: ResponseAnswerType | undefined;
+    let content: ContentType | undefined;
 
-    const questionId = `Question ${content.questionId}`;
-    const { _id, page, qIdx } = content;
+    if (typeof arg1 === "object" && arg1 !== null) {
+      content = arg1;
+      questionType = content.type;
+      answer = content.answer?.answer;
+      if (answer === undefined || !content.hasAnswer) {
+        return { isValid: true, errors: [] };
+      }
+    } else {
+      questionType = arg1 as QuestionType;
+      answer = arg2;
+      content = arg3;
+      if (answer === undefined) {
+        return { isValid: true, errors: [] };
+      }
+    }
+
+    const _id = content?._id?.toString();
+    const qIdx = content?.qIdx;
+    const page = content?.page ?? 1;
+    let questionId: string;
+    if (content?.questionId !== undefined && content?.questionId !== null) {
+      const qIdStr = String(content.questionId);
+      questionId = qIdStr.startsWith("Question ")
+        ? qIdStr
+        : `Question ${qIdStr}`;
+    } else if (qIdx !== undefined) {
+      questionId = `Question ${qIdx}`;
+    } else {
+      questionId = "Question";
+    }
 
     const errorProps: ErrorValidatePropsType = {
-      _id: _id?.toString(),
+      _id,
       qIdx,
-      page: page ?? 1,
+      page,
       questionId,
       message: PredefinedErrorMessage()[ValidationErrorCodeEnum.answerformat],
     };
+
+    const errors: Array<ErrorValidatePropsType> = [];
 
     switch (questionType) {
       case QuestionType.MultipleChoice:
       case QuestionType.Selection:
       case QuestionType.CheckBox:
       case QuestionType.MultipleSelection:
-        if (
-          Array.isArray(answer)
-            ? answer.some((i) => isNaN(i))
-            : isNaN(answer as never)
-        ) {
+        if (Array.isArray(answer)) {
+          if (answer.some((i) => typeof i !== "number" || isNaN(i))) {
+            errors.push(errorProps);
+          }
+        } else if (typeof answer === "number") {
+          if (isNaN(answer)) {
+            errors.push(errorProps);
+          }
+        } else {
           errors.push(errorProps);
         }
         break;
@@ -64,48 +90,72 @@ export class ResponseContentValidationService {
         break;
 
       case QuestionType.Number:
-        if (typeof answer !== "number") {
+        if (typeof answer !== "number" || isNaN(answer)) {
           errors.push(errorProps);
         }
         break;
 
       case QuestionType.Date:
-        if (typeof answer !== "string") {
+        if (
+          (typeof answer !== "string" && !(answer instanceof Date)) ||
+          isNaN(new Date(answer as string | Date).getTime())
+        ) {
           errors.push(errorProps);
         }
         break;
 
-      case QuestionType.RangeDate:
-        {
-          if (!this.isValidRangeObject(answer)) {
-            errors.push(errorProps);
-          }
+      case QuestionType.RangeDate: {
+        if (!ResponseContentValidationService.isValidRangeObject(answer)) {
+          errors.push(errorProps);
+        } else {
+          const range = answer as RangeType<string | Date>;
+          const startDate =
+            range.start instanceof Date
+              ? range.start
+              : typeof range.start === "string"
+                ? new Date(range.start)
+                : null;
+          const endDate =
+            range.end instanceof Date
+              ? range.end
+              : typeof range.end === "string"
+                ? new Date(range.end)
+                : null;
 
-          //Verify if range date value is correct format
-          if (!isRangeValueValid(answer as RangeType<string>, true)) {
-            errors.push(errorProps);
-          }
-        }
-        break;
-
-      case QuestionType.RangeNumber:
-        {
-          const localAnswer = answer as RangeType<number>;
           if (
-            !this.isValidRangeObject(answer) ||
-            typeof localAnswer.start !== "number" ||
-            typeof localAnswer.end !== "number"
+            !startDate ||
+            !endDate ||
+            isNaN(startDate.getTime()) ||
+            isNaN(endDate.getTime()) ||
+            startDate.getTime() > endDate.getTime()
           ) {
             errors.push(errorProps);
           }
-          if (!isRangeValueValid(localAnswer)) {
+        }
+        break;
+      }
+
+      case QuestionType.RangeNumber: {
+        if (!ResponseContentValidationService.isValidRangeObject(answer)) {
+          errors.push(errorProps);
+        } else {
+          const localAnswer = answer as RangeType<number>;
+          if (
+            typeof localAnswer.start !== "number" ||
+            typeof localAnswer.end !== "number" ||
+            isNaN(localAnswer.start) ||
+            isNaN(localAnswer.end) ||
+            localAnswer.start > localAnswer.end
+          ) {
             errors.push(errorProps);
           }
         }
         break;
+      }
 
       default:
         errors.push(errorProps);
+        break;
     }
 
     return { isValid: errors.length === 0, errors };
@@ -153,10 +203,20 @@ export class ResponseContentValidationService {
   }
 
   private static isValidRangeObject(obj: any): boolean {
-    return obj && typeof obj === "object" && "start" in obj && "end" in obj;
+    return (
+      obj !== null &&
+      typeof obj === "object" &&
+      !Array.isArray(obj) &&
+      "start" in obj &&
+      "end" in obj &&
+      obj.start !== null &&
+      obj.start !== undefined &&
+      obj.end !== null &&
+      obj.end !== undefined
+    );
   }
 
-  static calcualteResponseTotalScore(
+  static calculateResponseTotalScore(
     responseSet: Array<ResponseSetType>,
   ): number {
     let totalscore = 0;
@@ -176,6 +236,16 @@ export class ResponseContentValidationService {
     return totalscore;
   }
 
+  // Backward compatibility alias for typo
+  static calcualteResponseTotalScore(
+    responseSet: Array<ResponseSetType>,
+  ): number {
+    return ResponseContentValidationService.calculateResponseTotalScore(
+      responseSet,
+    );
+  }
+
+  //Cleanly cast type of choice answer to Array of number
   private static normalizeChoiceAnswer = (answer: ResponseAnswerType) => {
     return answer as number[];
   };
@@ -195,10 +265,12 @@ export class ResponseContentValidationService {
       case QuestionType.MultipleChoice:
       case QuestionType.CheckBox:
       case QuestionType.Selection: {
-        const normalizedUser = this.normalizeChoiceAnswer(userAnswer);
-        const normalizedCorrect = this.normalizeChoiceAnswer(correctAnswer);
+        const normalizedUser =
+          ResponseContentValidationService.normalizeChoiceAnswer(userAnswer);
+        const normalizedCorrect =
+          ResponseContentValidationService.normalizeChoiceAnswer(correctAnswer);
         if (!normalizedUser || !normalizedCorrect) return 0;
-        return this.calculateChoiceQuestionScore(
+        return ResponseContentValidationService.calculateChoiceQuestionScore(
           normalizedUser,
           normalizedCorrect,
           maxScore,
@@ -207,7 +279,7 @@ export class ResponseContentValidationService {
 
       case QuestionType.ShortAnswer:
       case QuestionType.Paragraph:
-        return this.calculateTextScore(
+        return ResponseContentValidationService.calculateTextScore(
           userAnswer as string,
           correctAnswer as string,
           maxScore,
@@ -217,7 +289,7 @@ export class ResponseContentValidationService {
         return userAnswer === correctAnswer ? maxScore : 0;
 
       case QuestionType.Date:
-        return this.calculateDateScore(
+        return ResponseContentValidationService.calculateDateScore(
           userAnswer as string,
           correctAnswer as string,
           maxScore,
@@ -225,7 +297,11 @@ export class ResponseContentValidationService {
 
       case QuestionType.RangeDate:
       case QuestionType.RangeNumber:
-        return this.calculateRangeScore(userAnswer, correctAnswer, maxScore);
+        return ResponseContentValidationService.calculateRangeScore(
+          userAnswer,
+          correctAnswer,
+          maxScore,
+        );
 
       default:
         return 0;
@@ -277,7 +353,10 @@ export class ResponseContentValidationService {
 
     if (userText === correctText) return maxScore;
 
-    const similarity = this.calculateTextSimilarity(userText, correctText);
+    const similarity = ResponseContentValidationService.calculateTextSimilarity(
+      userText,
+      correctText,
+    );
     return similarity > 0.8 ? maxScore : 0;
   }
 
@@ -306,8 +385,8 @@ export class ResponseContentValidationService {
     maxScore: number,
   ): number {
     if (
-      !this.isValidRangeObject(userAnswer) ||
-      !this.isValidRangeObject(correctAnswer)
+      !ResponseContentValidationService.isValidRangeObject(userAnswer) ||
+      !ResponseContentValidationService.isValidRangeObject(correctAnswer)
     )
       return 0;
 

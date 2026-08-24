@@ -45,34 +45,11 @@ const RespondentTrackingService_1 = require("./RespondentTrackingService");
 const helper_1 = require("../utilities/helper");
 class FormOverViewAnalyticsService {
     static extractQuestionTitle(title) {
-        if (typeof title === "string") {
-            return title;
-        }
-        if (title && typeof title === "object") {
-            // Handle TipTap JSON structure
-            if (title.content && Array.isArray(title.content)) {
-                return title.content
-                    .map((node) => {
-                    if (node.text)
-                        return node.text;
-                    if (node.content) {
-                        return node.content.map((n) => n.text || "").join("");
-                    }
-                    return "";
-                })
-                    .join(" ")
-                    .trim();
-            }
-            if (title.text) {
-                return title.text;
-            }
-        }
-        return "Question";
+        return (0, helper_1.contentTitleToString)(title) || "Question";
     }
     /**
      * Calculate comprehensive completion time statistics
      * @param completionTimes Array of completion times in seconds
-     * @returns Object with average, min, max times in seconds
      */
     static calculateAverageCompletionTime(completionTimes) {
         // Validate input
@@ -108,8 +85,6 @@ class FormOverViewAnalyticsService {
             count: validTimes.length,
         };
     }
-    /* ------------------------ Analytics Metries Methods ----------------------- */
-    /**Get analytics data for filtering the data base on the period with included all the data for graphs and metries*/
     static async getFormAnalytics(formId, period = "7d") {
         const now = new Date();
         const startDate = this.calculateStartDate(period, now);

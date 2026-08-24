@@ -85,6 +85,7 @@ async function GetFilterForm(req, res) {
         switch (ty) {
             case GetFilterTypeEnum.detail:
             case GetFilterTypeEnum.solution:
+            case GetFilterTypeEnum.preview:
                 return await handleDetailQuery(res, ty, q, p, new mongoose_1.Types.ObjectId(user?.sub));
             case GetFilterTypeEnum.response:
             case GetFilterTypeEnum.analytics:
@@ -190,8 +191,8 @@ async function handleDetailQuery(res, ty, q, p, user) {
         .map((i) => ({
         ...i,
         //Issues message attach to each question
-        validationWarning: FormValidationService_1.FormValidationService.getValidationMessageByQId(validationSummary?.validationResults?.warnings ?? [], i._id?.toString() ?? i.qIdx),
-        validationIssues: FormValidationService_1.FormValidationService.getValidationMessageByQId(validationSummary?.validationResults?.errors ?? [], i._id?.toString() ?? i.qIdx),
+        validationWarning: FormValidationService_1.FormValidationService.getValidationMessageByQId(validationSummary?.validationResults?.warnings ?? [], i._id?.toString() ?? i.qIdx).filter(Boolean),
+        validationIssues: FormValidationService_1.FormValidationService.getValidationMessageByQId(validationSummary?.validationResults?.errors ?? [], i._id?.toString() ?? i.qIdx).filter(Boolean),
     }));
     const summaryData = await FormValidationService_1.FormValidationService.getFormOverviewDataById({
         formId: detailForm._id,

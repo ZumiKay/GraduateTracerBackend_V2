@@ -30,10 +30,13 @@ class AuthenticationController {
             const TokenPayload = { sub: user._id, role: user.role };
             const AccessToken = (0, helper_1.GenerateToken)(TokenPayload, "15m");
             const RefreshToken = (0, helper_1.GenerateToken)(TokenPayload, rememberMe ? "7d" : "1d");
+            const sessionExpireAt = rememberMe
+                ? (0, helper_1.getDateByNumDay)(7)
+                : (0, helper_1.getDateByNumDay)(1);
             //Create Login Session
             await Usersession_model_1.default.create({
                 session_id: RefreshToken,
-                expireAt: (0, helper_1.getDateByNumDay)(1),
+                expireAt: sessionExpireAt,
                 user: user._id,
             });
             //Set Authentication Cookie
@@ -43,6 +46,7 @@ class AuthenticationController {
                 ...(0, helper_1.ReturnCode)(200),
                 data: {
                     ...user,
+                    expiresAt: sessionExpireAt.toISOString(),
                 },
             });
         }
@@ -150,6 +154,7 @@ class AuthenticationController {
                             name: cachedSession.name,
                             role: cachedSession.role,
                         },
+                        expiresAt: cachedSession.expiresAt,
                         isAuthenticated: true,
                     },
                 });
@@ -179,12 +184,16 @@ class AuthenticationController {
                 return res.status(401).json((0, helper_1.ReturnCode)(401, "Session expired"));
             }
             const user = userSession.user;
+            const expireAtStr = userSession.expireAt
+                ? new Date(userSession.expireAt).toISOString()
+                : undefined;
             // Cache the session data for future requests
             sessionCache_1.default.set(refreshToken, {
                 userId: user._id.toString(),
                 email: user.email,
                 name: user.name,
                 role: user.role,
+                expiresAt: expireAtStr,
             });
             return res.status(200).json({
                 ...(0, helper_1.ReturnCode)(200),
@@ -195,6 +204,7 @@ class AuthenticationController {
                         name: user.name,
                         role: user.role,
                     },
+                    expiresAt: expireAtStr,
                     isAuthenticated: true,
                 },
             });

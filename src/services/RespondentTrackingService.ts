@@ -73,8 +73,6 @@ export class RespondentTrackingService {
 
     if (orConditions.length === 0) return { hasResponded: undefined };
 
-    console.dir({ orConditions }, { depth: null });
-
     const existingResponse = await FormResponse.findOne(
       { formId, $or: orConditions },
       { _id: 1, maxScore: 1, totalScore: 1 },
@@ -120,8 +118,6 @@ export class RespondentTrackingService {
   }
 
   static isTrackingReliable(trackingData: TrackingData): boolean {
-    // Consider tracking reliable if fingerprint strength is above 60
-    // and we have at least an IP address
     return (
       trackingData.fingerprintStrength >= 60 &&
       trackingData.ip !== "unknown" &&

@@ -266,6 +266,10 @@ class FormsessionMiddleware {
                     await this.VerifyFormsession(req, res, next);
                     return;
                 }
+                case User_middleware_1.GetPublicFormDataTyEnum.preview: {
+                    await User_middleware_1.default.VerifyToken(req, res, next);
+                    return;
+                }
                 default:
                     return res.status(400).json(RESPONSES.invalidRequestType());
             }

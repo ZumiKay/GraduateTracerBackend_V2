@@ -210,7 +210,7 @@ export class ResponseProcessingService {
     }
 
     totalScore =
-      SolutionValidationService.calcualteResponseTotalScore(scoredResponses);
+      SolutionValidationService.calculateResponseTotalScore(scoredResponses);
 
     //?Condition question extraScore procession
     let extraScore: number | undefined;

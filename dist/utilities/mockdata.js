@@ -239,39 +239,98 @@ class MockContentFactory {
             ...overrides,
         };
     }
-    static createConditionalContent(parentContentId, overrides) {
-        const conditionalData = {
-            _id: new mongoose_1.Types.ObjectId(),
-            key: 0, // Depends on first option of parent
-            contentId: new mongoose_1.Types.ObjectId(parentContentId),
-            contentIdx: 0,
-        };
-        return {
-            _id: new mongoose_1.Types.ObjectId(),
-            title: this.createContentTitle("Which JavaScript framework do you prefer? (Conditional)"),
-            type: Content_model_1.QuestionType.MultipleChoice,
-            qIdx: 10,
-            formId: this.createFormId(),
-            multiple: this.createChoiceOptions(3),
-            score: 10,
-            answer: {
+    static createConditionQuestionWithChilds({ parent, childs, childKey, }) {
+        const parentQ = {
+            ...parent,
+            conditional: childs.map((c, idx) => ({
                 _id: new mongoose_1.Types.ObjectId(),
-                answer: [0],
-                isCorrect: true,
-            },
-            conditional: [conditionalData],
-            parentcontent: {
-                _id: new mongoose_1.Types.ObjectId().toString(),
-                qId: parentContentId,
-                qIdx: 0,
-                optIdx: 0,
-            },
-            require: false,
-            page: 4,
-            hasAnswer: true,
-            isValidated: true,
-            ...overrides,
+                contentId: c._id,
+                key: childKey?.[idx] !== undefined ? childKey[idx] : idx,
+            })),
         };
+        return [
+            parentQ,
+            ...childs.map((child, idx) => ({
+                ...child,
+                parentcontent: {
+                    _id: new mongoose_1.Types.ObjectId().toString(),
+                    qId: parent._id ? parent._id.toString() : `temp_${parent.qIdx}`,
+                    qIdx: parent.qIdx,
+                    optIdx: parentQ.conditional[idx].key,
+                },
+            })),
+        ];
+    }
+    /**
+   
+     * @param depth          - How many levels to generate (1 = root only, max 20)
+     * @param formId         - Shared formId for all nodes (generated if omitted)
+     * @param startQIdx      - qIdx for the root; children increment from there
+     * @param optionCount    - Number of choice options per node
+     * @param triggerKey     - Which option index (key) triggers the child at each level
+     * @param parentOverrides - Partial<ContentType> applied only to the root node
+     * @param childOverrides  - Array of Partial<ContentType> indexed by depth (0 = root).
+     *                          Entries beyond the array length are ignored.
+     */
+    static createNestedContent({ depth = 1, formId, startQIdx = 0, optionCount = 3, triggerKey = 0, parentOverrides, childOverrides = [], } = {}) {
+        const MAX_DEPTH = 20;
+        const clampedDepth = Math.min(Math.max(depth, 1), MAX_DEPTH);
+        const sharedFormId = formId ?? this.createFormId();
+        const result = [];
+        let parentNode = null;
+        for (let level = 0; level < clampedDepth; level++) {
+            const nodeId = new mongoose_1.Types.ObjectId();
+            const qIdx = startQIdx + level;
+            const choices = this.createChoiceOptions(optionCount);
+            // Build parentcontent linking back to the previous level's node
+            const parentcontent = parentNode
+                ? {
+                    _id: parentNode._id.toString(),
+                    qId: parentNode._id.toString(),
+                    qIdx: parentNode.qIdx,
+                    optIdx: triggerKey,
+                    ...(level === 1 ? (parentOverrides?.parentcontent ?? {}) : {}),
+                }
+                : undefined;
+            // The previous node needs a conditional entry pointing to this new node
+            if (parentNode) {
+                parentNode.conditional = [
+                    ...(parentNode.conditional ?? []),
+                    {
+                        _id: new mongoose_1.Types.ObjectId(),
+                        key: triggerKey,
+                        contentId: nodeId,
+                        contentIdx: qIdx,
+                    },
+                ];
+            }
+            const levelOverride = childOverrides[level] ?? {};
+            const node = Object.assign({
+                _id: nodeId,
+                title: this.createContentTitle(levelOverride.title
+                    ? ""
+                    : level === 0
+                        ? "Root Question"
+                        : `Child Question – Level ${level}`),
+                type: Content_model_1.QuestionType.MultipleChoice,
+                multiple: choices,
+                qIdx,
+                formId: sharedFormId,
+                page: 1,
+                score: 0,
+                require: false,
+                hasAnswer: false,
+                isValidated: false,
+                conditional: [],
+                ...(level === 0 ? (parentOverrides ?? {}) : {}),
+                ...levelOverride,
+            }, 
+            // Pin structural identity fields — always wins over any override
+            { _id: nodeId, qIdx, formId: sharedFormId, parentcontent });
+            result.push(node);
+            parentNode = node;
+        }
+        return result;
     }
     static createSampleForm() {
         const formId = this.createFormId();
@@ -288,10 +347,6 @@ class MockContentFactory {
         const rangeDate = this.createRangeDateContent({ formId, qIdx: 7 });
         const selection = this.createSelectionContent({ formId, qIdx: 8 });
         const paragraph = this.createParagraphContent({ formId, qIdx: 9 });
-        const conditional = this.createConditionalContent(multipleChoice._id?.toString(), {
-            formId,
-            qIdx: 10,
-        });
         return [
             multipleChoice,
             checkbox,
@@ -303,7 +358,6 @@ class MockContentFactory {
             rangeDate,
             selection,
             paragraph,
-            conditional,
         ];
     }
     // Helper method to create content for quick testing

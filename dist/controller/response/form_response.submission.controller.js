@@ -45,8 +45,11 @@ const ResponseProcessingService_1 = require("../../services/ResponseProcessingSe
 const RespondentTrackingService_1 = require("../../services/RespondentTrackingService");
 const ResponseQueryService_1 = require("../../services/ResponseQueryService");
 const Formsession_model_1 = __importDefault(require("../../model/Formsession.model"));
+const User_middleware_1 = require("../../middleware/User.middleware");
 const notification_controller_1 = require("../utils/notification.controller");
 const fingerprint_1 = require("../../utilities/fingerprint");
+const formHelpers_1 = require("../../utilities/formHelpers");
+const Content_model_1 = __importDefault(require("../../model/Content.model"));
 class FormResponseSubmissionController {
     static publicSubmitValidate = zod_1.default.object({
         body: zod_1.default.object({
@@ -345,9 +348,7 @@ class FormResponseSubmissionController {
                         .select("_id title type totalpage totalscore setting.email setting.acceptResponses setting.acceptGuest setting.submitonce")
                         .lean();
                     if (!initialData || !initialData.setting?.acceptResponses) {
-                        return res
-                            .status(404)
-                            .json((0, helper_1.ReturnCode)(404, initialData ? "Form is closed" : "Form not found"));
+                        return helper_1.SendResponse.notFound(res, initialData ? "Form is closed" : "Form not found");
                     }
                     //Check if the respondent already response
                     if (initialData.setting.submitonce) {
@@ -380,38 +381,40 @@ class FormResponseSubmissionController {
                     let isAuthenticated = false;
                     if (initialData.setting?.email) {
                         if (isUserAlreadyAuthenticated) {
-                            try {
-                                const formData = await ResponseQueryService_1.ResponseQueryService.getPublicFormData(formId, page, req, res);
-                                return res.status(200).json({
-                                    ...(0, helper_1.ReturnCode)(200),
+                            const formData = await ResponseQueryService_1.ResponseQueryService.getPublicFormData(formId, page, req);
+                            if (formData.contentValidation?.some((i) => !i.isValid)) {
+                                return (0, helper_1.SendResponse)(res, 400, {
                                     data: {
-                                        ...initialData,
-                                        isAuthenticated: true,
-                                        isLoggedin: true,
-                                        ...formData,
+                                        contentValidation: formData.contentValidation.filter((i) => !i.isValid),
                                     },
                                 });
                             }
-                            catch (error) {
-                                console.warn("Failed to fetch form content for authenticated user:", error);
-                                return res.status(200).json((0, helper_1.ReturnCode)(500));
-                            }
+                            return helper_1.SendResponse.success(res, {
+                                ...initialData,
+                                isAuthenticated: true,
+                                isLoggedin: true,
+                                ...formData,
+                            });
                         }
                         isAuthenticated = false;
                     }
                     else {
                         isAuthenticated = true;
                     }
-                    return res.status(200).json({
-                        ...(0, helper_1.ReturnCode)(200),
-                        data: { ...initialData, isAuthenticated },
-                    });
+                    return helper_1.SendResponse.success(res, { ...initialData, isAuthenticated });
                 }
                 case "data": {
                     if (!mongoose_1.Types.ObjectId.isValid(formId)) {
                         return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID"));
                     }
-                    const formData = await ResponseQueryService_1.ResponseQueryService.getPublicFormData(formId, page, req, res);
+                    const formData = await ResponseQueryService_1.ResponseQueryService.getPublicFormData(formId, page, req);
+                    if (formData.contentValidation?.some((i) => !i.isValid)) {
+                        return (0, helper_1.SendResponse)(res, 400, {
+                            data: {
+                                contentValidation: formData.contentValidation.filter((i) => !i.isValid),
+                            },
+                        });
+                    }
                     return res.status(200).json({
                         ...(0, helper_1.ReturnCode)(200),
                         data: {
@@ -421,24 +424,47 @@ class FormResponseSubmissionController {
                         },
                     });
                 }
+                case User_middleware_1.GetPublicFormDataTyEnum.preview: {
+                    if (!req.user?.sub || !(0, formHelpers_1.isValidObjectIdString)(req.user?.sub)) {
+                        return helper_1.SendResponse.unauthorized(res);
+                    }
+                    const isForm = await Form_model_1.default.findById(formId).lean();
+                    const isAccess = (0, formHelpers_1.hasFormAccess)(isForm, new mongoose_1.Types.ObjectId(req.user.sub));
+                    if (!isAccess)
+                        return helper_1.SendResponse.forbidden(res);
+                    const contents = await Content_model_1.default.find({ formId, page })
+                        .select("_id qIdx title type text multiple selection checkbox rangedate rangenumber date require page conditional parentcontent score")
+                        .lean();
+                    const resultContents = contents.map((content) => ({
+                        ...content,
+                        parentcontent: content.parentcontent?.qId === content._id.toString()
+                            ? undefined
+                            : content.parentcontent,
+                        answer: undefined,
+                    }));
+                    const lastQuestionIdx = await (0, formHelpers_1.getLastQuestionIdx)(new mongoose_1.Types.ObjectId(formId), page);
+                    const numberedContents = (0, helper_1.AddQuestionNumbering)({
+                        questions: resultContents,
+                        lastIdx: lastQuestionIdx,
+                    });
+                    return helper_1.SendResponse.success(res, {
+                        ...isForm,
+                        contents: numberedContents,
+                        isAuthenticated: true,
+                    });
+                }
                 default:
-                    res.status(204).json((0, helper_1.ReturnCode)(204));
+                    return helper_1.SendResponse.badRequest(res);
             }
         }
         catch (error) {
             console.error("Get Public Form Data Error:", error);
             if (error instanceof Error) {
-                if (error.message === "Form not found") {
-                    return res.status(404).json((0, helper_1.ReturnCode)(404, error.message));
-                }
-                if (error.message === "Form is no longer accepting responses") {
-                    return res.status(403).json((0, helper_1.ReturnCode)(403, error.message));
-                }
                 if (error.message === "You already submitted this form") {
-                    return res.status(400).json((0, helper_1.ReturnCode)(400, error.message));
+                    return helper_1.SendResponse.badRequest(res, error.message);
                 }
             }
-            res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to retrieve form data"));
+            return helper_1.SendResponse.error(res);
         }
     };
 }

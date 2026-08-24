@@ -48,8 +48,6 @@ describe("groupContentByParent with nested hierarchies", () => {
         // Mixed order to ensure the function handles unordered input
         const data = [q1, q2, q3, q4, q5, s1, s2, s3, n1, n2, n3, m1, m2];
         const result = (0, helper_1.groupContentByParent)(data);
-        // Log the result for debugging
-        console.log("Result order:", result.map((item) => item._id));
         // Check the nesting structure
         const resultIds = result.map((item) => item._id?.toString() || "");
         // Define the expected ID order (ascending qIdx sort: s1→s2→s3, n1→n2→n3, m1→m2)

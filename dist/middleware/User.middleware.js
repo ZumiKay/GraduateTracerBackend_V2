@@ -14,6 +14,7 @@ var GetPublicFormDataTyEnum;
     GetPublicFormDataTyEnum["initial"] = "initial";
     GetPublicFormDataTyEnum["verify"] = "verify";
     GetPublicFormDataTyEnum["data"] = "data";
+    GetPublicFormDataTyEnum["preview"] = "preview";
 })(GetPublicFormDataTyEnum || (exports.GetPublicFormDataTyEnum = GetPublicFormDataTyEnum = {}));
 // ==================== Constants ====================
 const TOKEN_CONFIG = {

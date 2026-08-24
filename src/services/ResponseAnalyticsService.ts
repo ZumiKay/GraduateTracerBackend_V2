@@ -7,40 +7,19 @@ import Content, {
 } from "../model/Content.model";
 import { getResponseDisplayName } from "../utilities/respondentUtils";
 import { RespondentTrackingService } from "./RespondentTrackingService";
-import { AddQuestionNumbering } from "../utilities/helper";
+import {
+  AddQuestionNumbering,
+  contentTitleToString,
+} from "../utilities/helper";
 
 export class FormOverViewAnalyticsService {
   static extractQuestionTitle(title: ContentTitle): string {
-    if (typeof title === "string") {
-      return title;
-    }
-
-    if (title && typeof title === "object") {
-      // Handle TipTap JSON structure
-      if (title.content && Array.isArray(title.content)) {
-        return title.content
-          .map((node) => {
-            if (node.text) return node.text;
-            if (node.content) {
-              return node.content.map((n: any) => n.text || "").join("");
-            }
-            return "";
-          })
-          .join(" ")
-          .trim();
-      }
-      if (title.text) {
-        return title.text;
-      }
-    }
-
-    return "Question";
+    return contentTitleToString(title) || "Question";
   }
 
   /**
    * Calculate comprehensive completion time statistics
    * @param completionTimes Array of completion times in seconds
-   * @returns Object with average, min, max times in seconds
    */
   static calculateAverageCompletionTime(completionTimes: number[] | undefined) {
     // Validate input
@@ -82,9 +61,6 @@ export class FormOverViewAnalyticsService {
     };
   }
 
-  /* ------------------------ Analytics Metries Methods ----------------------- */
-
-  /**Get analytics data for filtering the data base on the period with included all the data for graphs and metries*/
   static async getFormAnalytics(formId: string, period: string = "7d") {
     const now = new Date();
     const startDate = this.calculateStartDate(period, now);

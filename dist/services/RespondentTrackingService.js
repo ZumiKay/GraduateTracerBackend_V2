@@ -74,8 +74,6 @@ class RespondentTrackingService {
         };
     }
     static isTrackingReliable(trackingData) {
-        // Consider tracking reliable if fingerprint strength is above 60
-        // and we have at least an IP address
         return (trackingData.fingerprintStrength >= 60 &&
             trackingData.ip !== "unknown" &&
             trackingData.ip.length > 0);

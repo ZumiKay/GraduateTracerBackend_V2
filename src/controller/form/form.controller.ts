@@ -18,8 +18,8 @@ export {
   ResendPendingInvitation,
   DeletePendingCollaborator,
 } from "./form.collaborator.controller";
-export { GetFilterForm } from "./form.query.controller";
 export { GetFilledForm, GetFormDetails } from "./form.response.controller";
+export { GetFilterForm } from "./form.query.controller";
 
 export async function CreateForm(req: CustomRequest, res: Response) {
   const formdata = req.body as FormType;

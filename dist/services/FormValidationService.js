@@ -314,7 +314,7 @@ class FormValidationService {
                 }
             }
             //Add warning
-            if (scoreHelper_1.MAYBE_AUTO_SCORABLE_TYPES.union(scoreHelper_1.AUTO_SCORABLE_TYPES).has(content.type)) {
+            if (scoreHelper_1.AUTO_SCORABLE_TYPES.has(content.type)) {
                 if (!content.score || !content.answer) {
                     warnings.push({
                         ...errorItem,

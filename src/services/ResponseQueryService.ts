@@ -25,10 +25,6 @@ import {
   ReturnCode,
 } from "../utilities/helper";
 import {
-  ErrorValidatePropsType,
-  ValidationResult,
-} from "../types/validation.types";
-import {
   formatResponseValue,
   getLastQuestionIdx,
 } from "../utilities/formHelpers";
@@ -465,113 +461,7 @@ export class ResponseQueryService {
   }
 
   /**
-   * Validates the content items on a public form page.
-   * Checks for common structural issues per question type and collects
-   * typed error entries. Returns `isValid: true` when no errors are found.
-   */
-  private static validateContents(contents: ContentType[]): ValidationResult {
-    const errors: ErrorValidatePropsType[] = [];
-
-    for (const content of contents) {
-      const questionId = content._id?.toString() ?? "";
-      const page = content.page ?? 1;
-      const qIdx = content.qIdx;
-
-      const baseEntry = (): Omit<ErrorValidatePropsType, "message"> => ({
-        _id: questionId,
-        qIdx,
-        questionId,
-        page,
-      });
-
-      // Choice-based questions must have at least one option
-      if (
-        content.type === QuestionType.MultipleChoice ||
-        content.type === QuestionType.MultipleSelection
-      ) {
-        if (!content.multiple || content.multiple.length === 0) {
-          errors.push({
-            ...baseEntry(),
-            message: {
-              name: "FORMAT" as never,
-              message: "Multiple choice question has no options defined",
-            },
-          });
-        }
-      }
-
-      if (content.type === QuestionType.CheckBox) {
-        if (!content.checkbox || content.checkbox.length === 0) {
-          errors.push({
-            ...baseEntry(),
-            message: {
-              name: "FORMAT" as never,
-              message: "Checkbox question has no options defined",
-            },
-          });
-        }
-      }
-
-      if (content.type === QuestionType.Selection) {
-        if (!content.selection || content.selection.length === 0) {
-          errors.push({
-            ...baseEntry(),
-            message: {
-              name: "FORMAT" as never,
-              message: "Selection question has no options defined",
-            },
-          });
-        }
-      }
-
-      // Range questions must have both start and end bounds
-      if (content.type === QuestionType.RangeDate) {
-        if (!content.rangedate?.start || !content.rangedate?.end) {
-          errors.push({
-            ...baseEntry(),
-            message: {
-              name: "FORMAT" as never,
-              message: "Range date question is missing start or end bound",
-            },
-          });
-        }
-      }
-
-      if (content.type === QuestionType.RangeNumber) {
-        if (
-          content.rangenumber?.start === undefined ||
-          content.rangenumber?.end === undefined
-        ) {
-          errors.push({
-            ...baseEntry(),
-            message: {
-              name: "FORMAT" as never,
-              message: "Range number question is missing start or end bound",
-            },
-          });
-        }
-      }
-
-      // Surface pre-stored validation issues from the content document
-      if (content.validationIssues && content.validationIssues.length > 0) {
-        for (const issue of content.validationIssues) {
-          errors.push({
-            ...baseEntry(),
-            message: issue,
-          });
-        }
-      }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-    };
-  }
-
-  /**
    * Calculate IP match score based on multiple factors
-   * Returns a score from 0-100 indicating confidence level
    */
   private static calculateIPMatchScore(
     currentIP: string,
@@ -776,7 +666,7 @@ export class ResponseQueryService {
   public static ResponsesetProcessQuestion(
     questions: Array<ContentType>,
     responseset: Array<ResponseSetType>,
-    options?: { filterHidden?: boolean },
+    options?: { filterHidden?: boolean }, //Show child question and parent question
   ) {
     const invalidQuestion = questions.find((q) => !q._id);
     if (invalidQuestion) {
@@ -859,7 +749,6 @@ export class ResponseQueryService {
     | ResponseAnswerType
     | ResponseAnswerReturnType
     | { key: number | number[]; val: string | string[] | undefined } {
-    // Get choice options if this is a choice-based question
     const choiceOptions = question[question.type as keyof ContentType] as
       | ChoiceQuestionType[]
       | undefined;

@@ -5,7 +5,6 @@ import {
   ParentContentType,
   QuestionType,
   RangeType,
-  ConditionalType,
 } from "../model/Content.model";
 
 import { ResponseAnswerType } from "../model/Response.model";
@@ -274,45 +273,38 @@ export class MockContentFactory {
     };
   }
 
-  static createConditionalContent(
-    parentContentId: string,
-    overrides?: Partial<ContentType>,
-  ): ContentType {
-    const conditionalData: ConditionalType = {
-      _id: new Types.ObjectId(),
-      key: 0, // Depends on first option of parent
-      contentId: new Types.ObjectId(parentContentId),
-      contentIdx: 0,
-    };
-
-    return {
-      _id: new Types.ObjectId(),
-      title: this.createContentTitle(
-        "Which JavaScript framework do you prefer? (Conditional)",
-      ),
-      type: QuestionType.MultipleChoice,
-      qIdx: 10,
-      formId: this.createFormId(),
-      multiple: this.createChoiceOptions(3),
-      score: 10,
-      answer: {
+  static createConditionQuestionWithChilds({
+    parent,
+    childs,
+    childKey,
+  }: {
+    parent: ContentType;
+    childs: Array<ContentType>;
+    childKey?: Array<number>; //Modify responsible child by arr Idx
+  }): Array<Partial<ContentType>> {
+    const parentQ = {
+      ...parent,
+      conditional: childs.map((c, idx) => ({
         _id: new Types.ObjectId(),
-        answer: [0],
-        isCorrect: true,
-      },
-      conditional: [conditionalData],
-      parentcontent: {
-        _id: new Types.ObjectId().toString(),
-        qId: parentContentId,
-        qIdx: 0,
-        optIdx: 0,
-      },
-      require: false,
-      page: 4,
-      hasAnswer: true,
-      isValidated: true,
-      ...overrides,
+        contentId: c._id as Types.ObjectId,
+        key: childKey?.[idx] !== undefined ? childKey[idx] : idx,
+      })),
     };
+    return [
+      parentQ,
+      ...childs.map(
+        (child, idx) =>
+          ({
+            ...child,
+            parentcontent: {
+              _id: new Types.ObjectId().toString(),
+              qId: parent._id ? parent._id.toString() : `temp_${parent.qIdx}`,
+              qIdx: parent.qIdx,
+              optIdx: parentQ.conditional[idx].key,
+            },
+          }) as never,
+      ),
+    ];
   }
 
   /**
@@ -415,6 +407,23 @@ export class MockContentFactory {
     return result;
   }
 
+  /**
+   * Simple form mock data with 10 questions across 4 pages.
+   *
+   * List of created questions:
+   * 1. [qIdx: 0, Page 1] MultipleChoice (4 options): "What is your favorite programming language?"
+   * 2. [qIdx: 1, Page 1] CheckBox (5 options): "Select all programming languages you know"
+   * 3. [qIdx: 2, Page 1] Text: "What is your full name?"
+   * 4. [qIdx: 3, Page 2] ShortAnswer: "Explain the concept of polymorphism"
+   * 5. [qIdx: 4, Page 2] Number: "How many years of programming experience do you have?"
+   * 6. [qIdx: 5, Page 2] Date: "When did you start programming?"
+   * 7. [qIdx: 6, Page 3] RangeNumber: "Select your salary range (in thousands)"
+   * 8. [qIdx: 7, Page 3] RangeDate: "Select your project duration"
+   * 9. [qIdx: 8, Page 3] Selection (3 options): "Choose your preferred IDE"
+   * 10. [qIdx: 9, Page 4] Paragraph: "Describe your biggest programming project"
+   *
+   * @returns Array of 10 ContentType questions sharing a common formId
+   */
   static createSampleForm(): ContentType[] {
     const formId = this.createFormId();
 
@@ -431,13 +440,6 @@ export class MockContentFactory {
     const rangeDate = this.createRangeDateContent({ formId, qIdx: 7 });
     const selection = this.createSelectionContent({ formId, qIdx: 8 });
     const paragraph = this.createParagraphContent({ formId, qIdx: 9 });
-    const conditional = this.createConditionalContent(
-      multipleChoice._id?.toString() as string,
-      {
-        formId,
-        qIdx: 10,
-      },
-    );
 
     return [
       multipleChoice,
@@ -450,7 +452,6 @@ export class MockContentFactory {
       rangeDate,
       selection,
       paragraph,
-      conditional,
     ];
   }
 
