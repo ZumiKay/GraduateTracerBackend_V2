@@ -19,7 +19,7 @@ import { FormOverViewAnalyticsService } from "../../services/ResponseAnalyticsSe
 export class FormResponseQueryController {
   public GetResponseByFormId = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
       });
@@ -47,7 +47,7 @@ export class FormResponseQueryController {
 
   public GetResponseByUser = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
       });
@@ -176,10 +176,9 @@ export class FormResponseQueryController {
     res: Response,
   ) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
-        requireFormId: true,
       });
       if (!validation.isValid || !validation.user?.sub) return;
 
@@ -244,11 +243,10 @@ export class FormResponseQueryController {
   public GetUserResponses = async (req: CustomRequest, res: Response) => {
     try {
       const { formId, page, uid, isValid } =
-        await ResponseValidationService.validateRequest({
+        ResponseValidationService.validateRequest({
           req,
           res,
           requireUserInfo: true,
-          requireFormId: true,
         });
       if (!isValid || !uid || !formId) return;
 
@@ -343,7 +341,7 @@ export class FormResponseQueryController {
 
   public GetResponseAnalytics = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
       });
@@ -403,7 +401,7 @@ export class FormResponseQueryController {
 
   public GetFormAnalytics = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
       });
@@ -433,7 +431,7 @@ export class FormResponseQueryController {
 
   public ExportAnalytics = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,

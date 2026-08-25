@@ -30,9 +30,6 @@ describe("ResponseProcessingService", () => {
     jest.clearAllMocks();
   });
 
-  /* -------------------------------------------------------------------------- */
-  /*                      processNormalFormSubmission Tests                     */
-  /* -------------------------------------------------------------------------- */
   describe("processNormalFormSubmission", () => {
     const mockQuestions: Partial<ContentType>[] = [
       {
@@ -95,7 +92,9 @@ describe("ResponseProcessingService", () => {
           }),
         }),
       });
-      (RespondentTrackingService.checkRespondentExists as jest.Mock).mockResolvedValue({
+      (
+        RespondentTrackingService.checkRespondentExists as jest.Mock
+      ).mockResolvedValue({
         hasResponded: true,
       });
 
@@ -131,7 +130,9 @@ describe("ResponseProcessingService", () => {
       };
 
       await expect(
-        ResponseProcessingService.processNormalFormSubmission(submissionData as never),
+        ResponseProcessingService.processNormalFormSubmission(
+          submissionData as never,
+        ),
       ).rejects.toThrow("Require");
     });
 
@@ -158,7 +159,9 @@ describe("ResponseProcessingService", () => {
       };
 
       await expect(
-        ResponseProcessingService.processNormalFormSubmission(submissionData as never),
+        ResponseProcessingService.processNormalFormSubmission(
+          submissionData as never,
+        ),
       ).rejects.toThrow();
     });
 
@@ -178,7 +181,9 @@ describe("ResponseProcessingService", () => {
       (Content.find as jest.Mock).mockReturnValue({
         lean: jest.fn().mockResolvedValue(mockQuestions),
       });
-      (FormResponse.create as jest.Mock).mockResolvedValue({ _id: new Types.ObjectId() });
+      (FormResponse.create as jest.Mock).mockResolvedValue({
+        _id: new Types.ObjectId(),
+      });
 
       const submissionData = {
         formId: formId.toString(),
@@ -191,9 +196,10 @@ describe("ResponseProcessingService", () => {
         req: {} as never,
       };
 
-      const result = await ResponseProcessingService.processNormalFormSubmission(
-        submissionData as never,
-      );
+      const result =
+        await ResponseProcessingService.processNormalFormSubmission(
+          submissionData as never,
+        );
 
       expect(result).toEqual({ message: "Form Submitted" });
       expect(FormResponse.create).toHaveBeenCalledWith(
@@ -250,7 +256,9 @@ describe("ResponseProcessingService", () => {
 
       (User.findOne as jest.Mock).mockReturnValue({
         lean: jest.fn().mockReturnValue({
-          select: jest.fn().mockResolvedValue({ _id: userId, email: "user@example.com" }),
+          select: jest
+            .fn()
+            .mockResolvedValue({ _id: userId, email: "user@example.com" }),
         }),
       });
 
@@ -425,7 +433,9 @@ describe("ResponseProcessingService", () => {
       expect(result.totalScore).toBe(13);
       expect(mockResponse.responseset[0].score).toBe(8);
       expect(mockResponse.responseset[0].comment).toBe("Great improvement");
-      expect(mockResponse.completionStatus).toBe(ResponseCompletionStatus.completed);
+      expect(mockResponse.completionStatus).toBe(
+        ResponseCompletionStatus.completed,
+      );
       expect(mockSave).toHaveBeenCalled();
     });
 
@@ -466,8 +476,16 @@ describe("ResponseProcessingService", () => {
 
       jest
         .spyOn(ResponseProcessingService, "updateResponseScores")
-        .mockResolvedValueOnce({ success: true, updatedScores: 1, totalScore: 10 })
-        .mockResolvedValueOnce({ success: true, updatedScores: 1, totalScore: 5 });
+        .mockResolvedValueOnce({
+          success: true,
+          updatedScores: 1,
+          totalScore: 10,
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          updatedScores: 1,
+          totalScore: 5,
+        });
 
       const result = await ResponseProcessingService.batchUpdateResponseScores([
         update1,
@@ -510,7 +528,9 @@ describe("ResponseProcessingService", () => {
       });
 
       const result =
-        await ResponseProcessingService.recalculateResponseTotalScore(responseId);
+        await ResponseProcessingService.recalculateResponseTotalScore(
+          responseId,
+        );
 
       expect(result.corrected).toBe(true);
       expect(result.newTotal).toBe(15);
@@ -531,7 +551,9 @@ describe("ResponseProcessingService", () => {
       });
 
       const result =
-        await ResponseProcessingService.recalculateResponseTotalScore(responseId);
+        await ResponseProcessingService.recalculateResponseTotalScore(
+          responseId,
+        );
 
       expect(result.corrected).toBe(false);
       expect(result.totalScore).toBe(10);
@@ -626,7 +648,9 @@ describe("ResponseProcessingService", () => {
 
     test("should query by userId when provided", async () => {
       (FormResponse.findOne as jest.Mock).mockReturnValue({
-        lean: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(), userId }),
+        lean: jest
+          .fn()
+          .mockResolvedValue({ _id: new Types.ObjectId(), userId }),
       });
 
       const result = await ResponseProcessingService.checkExistingResponse(
@@ -665,11 +689,13 @@ describe("ResponseProcessingService", () => {
     test("should calculate total max score of all questions in a form", async () => {
       (Content.find as jest.Mock).mockReturnValue({
         select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockResolvedValue([
-            { score: 10 },
-            { score: 15 },
-            { score: undefined },
-          ]),
+          lean: jest
+            .fn()
+            .mockResolvedValue([
+              { score: 10 },
+              { score: 15 },
+              { score: undefined },
+            ]),
         }),
       });
 
@@ -692,11 +718,13 @@ describe("ResponseProcessingService", () => {
 
       (FormResponse.find as jest.Mock).mockReturnValue({
         select: jest.fn().mockReturnValue({
-          lean: jest.fn().mockResolvedValue([
-            { totalScore: 80 },
-            { totalScore: 90 },
-            { totalScore: 70 },
-          ]),
+          lean: jest
+            .fn()
+            .mockResolvedValue([
+              { totalScore: 80 },
+              { totalScore: 90 },
+              { totalScore: 70 },
+            ]),
         }),
       });
 

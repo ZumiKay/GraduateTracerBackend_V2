@@ -1,16 +1,11 @@
 import { Request } from "express";
 import { ROLE } from "../model/User.model";
-import { Types } from "mongoose";
 import { JwtPayload } from "jsonwebtoken";
 
 export interface UserToken extends JwtPayload {
   sub: string;
   role: ROLE;
-  userDetails?: {
-    _id: Types.ObjectId;
-    email: string;
-    role: ROLE;
-  };
+  email?: string;
 }
 
 interface CustomJWTPayloadType extends JwtPayload {

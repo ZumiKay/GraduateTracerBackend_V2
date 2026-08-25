@@ -1,13 +1,13 @@
 import { Types, QueryFilter } from "mongoose";
 import { CustomRequest, UserToken } from "../types/customType";
 import { Response } from "express";
-import { ReturnCode } from "../utilities/helper";
+import { ReturnCode, SendResponse } from "../utilities/helper";
 import Form from "../model/Form.model";
 import FormResponse, {
   FormResponseType,
   ResponseCompletionStatus,
 } from "../model/Response.model";
-import { hasFormAccess } from "../utilities/formHelpers";
+import { hasFormAccess, isValidObjectIdString } from "../utilities/formHelpers";
 import { ResponseFilterType } from "./ResponseQueryService";
 
 export interface RespondentCheckResult {
@@ -41,7 +41,7 @@ export interface RespondentCheckOptions {
 }
 
 export class ResponseValidationService {
-  static async validateRequest({
+  static validateRequest({
     req,
     res,
     requireFormId = true,
@@ -53,8 +53,8 @@ export class ResponseValidationService {
     requireFormId?: boolean;
     requireUserInfo?: boolean;
     noToken?: boolean;
-  }): Promise<{
-    user: UserToken | null;
+  }): {
+    user?: UserToken;
     formId?: string;
     page?: number;
     limit?: number;
@@ -63,27 +63,27 @@ export class ResponseValidationService {
     rid?: string;
     message?: string;
     emails?: Array<string>;
-  }> {
-    const user = req.user;
+  } {
+    const user = req?.user;
 
     if (!user && !noToken) {
-      res.status(401).json(ReturnCode(401, "Unauthorized"));
-      return { user: null, isValid: false };
+      SendResponse(res, 404);
+      return { isValid: false };
     }
 
     if (requireFormId) {
       const formId =
-        (req.query.formId as string) ||
-        (req.params.formId as string) ||
-        req.body.formId;
+        (req.query?.formId as string) ||
+        (req.params?.formId as string) ||
+        req.body?.formId;
 
-      if (!formId && user) {
-        res.status(400).json(ReturnCode(400, "Form ID is required"));
-        return { user, isValid: false };
+      if (!formId || !isValidObjectIdString(formId)) {
+        SendResponse(res, 400);
+        return { isValid: false };
       }
 
       return {
-        user: user ?? null,
+        user,
         formId,
         page: Number(req.query.page || req.query.p) || 1,
         limit: Number(req.query.limit || req.query.lt) || 10,
@@ -96,17 +96,16 @@ export class ResponseValidationService {
     }
 
     if (requireUserInfo) {
-      if (!req.query.uid && user) {
+      if (!req.query.uid || !user) {
         res.status(400).json(ReturnCode(400));
-        return { user, isValid: false };
+        return { isValid: false };
       }
     }
 
     return {
-      user: user ?? null,
-      page: Number(req.query.page || req.query.p) || 1,
-      limit: Number(req.query.limit || req.query.lt) || 10,
-      uid: (req.query.uid as string) ?? undefined,
+      user,
+      page: Number(req.query?.page || req.query?.p) || 1,
+      limit: Number(req.query?.limit || req.query?.lt) || 10,
       isValid: true,
     };
   }

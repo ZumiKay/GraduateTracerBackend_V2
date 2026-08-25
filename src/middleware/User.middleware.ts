@@ -34,8 +34,6 @@ interface VerifiedTokenResult {
   data?: TokenPayload;
 }
 
-// ==================== Constants ====================
-
 const TOKEN_CONFIG = {
   ACCESS_TOKEN_EXPIRY: "30m",
   ACCESS_TOKEN_EXPIRY_MINUTES: 30,
@@ -65,11 +63,7 @@ const ERROR_CODES = {
   REFRESH_REQUIRED: "REFRESH_REQUIRED",
 } as const;
 
-// ==================== Authentication Middleware Class ====================
-
 class AuthenticateMiddleWare {
-  // ==================== Private Helper Methods ====================
-
   /**
    * Validates required environment variables
    */
@@ -119,29 +113,6 @@ class AuthenticateMiddleWare {
   }
 
   /**
-   * Validates and retrieves active session
-   */
-  private async validateSession(
-    sessionToken: string,
-    userId?: string,
-  ): Promise<any | null> {
-    const query: any = {
-      session_id: sessionToken,
-      expireAt: { $gte: new Date() },
-    };
-
-    if (userId) {
-      query.user = userId;
-    }
-
-    return await Usersession.findOne(query)
-      .select("session_id expireAt userId")
-      .populate({ path: "user", select: "_id email role" })
-      .lean()
-      .exec();
-  }
-
-  /**
    * Cleans up expired session
    */
   private async cleanupExpiredSession(sessionToken: string): Promise<void> {
@@ -151,8 +122,6 @@ class AuthenticateMiddleWare {
       console.error("Failed to cleanup expired session:", error);
     }
   }
-
-  // ==================== Public Middleware Methods ====================
 
   /**
    * Verifies access token (Hybrid approach - no auto-refresh)
@@ -189,7 +158,6 @@ class AuthenticateMiddleWare {
       // Verify access token
       const verifiedToken = this.verifyJWT(accessToken);
 
-      // Token expired - signal frontend to refresh
       if (verifiedToken.isExpired) {
         res.status(401).json({
           success: false,

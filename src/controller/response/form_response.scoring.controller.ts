@@ -8,7 +8,7 @@ import { CustomRequest } from "../../types/customType";
 export class FormResponseScoringController {
   public UpdateResponseScore = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,
@@ -108,7 +108,7 @@ export class FormResponseScoringController {
 
   public BatchUpdateScores = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,
@@ -158,7 +158,7 @@ export class FormResponseScoringController {
     res: Response,
   ) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,

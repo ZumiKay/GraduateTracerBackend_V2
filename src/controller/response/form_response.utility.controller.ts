@@ -20,10 +20,9 @@ import { generateResponseHTML } from "../../utilities/EmailTemplate/SendResponse
 export class FormResponseUtilityController {
   public SendFormLinks = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
-        requireFormId: true,
       });
       if (!validation.isValid || !validation.user?.sub) return;
 
@@ -279,7 +278,7 @@ export class FormResponseUtilityController {
 
   public ExportResponsePDF = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,
