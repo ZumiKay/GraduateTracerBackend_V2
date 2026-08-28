@@ -53,10 +53,9 @@ const SendResponseEmail_1 = require("../../utilities/EmailTemplate/SendResponseE
 class FormResponseUtilityController {
     SendFormLinks = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
-                requireFormId: true,
             });
             if (!validation.isValid || !validation.user?.sub)
                 return;
@@ -259,7 +258,7 @@ class FormResponseUtilityController {
     };
     ExportResponsePDF = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
                 requireFormId: false,

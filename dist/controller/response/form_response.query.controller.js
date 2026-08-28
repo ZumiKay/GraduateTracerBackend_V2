@@ -16,7 +16,7 @@ const ResponseAnalyticsService_1 = require("../../services/ResponseAnalyticsServ
 class FormResponseQueryController {
     GetResponseByFormId = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
             });
@@ -35,7 +35,7 @@ class FormResponseQueryController {
     };
     GetResponseByUser = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
             });
@@ -135,10 +135,9 @@ class FormResponseQueryController {
     };
     GetResponsesWithFilters = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
-                requireFormId: true,
             });
             if (!validation.isValid || !validation.user?.sub)
                 return;
@@ -191,11 +190,10 @@ class FormResponseQueryController {
     };
     GetUserResponses = async (req, res) => {
         try {
-            const { formId, page, uid, isValid } = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const { formId, page, uid, isValid } = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
                 requireUserInfo: true,
-                requireFormId: true,
             });
             if (!isValid || !uid || !formId)
                 return;
@@ -272,7 +270,7 @@ class FormResponseQueryController {
     };
     GetResponseAnalytics = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
             });
@@ -315,7 +313,7 @@ class FormResponseQueryController {
     };
     GetFormAnalytics = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
             });
@@ -336,7 +334,7 @@ class FormResponseQueryController {
     };
     ExportAnalytics = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
                 requireFormId: false,

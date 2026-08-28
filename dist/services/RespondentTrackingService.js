@@ -39,7 +39,6 @@ class RespondentTrackingService {
             orConditions.push({ respondentFingerprint });
         if (orConditions.length === 0)
             return { hasResponded: undefined };
-        console.dir({ orConditions }, { depth: null });
         const existingResponse = await Response_model_1.default.findOne({ formId, $or: orConditions }, { _id: 1, maxScore: 1, totalScore: 1 }).lean();
         if (existingResponse) {
             return {

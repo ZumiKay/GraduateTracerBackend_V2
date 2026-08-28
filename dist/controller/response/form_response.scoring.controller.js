@@ -7,7 +7,7 @@ const ResponseProcessingService_1 = require("../../services/ResponseProcessingSe
 class FormResponseScoringController {
     UpdateResponseScore = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
                 requireFormId: false,
@@ -80,7 +80,7 @@ class FormResponseScoringController {
     };
     BatchUpdateScores = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
                 requireFormId: false,
@@ -115,7 +115,7 @@ class FormResponseScoringController {
     };
     RecalculateResponseScore = async (req, res) => {
         try {
-            const validation = await ResponseValidationService_1.ResponseValidationService.validateRequest({
+            const validation = ResponseValidationService_1.ResponseValidationService.validateRequest({
                 req,
                 res,
                 requireFormId: false,

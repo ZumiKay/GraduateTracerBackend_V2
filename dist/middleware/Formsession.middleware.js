@@ -36,93 +36,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const customType_1 = require("../types/customType");
 const Formsession_model_1 = __importDefault(require("../model/Formsession.model"));
 const mongoose_1 = require("mongoose");
 const Form_model_1 = __importDefault(require("../model/Form.model"));
 const User_middleware_1 = __importStar(require("./User.middleware"));
 const helper_1 = require("../utilities/helper");
 const formsession_controller_1 = __importDefault(require("../controller/form/formsession.controller"));
-// Response templates for common error scenarios
-const RESPONSES = {
-    missingCookieConfig: () => ({
-        success: false,
-        status: 500,
-        message: "Server configuration error",
-        error: "MISSING_COOKIE_CONFIG",
-    }),
-    invalidFormId: () => ({
-        success: false,
-        status: 400,
-        message: "Invalid or missing form ID",
-        error: "INVALID_FORM_ID",
-    }),
-    formClosed: () => ({
-        success: false,
-        status: 403,
-        message: "Form is closed",
-        error: "FORM_CLOSED",
-    }),
-    missingSessionToken: () => ({
-        success: false,
-        status: 401,
-        message: "Session token required",
-        error: "MISSING_SESSION_TOKEN",
-    }),
-    invalidSessionToken: () => ({
-        success: false,
-        status: 401,
-        message: "Invalid session token",
-        error: "INVALID_SESSION_TOKEN",
-    }),
-    sessionNotFound: () => ({
-        success: false,
-        status: 401,
-        message: "Session not found",
-        error: "SESSION_NOT_FOUND",
-    }),
-    sessionExpired: () => ({
-        success: false,
-        status: 401,
-        message: "Session expired",
-        error: "SESSION_EXPIRED",
-    }),
-    invalidAccessToken: () => ({
-        success: false,
-        status: 401,
-        message: "Invalid Session",
-        error: "INVALID_ACCESS_TOKEN",
-    }),
-    tokenRenewalError: () => ({
-        success: false,
-        status: 500,
-        message: "Token renewal failed",
-        error: "TOKEN_RENEWAL_ERROR",
-    }),
-    internalServerError: () => ({
-        success: false,
-        status: 500,
-        message: "Internal server error",
-        error: "INTERNAL_SERVER_ERROR",
-    }),
-    missingFormId: () => ({
-        success: false,
-        status: 400,
-        message: "Form ID is missing",
-        error: "MISSING_FORM_ID",
-    }),
-    invalidRequestType: () => ({
-        success: false,
-        status: 400,
-        message: "Invalid request type",
-        error: "INVALID_REQUEST_TYPE",
-    }),
-    missingRefreshTokenConfig: () => ({
-        success: false,
-        status: 500,
-        message: "Server configuration error",
-        error: "MISSING_REFRESH_TOKEN_CONFIG",
-    }),
-};
+const formHelpers_1 = require("../utilities/formHelpers");
 class FormsessionMiddleware {
     /**
      * Validates environment configuration for cookies
@@ -136,42 +57,47 @@ class FormsessionMiddleware {
     static validateFormId(formId) {
         return !!(formId && (0, mongoose_1.isValidObjectId)(formId));
     }
-    /**
-     * Checks if session has expired
-     */
-    static isSessionExpired(dbExpiredAt, isTokenExpired) {
-        return dbExpiredAt <= new Date() || !!isTokenExpired;
-    }
     static VerifyFormsession = async (req, res, next) => {
-        if (!this.validateCookieConfig())
-            return res.status(500).json(RESPONSES.missingCookieConfig());
+        if (!this.validateCookieConfig()) {
+            res.status(500).json(customType_1.RESPONSES.missingCookieConfig());
+            return;
+        }
         //Verify required param
         const { formId } = req.params;
-        if (!this.validateFormId(formId))
-            return res.status(400).json(RESPONSES.invalidFormId());
+        if (!this.validateFormId(formId)) {
+            res.status(400).json(customType_1.RESPONSES.invalidFormId());
+            return;
+        }
         try {
             //Verify initial formdata
             const form = await Form_model_1.default.findById(formId)
                 .select("type setting.email setting.acceptResponses")
                 .lean();
-            if (!form?.setting?.acceptResponses)
-                return res.status(403).json(RESPONSES.formClosed());
+            if (!form?.setting?.acceptResponses) {
+                res.status(403).json(customType_1.RESPONSES.formClosed());
+                return;
+            }
             if (!form.setting.email) {
-                return next();
+                next();
+                return;
             }
             // Extract both session_id and access_id from cookies
             const sessionToken = req.cookies[process.env.RESPONDENT_COOKIE];
             const accessToken = req.cookies[process.env.ACCESS_RESPONDENT_COOKIE];
-            console.log({ sessionToken, accessToken });
             if (!sessionToken) {
-                return res.status(401).json(RESPONSES.missingSessionToken());
+                res.status(401).json(customType_1.RESPONSES.missingSessionToken());
+                return;
             }
             // Verify session token
-            const extractedSessionToken = formsession_controller_1.default.ExtractToken({
+            const extractedSessionToken = (0, helper_1.ExtractTokenPayload)({
                 token: sessionToken,
+                customSecret: process.env.RESPONDENT_TOKEN_JWT_SECRET,
             });
-            if (!extractedSessionToken.data) {
-                return res.status(401).json(RESPONSES.invalidSessionToken());
+            //invalid token handle
+            if (!extractedSessionToken) {
+                await Formsession_model_1.default.deleteOne({ session_id: sessionToken });
+                res.status(401).json(customType_1.RESPONSES.invalidSessionToken());
+                return;
             }
             try {
                 // Find session using both session_id and access_id for validation
@@ -186,30 +112,19 @@ class FormsessionMiddleware {
                 if (!isSession) {
                     res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE);
                     res.clearCookie(process.env.RESPONDENT_COOKIE);
-                    return res.status(401).json(RESPONSES.sessionNotFound());
-                }
-                const dbExpiredAt = new Date(isSession.expiredAt);
-                if (this.isSessionExpired(dbExpiredAt, extractedSessionToken.isExpired)) {
-                    await Formsession_model_1.default.deleteOne({ session_id: sessionToken });
-                    return res.status(401).json(RESPONSES.sessionExpired());
+                    res.status(401).json(customType_1.RESPONSES.sessionNotFound());
+                    return;
                 }
                 //Access Token Handler
                 const verifiedAccessToken = accessToken
-                    ? formsession_controller_1.default.ExtractToken({
+                    ? (0, helper_1.ExtractTokenPayload)({
                         token: accessToken,
+                        customSecret: process.env.RESPONDENT_TOKEN_JWT_SECRET,
                     })
                     : undefined;
-                if (verifiedAccessToken &&
-                    !verifiedAccessToken?.isExpired &&
-                    !verifiedAccessToken?.data) {
-                    return res.status(401).json(RESPONSES.invalidAccessToken());
-                }
-                // Renew access tokens if needed
-                if (!verifiedAccessToken || verifiedAccessToken.isExpired) {
-                    const newAccessId = await formsession_controller_1.default.GenerateUniqueAccessId({
-                        email: isSession.respondentEmail,
-                        expireIn: "30m",
-                    });
+                // Renew access tokens if needed happen cuz session token still valid
+                if (!verifiedAccessToken) {
+                    const newAccessId = (0, helper_1.GenerateToken)({ email: isSession.respondentEmail }, "30m");
                     // Update both session_id and access_id in database
                     await Formsession_model_1.default.updateOne({ session_id: sessionToken }, {
                         access_id: newAccessId,
@@ -223,31 +138,34 @@ class FormsessionMiddleware {
                         access_payload: newExtractedAccessToken,
                     };
                     formsession_controller_1.default.setCookie(res, newAccessId, process.env.ACCESS_RESPONDENT_COOKIE, (0, helper_1.getDateByMinute)(30));
-                    return next();
+                    next();
+                    return;
                 }
                 // No renewal needed - use existing tokens
                 req.formsession = {
                     sub: sessionToken,
                     access_token: accessToken,
-                    access_payload: verifiedAccessToken.data,
+                    access_payload: verifiedAccessToken,
                 };
-                return next();
+                next();
             }
             catch (error) {
                 console.error("Token renewal failed:", error);
-                return res.status(500).json(RESPONSES.tokenRenewalError());
+                res.status(500).json(customType_1.RESPONSES.tokenRenewalError());
             }
         }
         catch (error) {
-            console.error("Verify Form session error:", error);
-            return res.status(500).json(RESPONSES.internalServerError());
+            console.error("Verify Form session error:");
+            res.status(500).json(customType_1.RESPONSES.internalServerError());
         }
     };
     static VerifyRespondentFormSessionData = async (req, res, next) => {
         const { ty } = req.query;
         const { formId } = req.params;
-        if (!formId)
-            return res.status(400).json(RESPONSES.missingFormId());
+        if (!formId || !(0, formHelpers_1.isValidObjectIdString)(formId)) {
+            res.status(400).json(customType_1.RESPONSES.missingFormId());
+            return;
+        }
         try {
             switch (ty) {
                 case User_middleware_1.GetPublicFormDataTyEnum.initial: {
@@ -259,7 +177,8 @@ class FormsessionMiddleware {
                         await this.VerifyFormsession(req, res, next);
                         return;
                     }
-                    return next();
+                    next();
+                    return;
                 }
                 case User_middleware_1.GetPublicFormDataTyEnum.data: {
                     //Verify Session with both tokens
@@ -271,17 +190,17 @@ class FormsessionMiddleware {
                     return;
                 }
                 default:
-                    return res.status(400).json(RESPONSES.invalidRequestType());
+                    return res.status(400).json(customType_1.RESPONSES.invalidRequestType());
             }
         }
         catch (error) {
             console.error("Verify Respondent Form session error:", error);
-            return res.status(500).json(RESPONSES.internalServerError());
+            return res.status(500).json(customType_1.RESPONSES.internalServerError());
         }
     };
     static VerifyUserRespondentLogin = async (req, res, next) => {
         if (!process.env.REFRESH_TOKEN_COOKIE)
-            return res.status(500).json(RESPONSES.missingRefreshTokenConfig());
+            return res.status(500).json(customType_1.RESPONSES.missingRefreshTokenConfig());
         const existCookie = req.cookies[process.env.REFRESH_TOKEN_COOKIE];
         try {
             if (!existCookie) {
@@ -291,7 +210,7 @@ class FormsessionMiddleware {
         }
         catch (error) {
             console.error("Verify User Response Login error:", error);
-            return res.status(500).json(RESPONSES.internalServerError());
+            return res.status(500).json(customType_1.RESPONSES.internalServerError());
         }
     };
 }

@@ -50,7 +50,7 @@ describe("ResponseContentValidation", () => {
                     },
                 }),
             ];
-            const validated = validContentWithAnswer.map(ResponseContentValidationService_1.default.validateAnswerFormat);
+            const validated = validContentWithAnswer.map((con) => ResponseContentValidationService_1.default.validateAnswerFormat(con));
             expect(validated.map((i) => i.isValid)).toEqual([false, false]);
             expect(validated[0].errors.length).toBe(1);
             expect(validated[1].errors.length).toBe(1);
@@ -81,25 +81,29 @@ describe("ResponseContentValidation", () => {
                 hasAnswer: true,
                 answer: { answer: "0" },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(mcInvalid).isValid).toBe(false);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(mcInvalid)
+                .isValid).toBe(false);
             // Invalid: array with non-numbers
             const cbInvalid = mockdata_1.MockContentFactory.createCheckboxContent({
                 hasAnswer: true,
                 answer: { answer: [0, "abc"] },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(cbInvalid).isValid).toBe(false);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(cbInvalid)
+                .isValid).toBe(false);
         });
         test("validates Text, ShortAnswer, Paragraph properly", () => {
             const textValid = mockdata_1.MockContentFactory.createShortAnswerContent({
                 hasAnswer: true,
                 answer: { answer: "Valid text response" },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(textValid).isValid).toBe(true);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(textValid)
+                .isValid).toBe(true);
             const textInvalid = mockdata_1.MockContentFactory.createShortAnswerContent({
                 hasAnswer: true,
                 answer: { answer: 12345 },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(textInvalid).isValid).toBe(false);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(textInvalid)
+                .isValid).toBe(false);
         });
         test("validates Number properly", () => {
             const numValid = mockdata_1.MockContentFactory.createNumberContent({
@@ -111,24 +115,28 @@ describe("ResponseContentValidation", () => {
                 hasAnswer: true,
                 answer: { answer: "42" },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(numInvalid).isValid).toBe(false);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(numInvalid)
+                .isValid).toBe(false);
         });
         test("validates Date properly", () => {
             const dateStringValid = mockdata_1.MockContentFactory.createDateContent({
                 hasAnswer: true,
                 answer: { answer: "2024-05-01" },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(dateStringValid).isValid).toBe(true);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(dateStringValid)
+                .isValid).toBe(true);
             const dateObjValid = mockdata_1.MockContentFactory.createDateContent({
                 hasAnswer: true,
                 answer: { answer: new Date("2024-05-01") },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(dateObjValid).isValid).toBe(true);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(dateObjValid)
+                .isValid).toBe(true);
             const dateInvalidString = mockdata_1.MockContentFactory.createDateContent({
                 hasAnswer: true,
                 answer: { answer: "not-a-valid-date" },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(dateInvalidString).isValid).toBe(false);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(dateInvalidString)
+                .isValid).toBe(false);
         });
         test("validates RangeDate properly", () => {
             const rangeDateValid = mockdata_1.MockContentFactory.createRangeDateContent({
@@ -140,7 +148,8 @@ describe("ResponseContentValidation", () => {
                     },
                 },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(rangeDateValid).isValid).toBe(true);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(rangeDateValid)
+                .isValid).toBe(true);
             // Inverted date range
             const rangeDateInverted = mockdata_1.MockContentFactory.createRangeDateContent({
                 hasAnswer: true,
@@ -151,7 +160,8 @@ describe("ResponseContentValidation", () => {
                     },
                 },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(rangeDateInverted).isValid).toBe(false);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(rangeDateInverted)
+                .isValid).toBe(false);
         });
         test("validates RangeNumber properly", () => {
             const rangeNumValid = mockdata_1.MockContentFactory.createRangeNumberContent({
@@ -160,7 +170,8 @@ describe("ResponseContentValidation", () => {
                     answer: { start: 10, end: 50 },
                 },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(rangeNumValid).isValid).toBe(true);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(rangeNumValid)
+                .isValid).toBe(true);
             // Inverted range
             const rangeNumInverted = mockdata_1.MockContentFactory.createRangeNumberContent({
                 hasAnswer: true,
@@ -168,7 +179,8 @@ describe("ResponseContentValidation", () => {
                     answer: { start: 100, end: 50 },
                 },
             });
-            expect(ResponseContentValidationService_1.default.validateAnswerFormat(rangeNumInverted).isValid).toBe(false);
+            expect(ResponseContentValidationService_1.default.validateAnswerFormat(rangeNumInverted)
+                .isValid).toBe(false);
         });
         test("supports 3-argument signature (questionType, answer, content)", () => {
             const content = mockdata_1.MockContentFactory.createMultipleChoiceContent({
@@ -221,8 +233,12 @@ describe("ResponseContentValidation", () => {
     });
     describe("calculateResponseTotalScore", () => {
         test("calculates total score for top-level questions and ignores conditional questions", () => {
-            const topLevelQ1 = mockdata_1.MockContentFactory.createMultipleChoiceContent({ score: 10 });
-            const topLevelQ2 = mockdata_1.MockContentFactory.createMultipleChoiceContent({ score: 15 });
+            const topLevelQ1 = mockdata_1.MockContentFactory.createMultipleChoiceContent({
+                score: 10,
+            });
+            const topLevelQ2 = mockdata_1.MockContentFactory.createMultipleChoiceContent({
+                score: 15,
+            });
             const childQ = mockdata_1.MockContentFactory.createMultipleChoiceContent({
                 score: 5,
                 parentcontent: {
@@ -238,7 +254,6 @@ describe("ResponseContentValidation", () => {
             ];
             const total = ResponseContentValidationService_1.default.calculateResponseTotalScore(responseSet);
             expect(total).toBe(25);
-            // Test typo alias returns identical result
             expect(ResponseContentValidationService_1.default.calcualteResponseTotalScore(responseSet)).toBe(25);
         });
     });

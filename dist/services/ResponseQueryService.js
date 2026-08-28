@@ -317,99 +317,7 @@ class ResponseQueryService {
         };
     }
     /**
-     * Validates the content items on a public form page.
-     * Checks for common structural issues per question type and collects
-     * typed error entries. Returns `isValid: true` when no errors are found.
-     */
-    static validateContents(contents) {
-        const errors = [];
-        for (const content of contents) {
-            const questionId = content._id?.toString() ?? "";
-            const page = content.page ?? 1;
-            const qIdx = content.qIdx;
-            const baseEntry = () => ({
-                _id: questionId,
-                qIdx,
-                questionId,
-                page,
-            });
-            // Choice-based questions must have at least one option
-            if (content.type === Content_model_1.QuestionType.MultipleChoice ||
-                content.type === Content_model_1.QuestionType.MultipleSelection) {
-                if (!content.multiple || content.multiple.length === 0) {
-                    errors.push({
-                        ...baseEntry(),
-                        message: {
-                            name: "FORMAT",
-                            message: "Multiple choice question has no options defined",
-                        },
-                    });
-                }
-            }
-            if (content.type === Content_model_1.QuestionType.CheckBox) {
-                if (!content.checkbox || content.checkbox.length === 0) {
-                    errors.push({
-                        ...baseEntry(),
-                        message: {
-                            name: "FORMAT",
-                            message: "Checkbox question has no options defined",
-                        },
-                    });
-                }
-            }
-            if (content.type === Content_model_1.QuestionType.Selection) {
-                if (!content.selection || content.selection.length === 0) {
-                    errors.push({
-                        ...baseEntry(),
-                        message: {
-                            name: "FORMAT",
-                            message: "Selection question has no options defined",
-                        },
-                    });
-                }
-            }
-            // Range questions must have both start and end bounds
-            if (content.type === Content_model_1.QuestionType.RangeDate) {
-                if (!content.rangedate?.start || !content.rangedate?.end) {
-                    errors.push({
-                        ...baseEntry(),
-                        message: {
-                            name: "FORMAT",
-                            message: "Range date question is missing start or end bound",
-                        },
-                    });
-                }
-            }
-            if (content.type === Content_model_1.QuestionType.RangeNumber) {
-                if (content.rangenumber?.start === undefined ||
-                    content.rangenumber?.end === undefined) {
-                    errors.push({
-                        ...baseEntry(),
-                        message: {
-                            name: "FORMAT",
-                            message: "Range number question is missing start or end bound",
-                        },
-                    });
-                }
-            }
-            // Surface pre-stored validation issues from the content document
-            if (content.validationIssues && content.validationIssues.length > 0) {
-                for (const issue of content.validationIssues) {
-                    errors.push({
-                        ...baseEntry(),
-                        message: issue,
-                    });
-                }
-            }
-        }
-        return {
-            isValid: errors.length === 0,
-            errors,
-        };
-    }
-    /**
      * Calculate IP match score based on multiple factors
-     * Returns a score from 0-100 indicating confidence level
      */
     static calculateIPMatchScore(currentIP, storedHashedIP, deviceInfo, storedDeviceInfo) {
         let score = 0;
@@ -609,7 +517,6 @@ class ResponseQueryService {
      *
      */
     static processResponseValue(question, response) {
-        // Get choice options if this is a choice-based question
         const choiceOptions = question[question.type];
         // Handle choice questions
         if (Array.isArray(choiceOptions) && response !== undefined) {

@@ -43,217 +43,22 @@ const Form_model_1 = __importDefault(require("../model/Form.model"));
 const Response_model_1 = __importStar(require("../model/Response.model"));
 const formHelpers_1 = require("../utilities/formHelpers");
 class ResponseValidationService {
-    static async hasRespondent(formId, options) {
-        try {
-            const { fingerprint, ipAddress, userId, guestEmail, requireExactMatch = false, includeFallbackChecks = true, } = options;
-            // Validate input
-            if (!formId || !mongoose_1.Types.ObjectId.isValid(formId)) {
-                throw new Error("Invalid form ID provided");
-            }
-            // Strategy 1: Check by authenticated user ID (highest confidence)
-            if (userId && mongoose_1.Types.ObjectId.isValid(userId)) {
-                const userResponse = await Response_model_1.default.findOne({
-                    formId: new mongoose_1.Types.ObjectId(formId),
-                    userId: new mongoose_1.Types.ObjectId(userId),
-                })
-                    .select("_id submittedAt")
-                    .lean();
-                if (userResponse) {
-                    return {
-                        hasResponded: true,
-                        responseId: userResponse._id.toString(),
-                        trackingMethod: "user_id",
-                        confidence: "high",
-                        metadata: {
-                            userId,
-                            submittedAt: userResponse.submittedAt,
-                        },
-                    };
-                }
-            }
-            // Strategy 2: Check by guest email (high confidence for guest users)
-            if (guestEmail) {
-                const emailResponse = await Response_model_1.default.findOne({
-                    formId: new mongoose_1.Types.ObjectId(formId),
-                    "guest.email": guestEmail.toLowerCase().trim(),
-                })
-                    .select("_id submittedAt guest.email")
-                    .lean();
-                if (emailResponse) {
-                    return {
-                        hasResponded: true,
-                        responseId: emailResponse._id.toString(),
-                        trackingMethod: "guest_email",
-                        confidence: "high",
-                        metadata: {
-                            guestEmail,
-                            submittedAt: emailResponse.submittedAt,
-                        },
-                    };
-                }
-            }
-            // Strategy 3: Check by fingerprint + IP combination (medium-high confidence)
-            if (fingerprint && ipAddress) {
-                const fingerprintIpResponse = await Response_model_1.default.findOne({
-                    formId: new mongoose_1.Types.ObjectId(formId),
-                    respondentFingerprint: fingerprint,
-                    respondentIP: ipAddress,
-                })
-                    .select("_id submittedAt respondentFingerprint respondentIP fingerprintStrength")
-                    .lean();
-                if (fingerprintIpResponse) {
-                    return {
-                        hasResponded: true,
-                        responseId: fingerprintIpResponse._id.toString(),
-                        trackingMethod: "fingerprint_and_ip",
-                        confidence: "high",
-                        metadata: {
-                            fingerprint,
-                            ipAddress,
-                            submittedAt: fingerprintIpResponse.submittedAt,
-                            fingerprintStrength: fingerprintIpResponse.fingerprintStrength,
-                        },
-                    };
-                }
-            }
-            if (requireExactMatch || !includeFallbackChecks) {
-                return {
-                    hasResponded: false,
-                    trackingMethod: "none",
-                    confidence: "high",
-                };
-            }
-            // Strategy 4: Fallback - Check by fingerprint only (medium confidence)
-            if (fingerprint) {
-                const fingerprintResponse = await Response_model_1.default.findOne({
-                    formId: new mongoose_1.Types.ObjectId(formId),
-                    respondentFingerprint: fingerprint,
-                })
-                    .select("_id submittedAt respondentFingerprint respondentIP fingerprintStrength")
-                    .lean();
-                if (fingerprintResponse) {
-                    return {
-                        hasResponded: true,
-                        responseId: fingerprintResponse._id.toString(),
-                        trackingMethod: "fingerprint",
-                        confidence: "medium",
-                        metadata: {
-                            fingerprint,
-                            ipAddress: fingerprintResponse.respondentIP,
-                            submittedAt: fingerprintResponse.submittedAt,
-                            fingerprintStrength: fingerprintResponse.fingerprintStrength,
-                        },
-                    };
-                }
-            }
-            // Strategy 5: Fallback - Check by IP only (low confidence)
-            if (ipAddress) {
-                const ipResponse = await Response_model_1.default.findOne({
-                    formId: new mongoose_1.Types.ObjectId(formId),
-                    respondentIP: ipAddress,
-                })
-                    .select("_id submittedAt respondentIP respondentFingerprint")
-                    .sort({ submittedAt: -1 }) // Get most recent if multiple
-                    .lean();
-                if (ipResponse) {
-                    return {
-                        hasResponded: true,
-                        responseId: ipResponse._id.toString(),
-                        trackingMethod: "ip",
-                        confidence: "low",
-                        metadata: {
-                            ipAddress,
-                            fingerprint: ipResponse.respondentFingerprint,
-                            submittedAt: ipResponse.submittedAt,
-                        },
-                    };
-                }
-            }
-            return {
-                hasResponded: false,
-                trackingMethod: "none",
-                confidence: "high",
-                metadata: {
-                    fingerprint,
-                    ipAddress,
-                    userId,
-                    guestEmail,
-                },
-            };
-        }
-        catch (error) {
-            console.error("Error checking respondent:", {
-                formId,
-                options,
-                error: error instanceof Error ? error.message : error,
-            });
-            throw new Error(`Failed to check respondent status: ${error instanceof Error ? error.message : "Unknown error"}`);
-        }
-    }
-    static async hasRespondentResponse(formId, fingerprint, respondentIp) {
-        console.warn("hasRespondentResponse is deprecated. Use hasRespondent() instead.");
-        try {
-            const result = await this.hasRespondent(formId, {
-                fingerprint,
-                ipAddress: respondentIp,
-                requireExactMatch: true,
-                includeFallbackChecks: false,
-            });
-            return result.hasResponded;
-        }
-        catch (error) {
-            console.error("Check for response", error);
-            throw new Error("Error occurred while checking respondent response");
-        }
-    }
-    static extractTrackingOptions(req, additionalOptions = {}) {
-        const options = { ...additionalOptions };
-        // Extract user ID from authenticated request
-        if ("user" in req && req.user && req.user.sub) {
-            options.userId = req.user.sub.toString();
-        }
-        // Extract guest email from request body
-        if (req.body?.guest?.email) {
-            options.guestEmail = req.body.guest.email;
-        }
-        // Extract fingerprint from headers or body
-        if (req.headers["x-fingerprint"]) {
-            options.fingerprint = req.headers["x-fingerprint"];
-        }
-        else if (req.body?.fingerprint) {
-            options.fingerprint = req.body.fingerprint;
-        }
-        // Extract IP address
-        const clientIP = req.ip ||
-            req.socket?.remoteAddress ||
-            req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-            req.headers["x-real-ip"] ||
-            req.headers["x-client-ip"];
-        if (clientIP) {
-            options.ipAddress = clientIP;
-        }
-        return options;
-    }
-    static async hasRespondentFromRequest(formId, req, options = {}) {
-        const trackingOptions = this.extractTrackingOptions(req, options);
-        return this.hasRespondent(formId, trackingOptions);
-    }
-    static async validateRequest({ req, res, requireFormId = true, requireUserInfo, noToken, }) {
-        const user = req.user;
+    static validateRequest({ req, res, requireFormId = true, requireUserInfo, noToken, }) {
+        const user = req?.user;
         if (!user && !noToken) {
-            res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
-            return { user: null, isValid: false };
+            (0, helper_1.SendResponse)(res, 404);
+            return { isValid: false };
         }
         if (requireFormId) {
-            const formId = req.query.formId ||
-                req.params.formId ||
-                req.body.formId;
-            if (!formId && user) {
-                res.status(400).json((0, helper_1.ReturnCode)(400, "Form ID is required"));
-                return { user, isValid: false };
+            const formId = req.query?.formId ||
+                req.params?.formId ||
+                req.body?.formId;
+            if (!formId || !(0, formHelpers_1.isValidObjectIdString)(formId)) {
+                (0, helper_1.SendResponse)(res, 400);
+                return { isValid: false };
             }
             return {
-                user: user ?? null,
+                user,
                 formId,
                 page: Number(req.query.page || req.query.p) || 1,
                 limit: Number(req.query.limit || req.query.lt) || 10,
@@ -265,16 +70,15 @@ class ResponseValidationService {
             };
         }
         if (requireUserInfo) {
-            if (!req.query.uid && user) {
+            if (!req.query.uid || !user) {
                 res.status(400).json((0, helper_1.ReturnCode)(400));
-                return { user, isValid: false };
+                return { isValid: false };
             }
         }
         return {
-            user: user ?? null,
-            page: Number(req.query.page || req.query.p) || 1,
-            limit: Number(req.query.limit || req.query.lt) || 10,
-            uid: req.query.uid ?? undefined,
+            user,
+            page: Number(req.query?.page || req.query?.p) || 1,
+            limit: Number(req.query?.limit || req.query?.lt) || 10,
             isValid: true,
         };
     }

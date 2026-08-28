@@ -16,7 +16,6 @@ var GetPublicFormDataTyEnum;
     GetPublicFormDataTyEnum["data"] = "data";
     GetPublicFormDataTyEnum["preview"] = "preview";
 })(GetPublicFormDataTyEnum || (exports.GetPublicFormDataTyEnum = GetPublicFormDataTyEnum = {}));
-// ==================== Constants ====================
 const TOKEN_CONFIG = {
     ACCESS_TOKEN_EXPIRY: "30m",
     ACCESS_TOKEN_EXPIRY_MINUTES: 30,
@@ -43,9 +42,7 @@ const ERROR_CODES = {
     SESSION_EXPIRED: "SESSION_EXPIRED",
     REFRESH_REQUIRED: "REFRESH_REQUIRED",
 };
-// ==================== Authentication Middleware Class ====================
 class AuthenticateMiddleWare {
-    // ==================== Private Helper Methods ====================
     /**
      * Validates required environment variables
      */
@@ -84,23 +81,6 @@ class AuthenticateMiddleWare {
         };
     }
     /**
-     * Validates and retrieves active session
-     */
-    async validateSession(sessionToken, userId) {
-        const query = {
-            session_id: sessionToken,
-            expireAt: { $gte: new Date() },
-        };
-        if (userId) {
-            query.user = userId;
-        }
-        return await Usersession_model_1.default.findOne(query)
-            .select("session_id expireAt userId")
-            .populate({ path: "user", select: "_id email role" })
-            .lean()
-            .exec();
-    }
-    /**
      * Cleans up expired session
      */
     async cleanupExpiredSession(sessionToken) {
@@ -111,7 +91,6 @@ class AuthenticateMiddleWare {
             console.error("Failed to cleanup expired session:", error);
         }
     }
-    // ==================== Public Middleware Methods ====================
     /**
      * Verifies access token (Hybrid approach - no auto-refresh)
      * Returns specific error codes for frontend to handle refresh
@@ -139,7 +118,6 @@ class AuthenticateMiddleWare {
             }
             // Verify access token
             const verifiedToken = this.verifyJWT(accessToken);
-            // Token expired - signal frontend to refresh
             if (verifiedToken.isExpired) {
                 res.status(401).json({
                     success: false,
@@ -226,31 +204,6 @@ class AuthenticateMiddleWare {
             return res
                 .status(500)
                 .json((0, helper_1.ReturnCode)(500, ERROR_MESSAGES.VERIFICATION_FAILED));
-        }
-    };
-    /**
-     * Middleware to require admin role
-     */
-    RequireAdmin = (req, res, next) => {
-        try {
-            if (!req.user) {
-                return res
-                    .status(401)
-                    .json((0, helper_1.ReturnCode)(401, ERROR_MESSAGES.NOT_AUTHENTICATED));
-            }
-            const userRole = req.user.userDetails?.role || req.user.role;
-            if (userRole !== "ADMIN") {
-                return res
-                    .status(403)
-                    .json((0, helper_1.ReturnCode)(403, ERROR_MESSAGES.ADMIN_REQUIRED));
-            }
-            return next();
-        }
-        catch (error) {
-            console.error("Admin check error:", error);
-            return res
-                .status(500)
-                .json((0, helper_1.ReturnCode)(500, ERROR_MESSAGES.PERMISSION_CHECK_FAILED));
         }
     };
 }

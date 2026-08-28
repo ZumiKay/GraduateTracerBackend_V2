@@ -332,6 +332,23 @@ class MockContentFactory {
         }
         return result;
     }
+    /**
+     * Simple form mock data with 10 questions across 4 pages.
+     *
+     * List of created questions:
+     * 1. [qIdx: 0, Page 1] MultipleChoice (4 options): "What is your favorite programming language?"
+     * 2. [qIdx: 1, Page 1] CheckBox (5 options): "Select all programming languages you know"
+     * 3. [qIdx: 2, Page 1] Text: "What is your full name?"
+     * 4. [qIdx: 3, Page 2] ShortAnswer: "Explain the concept of polymorphism"
+     * 5. [qIdx: 4, Page 2] Number: "How many years of programming experience do you have?"
+     * 6. [qIdx: 5, Page 2] Date: "When did you start programming?"
+     * 7. [qIdx: 6, Page 3] RangeNumber: "Select your salary range (in thousands)"
+     * 8. [qIdx: 7, Page 3] RangeDate: "Select your project duration"
+     * 9. [qIdx: 8, Page 3] Selection (3 options): "Choose your preferred IDE"
+     * 10. [qIdx: 9, Page 4] Paragraph: "Describe your biggest programming project"
+     *
+     * @returns Array of 10 ContentType questions sharing a common formId
+     */
     static createSampleForm() {
         const formId = this.createFormId();
         const multipleChoice = this.createMultipleChoiceContent({

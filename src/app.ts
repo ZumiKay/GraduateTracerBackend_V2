@@ -38,6 +38,10 @@ app.use("/v0/api/response", ResponseRouter);
 app.use("/v0/api/notifications", NotificationRouter);
 app.use("/v0/api/exports", ExportRouter);
 
+app.get("/health", (req: Request, res: Response) => {
+  res.status(200).json({ status: "ok", uptime: process.uptime() });
+});
+
 app.get("/", (req: Request, res: Response) => {
   res.send("Hello, TypeScript with Express!");
 });

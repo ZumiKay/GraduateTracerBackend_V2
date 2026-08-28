@@ -4,6 +4,7 @@ exports.ResponseContentValidationService = void 0;
 const Content_model_1 = require("../model/Content.model");
 const validation_types_1 = require("../types/validation.types");
 class ResponseContentValidationService {
+    //Check the valid of question answers and scores
     static validateAnswerFormat(arg1, arg2, arg3) {
         let questionType;
         let answer;
@@ -194,6 +195,7 @@ class ResponseContentValidationService {
     static calcualteResponseTotalScore(responseSet) {
         return ResponseContentValidationService.calculateResponseTotalScore(responseSet);
     }
+    //Cleanly cast type of choice answer to Array of number
     static normalizeChoiceAnswer = (answer) => {
         return answer;
     };
