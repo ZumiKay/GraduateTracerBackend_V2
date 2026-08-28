@@ -5,14 +5,12 @@ exports.createFormLinkEmailData = createFormLinkEmailData;
 exports.previewEmailContent = previewEmailContent;
 exports.validateEmailContentTitle = validateEmailContentTitle;
 const helper_1 = require("../utilities/helper");
-/**
- * Utility functions for working with EmailService and ContentTitle
- */
-/**
- * Create a ResponseEmailData object with ContentTitle support
- */
 function createResponseEmailData(recipient, formTitle, responseData) {
-    return Object.assign({ to: recipient, formTitle }, responseData);
+    return {
+        to: recipient,
+        formTitle,
+        ...responseData,
+    };
 }
 /**
  * Create a FormLinkEmailData object with ContentTitle support

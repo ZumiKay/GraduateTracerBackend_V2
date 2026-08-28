@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { ContentType, QuestionType } from "../../model/Content.model";
+import { ContentType } from "../../model/Content.model";
 import { ResponseSetType, ScoringMethod } from "../../model/Response.model";
 import { MockContentFactory } from "../../utilities/mockdata";
 import { ResponseProcessingService } from "../ResponseProcessingService";
@@ -20,12 +20,11 @@ const questionIds = {
   q8: new Types.ObjectId(),
   q999: new Types.ObjectId(),
 };
-//Mock Data Generators
+
+/* ---------------------------------- Tests --------------------------------- */
 
 describe("ResponseProcessingService - Adding Score Tests", () => {
   const formId = new Types.ObjectId();
-
-  // Generate valid ObjectIds for questions
 
   const mockContentData: Array<ContentType> = [
     MockContentFactory.createMultipleChoiceContent({

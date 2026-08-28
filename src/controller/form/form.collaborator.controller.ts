@@ -1,6 +1,5 @@
 import { Response } from "express";
 import { ReturnCode } from "../../utilities/helper";
-import { MongoErrorHandler } from "../../utilities/MongoErrorHandler";
 import Form, { CollaboratorType } from "../../model/Form.model";
 import { CustomRequest } from "../../types/customType";
 import { Types } from "mongoose";
@@ -44,13 +43,8 @@ interface FormCollarboratorDataType {
 
 export const ManageFormCollaborator = async (
   req: CustomRequest,
-  res: Response
+  res: Response,
 ) => {
-  //debug ID
-  const operationId = MongoErrorHandler.generateOperationId(
-    "manage_collaborator"
-  );
-
   try {
     const { formId, email, role, action } =
       req.body as ManageFormCollaboratorBodyType;
@@ -79,7 +73,7 @@ export const ManageFormCollaborator = async (
     if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
     const { isCreator, isOwner } = validateAccess(
       form,
-      new Types.ObjectId(user.sub)
+      new Types.ObjectId(user.sub),
     );
 
     if (
@@ -104,8 +98,8 @@ export const ManageFormCollaborator = async (
       role === CollaboratorType.editor
         ? "editors"
         : role === CollaboratorType.owner
-        ? "owners"
-        : undefined;
+          ? "owners"
+          : undefined;
     const currentList =
       (currentField &&
         (form[currentField as keyof typeof form] as Types.ObjectId[])) ||
@@ -123,7 +117,7 @@ export const ManageFormCollaborator = async (
 
         // Check if there's already a pending invite for this user
         const existingPendingInvite = form.pendingCollarborators?.find(
-          (pc) => pc.user.toString() === collaboratorId.toString()
+          (pc) => pc.user.toString() === collaboratorId.toString(),
         );
 
         //Generate Unique Code
@@ -136,7 +130,7 @@ export const ManageFormCollaborator = async (
             break;
           }
           const isCode = form.pendingCollarborators.some(
-            (c) => c.code == inviteCode
+            (c) => c.code == inviteCode,
           );
 
           if (isCode) {
@@ -153,7 +147,7 @@ export const ManageFormCollaborator = async (
             role,
           },
           `/collaborator/confirm`,
-          expiresInHours
+          expiresInHours,
         );
 
         //Calculate expiration timestamp
@@ -169,7 +163,7 @@ export const ManageFormCollaborator = async (
                 "pendingCollarborators.$.code": inviteCode,
                 "pendingCollarborators.$.expireIn": expireIn,
               },
-            }
+            },
           );
         } else {
           // Add new pending collaborator
@@ -236,23 +230,14 @@ export const ManageFormCollaborator = async (
 
     return res.status(400).json(ReturnCode(400, "Invalid role specified"));
   } catch (error) {
-    console.error(`[${operationId}] Error managing form collaborator:`, error);
-
-    const mongoErrorHandled = MongoErrorHandler.handleMongoError(error, res, {
-      operationId,
-      customMessage: "Failed to manage form collaborator",
-    });
-
-    if (!mongoErrorHandled.handled) {
-      return res.status(500).json(ReturnCode(500, "Internal server error"));
-    }
+    return res.status(500).json(ReturnCode(500, "Internal server error"));
   }
 };
 
 //User confirmation for collaborator
 export async function ConfirmAddCollaborator(
   req: CustomRequest,
-  res: Response
+  res: Response,
 ) {
   const { invite }: { invite: string } = req.body;
   const currentUser = req.user;
@@ -299,7 +284,7 @@ export async function ConfirmAddCollaborator(
 
     //Find the pending collaborator entry
     const pendingCollaborator = form.pendingCollarborators?.find(
-      (pc) => pc.code === inviteCode
+      (pc) => pc.code === inviteCode,
     );
 
     if (!pendingCollaborator) {
@@ -330,8 +315,8 @@ export async function ConfirmAddCollaborator(
       role === CollaboratorType.editor
         ? "editors"
         : role === CollaboratorType.owner
-        ? "owners"
-        : undefined;
+          ? "owners"
+          : undefined;
 
     if (!targetField) {
       return res.status(400).json(ReturnCode(400, "Invalid role"));
@@ -394,7 +379,7 @@ export async function GetFormCollaborators(req: CustomRequest, res: Response) {
       verifyRole(
         CollaboratorType.editor,
         form,
-        new Types.ObjectId(currentUser.sub)
+        new Types.ObjectId(currentUser.sub),
       )
     )
       return res.status(403).json(ReturnCode(403, "Access denied"));
@@ -513,8 +498,8 @@ export async function RemoveSelfFromForm(req: CustomRequest, res: Response) {
         .json(
           ReturnCode(
             400,
-            "Primary owner cannot remove themselves. Transfer ownership first."
-          )
+            "Primary owner cannot remove themselves. Transfer ownership first.",
+          ),
         );
     }
 
@@ -593,7 +578,7 @@ export async function ChangePrimaryOwner(req: CustomRequest, res: Response) {
         type: "ownership_transfer",
       },
       `/ownership/confirm`,
-      expiresInHours
+      expiresInHours,
     );
 
     // Save pending ownership transfer
@@ -639,8 +624,8 @@ export async function ChangePrimaryOwner(req: CustomRequest, res: Response) {
       .json(
         ReturnCode(
           200,
-          `Ownership transfer invitation sent to ${targetUser.email}. They must confirm to complete the transfer.`
-        )
+          `Ownership transfer invitation sent to ${targetUser.email}. They must confirm to complete the transfer.`,
+        ),
       );
   } catch (error) {
     console.error("Transfer Owner Error:", error);
@@ -651,7 +636,7 @@ export async function ChangePrimaryOwner(req: CustomRequest, res: Response) {
 // Confirm ownership transfer
 export async function ConfirmOwnershipTransfer(
   req: CustomRequest,
-  res: Response
+  res: Response,
 ) {
   const { invite }: { invite: string } = req.body;
   const currentUser = req.user;
@@ -712,8 +697,8 @@ export async function ConfirmOwnershipTransfer(
         .json(
           ReturnCode(
             400,
-            "No pending ownership transfer found or it has already been completed"
-          )
+            "No pending ownership transfer found or it has already been completed",
+          ),
         );
     }
 
@@ -744,7 +729,7 @@ export async function ConfirmOwnershipTransfer(
       return res
         .status(403)
         .json(
-          ReturnCode(403, "This ownership transfer invitation is not for you")
+          ReturnCode(403, "This ownership transfer invitation is not for you"),
         );
     }
 
@@ -779,7 +764,7 @@ export async function ConfirmOwnershipTransfer(
     return res.status(200).json({
       ...ReturnCode(
         200,
-        "Ownership transfer completed successfully. You are now the primary owner of this form."
+        "Ownership transfer completed successfully. You are now the primary owner of this form.",
       ),
       data: {
         formId,
@@ -798,7 +783,7 @@ export async function ConfirmOwnershipTransfer(
 // Cancel pending ownership transfer
 export async function CancelOwnershipTransfer(
   req: CustomRequest,
-  res: Response
+  res: Response,
 ) {
   const { formId } = req.body;
   const currentUser = req.user;
@@ -829,8 +814,8 @@ export async function CancelOwnershipTransfer(
         .json(
           ReturnCode(
             403,
-            "Only the primary owner can cancel the ownership transfer"
-          )
+            "Only the primary owner can cancel the ownership transfer",
+          ),
         );
     }
 
@@ -858,7 +843,7 @@ export async function CancelOwnershipTransfer(
 // Resend invitation to pending collaborator
 export async function ResendPendingInvitation(
   req: CustomRequest,
-  res: Response
+  res: Response,
 ) {
   const { formId, pendingId } = req.body;
   const currentUser = req.user;
@@ -886,7 +871,7 @@ export async function ResendPendingInvitation(
 
     const { isCreator, isOwner } = validateAccess(
       form,
-      new Types.ObjectId(currentUser.sub)
+      new Types.ObjectId(currentUser.sub),
     );
 
     if (!isCreator && !isOwner) {
@@ -896,7 +881,7 @@ export async function ResendPendingInvitation(
     }
 
     const pendingCollaborator = form.pendingCollarborators?.find(
-      (pc) => pc._id.toString() === pendingId
+      (pc) => pc._id.toString() === pendingId,
     );
 
     if (!pendingCollaborator) {
@@ -916,7 +901,7 @@ export async function ResendPendingInvitation(
     let newInviteCode = FormService.generateInviteCode();
     while (!isUnique) {
       const isCode = form.pendingCollarborators?.some(
-        (c) => c.code === newInviteCode && c._id.toString() !== pendingId
+        (c) => c.code === newInviteCode && c._id.toString() !== pendingId,
       );
       if (!isCode) isUnique = true;
       else newInviteCode = FormService.generateInviteCode();
@@ -931,7 +916,7 @@ export async function ResendPendingInvitation(
         role,
       },
       `/collaborator/confirm`,
-      expiresInHours
+      expiresInHours,
     );
 
     const newExpireIn = Date.now() + expiresInHours * 60 * 60 * 1000;
@@ -944,7 +929,7 @@ export async function ResendPendingInvitation(
           "pendingCollarborators.$.code": newInviteCode,
           "pendingCollarborators.$.expireIn": newExpireIn,
         },
-      }
+      },
     );
 
     // Get inviter's email
@@ -983,7 +968,7 @@ export async function ResendPendingInvitation(
 // Delete pending collaborator invitation
 export async function DeletePendingCollaborator(
   req: CustomRequest,
-  res: Response
+  res: Response,
 ) {
   const { formId, pendingId } = req.body;
   const currentUser = req.user;
@@ -1009,19 +994,19 @@ export async function DeletePendingCollaborator(
 
     const { isCreator, isOwner } = validateAccess(
       form,
-      new Types.ObjectId(currentUser.sub)
+      new Types.ObjectId(currentUser.sub),
     );
 
     if (!isCreator && !isOwner) {
       return res
         .status(403)
         .json(
-          ReturnCode(403, "Only form owner can delete pending invitations")
+          ReturnCode(403, "Only form owner can delete pending invitations"),
         );
     }
 
     const pendingCollaborator = form.pendingCollarborators?.find(
-      (pc) => pc._id.toString() === pendingId
+      (pc) => pc._id.toString() === pendingId,
     );
 
     if (!pendingCollaborator) {

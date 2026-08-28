@@ -1,7 +1,4 @@
 "use strict";
-/**
- * Utility functions for handling respondent data in backend
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getResponseDisplayName = exports.getRespondentDisplayName = exports.getNameFromEmail = void 0;
 /**
@@ -16,21 +13,7 @@ const getNameFromEmail = (email) => {
     return parts[0] || "";
 };
 exports.getNameFromEmail = getNameFromEmail;
-/**
- * Gets the display name for a respondent, falling back to email name if no name provided
- * @param respondentName - The respondent's name (optional)
- * @param respondentEmail - The respondent's email (optional)
- * @param guestName - Guest name (optional)
- * @param guestEmail - Guest email (optional)
- * @returns The best available name or "Anonymous"
- */
 const getRespondentDisplayName = (respondentName, respondentEmail, guestName, guestEmail) => {
-    // Priority order:
-    // 1. Respondent name
-    // 2. Guest name
-    // 3. Name from respondent email
-    // 4. Name from guest email
-    // 5. "Anonymous"
     if (respondentName && respondentName.trim()) {
         return respondentName.trim();
     }
@@ -58,7 +41,6 @@ exports.getRespondentDisplayName = getRespondentDisplayName;
  * @returns The best available name or "Anonymous"
  */
 const getResponseDisplayName = (response) => {
-    var _a, _b;
-    return (0, exports.getRespondentDisplayName)(response.respondentName, response.respondentEmail, (_a = response.guest) === null || _a === void 0 ? void 0 : _a.name, (_b = response.guest) === null || _b === void 0 ? void 0 : _b.email);
+    return (0, exports.getRespondentDisplayName)(response.respondentName, response.respondentEmail, response.guest?.name, response.guest?.email);
 };
 exports.getResponseDisplayName = getResponseDisplayName;

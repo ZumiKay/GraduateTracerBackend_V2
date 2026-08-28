@@ -11,7 +11,7 @@ export interface FormLinkData {
 export interface InviteLinkData {
   inviteCode: string;
   formId?: string;
-  expiresAt?: number; // Unix timestamp
+  expiresAt?: number;
   [key: string]: unknown;
 }
 
@@ -43,11 +43,11 @@ class FormLinkService {
 
   // Encrypt data using AES-256-GCM
   private encrypt(data: string): string {
-    const iv = crypto.randomBytes(12); // GCM recommends 12 bytes IV
+    const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv(
       this.algorithm,
       this.encryptionKey,
-      iv
+      iv,
     );
 
     let encrypted = cipher.update(data, "utf8", "hex");
@@ -55,7 +55,6 @@ class FormLinkService {
 
     const authTag = cipher.getAuthTag();
 
-    // Combine iv + authTag + encrypted data, then base64url encode
     const combined = Buffer.concat([
       iv,
       authTag,
@@ -72,7 +71,6 @@ class FormLinkService {
   // Decrypt data using AES-256-GCM
   decrypt(encryptedData: string): string {
     try {
-      // Restore base64 from base64url
       let restored = encryptedData.replace(/-/g, "+").replace(/_/g, "/");
       const paddingNeeded = 4 - (restored.length % 4);
       if (paddingNeeded !== 4) {
@@ -81,7 +79,6 @@ class FormLinkService {
 
       const combined = Buffer.from(restored, "base64");
 
-      // Extract iv (12 bytes), authTag (16 bytes), and encrypted data
       const iv = combined.subarray(0, 12);
       const authTag = combined.subarray(12, 28);
       const encrypted = combined.subarray(28);
@@ -89,7 +86,7 @@ class FormLinkService {
       const decipher = crypto.createDecipheriv(
         this.algorithm,
         this.encryptionKey,
-        iv
+        iv,
       );
       decipher.setAuthTag(authTag);
 
@@ -112,7 +109,7 @@ class FormLinkService {
   generateInviteLink(
     data: InviteLinkData,
     path: string = "/",
-    expiresInHours?: number
+    expiresInHours?: number,
   ): InviteLink {
     const payload: InviteLinkData = { ...data };
 
@@ -174,7 +171,7 @@ class FormLinkService {
   // Generate a secure form link with access token
   generateSecureFormLink(
     formId: string,
-    expiresInHours: number = 24
+    expiresInHours: number = 24,
   ): GeneratedLink {
     const accessToken = this.generateAccessToken();
     const expiresAt = new Date();
@@ -204,7 +201,7 @@ class FormLinkService {
   generateBatchLinks(
     formId: string,
     count: number,
-    secure: boolean = false
+    secure: boolean = false,
   ): GeneratedLink[] {
     const links: GeneratedLink[] = [];
 

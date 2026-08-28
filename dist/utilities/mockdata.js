@@ -28,100 +28,328 @@ class MockContentFactory {
     }
     static createMultipleChoiceContent(overrides) {
         const choices = this.createChoiceOptions(4);
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("What is your favorite programming language?"), type: Content_model_1.QuestionType.MultipleChoice, qIdx: 0, formId: this.createFormId(), multiple: choices, score: 10, answer: {
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("What is your favorite programming language?"),
+            type: Content_model_1.QuestionType.MultipleChoice,
+            qIdx: 0,
+            formId: this.createFormId(),
+            multiple: choices,
+            score: 10,
+            answer: {
                 _id: new mongoose_1.Types.ObjectId(),
-                answer: [0, 2], // Correct options indices
+                answer: 0,
                 isCorrect: true,
-            }, require: true, page: 1, hasAnswer: true, isValidated: true }, overrides);
+            },
+            require: true,
+            page: 1,
+            hasAnswer: true,
+            isValidated: true,
+            ...overrides,
+        };
     }
     static createCheckboxContent(overrides) {
         const choices = this.createChoiceOptions(5);
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("Select all programming languages you know"), type: Content_model_1.QuestionType.CheckBox, qIdx: 1, formId: this.createFormId(), checkbox: choices, score: 15, answer: {
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("Select all programming languages you know"),
+            type: Content_model_1.QuestionType.CheckBox,
+            qIdx: 1,
+            formId: this.createFormId(),
+            checkbox: choices,
+            score: 15,
+            answer: {
                 _id: new mongoose_1.Types.ObjectId(),
                 answer: [0, 1, 3], // Multiple correct answers
                 isCorrect: true,
-            }, require: false, page: 1, hasAnswer: true, isValidated: true }, overrides);
+            },
+            require: false,
+            page: 1,
+            hasAnswer: true,
+            isValidated: true,
+            ...overrides,
+        };
     }
     static createTextContent(overrides) {
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("What is your full name?"), type: Content_model_1.QuestionType.Text, qIdx: 2, formId: this.createFormId(), text: "", score: 0, require: true, page: 1, hasAnswer: false, isValidated: false }, overrides);
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("What is your full name?"),
+            type: Content_model_1.QuestionType.Text,
+            qIdx: 2,
+            formId: this.createFormId(),
+            text: "",
+            score: 0,
+            require: true,
+            page: 1,
+            hasAnswer: false,
+            isValidated: false,
+            ...overrides,
+        };
     }
     static createShortAnswerContent(overrides) {
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("Explain the concept of polymorphism"), type: Content_model_1.QuestionType.ShortAnswer, qIdx: 3, formId: this.createFormId(), text: "", score: 20, answer: {
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("Explain the concept of polymorphism"),
+            type: Content_model_1.QuestionType.ShortAnswer,
+            qIdx: 3,
+            formId: this.createFormId(),
+            text: "",
+            score: 20,
+            answer: {
                 _id: new mongoose_1.Types.ObjectId(),
                 answer: "polymorphism is the ability of objects to take multiple forms",
                 isCorrect: true,
-            }, require: true, page: 2, hasAnswer: true, isValidated: false }, overrides);
+            },
+            require: true,
+            page: 2,
+            hasAnswer: true,
+            isValidated: false, // Usually requires manual validation
+            ...overrides,
+        };
     }
     static createNumberContent(overrides) {
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("How many years of programming experience do you have?"), type: Content_model_1.QuestionType.Number, qIdx: 4, formId: this.createFormId(), score: 5, answer: {
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("How many years of programming experience do you have?"),
+            type: Content_model_1.QuestionType.Number,
+            qIdx: 4,
+            formId: this.createFormId(),
+            score: 5,
+            answer: {
                 _id: new mongoose_1.Types.ObjectId(),
-                answer: 5, // Exact number answer
+                answer: 5,
                 isCorrect: true,
-            }, require: false, page: 2, hasAnswer: true, isValidated: true }, overrides);
+            },
+            require: false,
+            page: 2,
+            hasAnswer: true,
+            isValidated: true,
+            ...overrides,
+        };
     }
     static createDateContent(overrides) {
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("When did you start programming?"), type: Content_model_1.QuestionType.Date, qIdx: 5, formId: this.createFormId(), date: new Date(), score: 0, answer: {
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("When did you start programming?"),
+            type: Content_model_1.QuestionType.Date,
+            qIdx: 5,
+            formId: this.createFormId(),
+            date: new Date(),
+            score: 0,
+            answer: {
                 _id: new mongoose_1.Types.ObjectId(),
                 answer: new Date("2020-01-01"),
                 isCorrect: true,
-            }, require: false, page: 2, hasAnswer: true, isValidated: true }, overrides);
+            },
+            require: false,
+            page: 2,
+            hasAnswer: true,
+            isValidated: true,
+            ...overrides,
+        };
     }
     static createRangeNumberContent(overrides) {
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("Select your salary range (in thousands)"), type: Content_model_1.QuestionType.RangeNumber, qIdx: 6, formId: this.createFormId(), rangenumber: { start: 0, end: 200 }, score: 0, answer: {
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("Select your salary range (in thousands)"),
+            type: Content_model_1.QuestionType.RangeNumber,
+            qIdx: 6,
+            formId: this.createFormId(),
+            rangenumber: { start: 0, end: 200 },
+            score: 0,
+            answer: {
                 _id: new mongoose_1.Types.ObjectId(),
                 answer: { start: 50, end: 100 },
                 isCorrect: true,
-            }, require: false, page: 3, hasAnswer: true, isValidated: true }, overrides);
+            },
+            require: false,
+            page: 3,
+            hasAnswer: true,
+            isValidated: true,
+            ...overrides,
+        };
     }
     static createRangeDateContent(overrides) {
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("Select your project duration"), type: Content_model_1.QuestionType.RangeDate, qIdx: 7, formId: this.createFormId(), rangedate: {
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("Select your project duration"),
+            type: Content_model_1.QuestionType.RangeDate,
+            qIdx: 7,
+            formId: this.createFormId(),
+            rangedate: {
                 start: new Date("2024-01-01"),
                 end: new Date("2024-12-31"),
-            }, score: 0, answer: {
+            },
+            score: 0,
+            answer: {
                 _id: new mongoose_1.Types.ObjectId(),
                 answer: {
                     start: new Date("2024-03-01"),
                     end: new Date("2024-09-01"),
                 },
                 isCorrect: true,
-            }, require: false, page: 3, hasAnswer: true, isValidated: true }, overrides);
+            },
+            require: false,
+            page: 3,
+            hasAnswer: true,
+            isValidated: true,
+            ...overrides,
+        };
     }
     static createSelectionContent(overrides) {
         const choices = this.createChoiceOptions(3);
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("Choose your preferred IDE"), type: Content_model_1.QuestionType.Selection, qIdx: 8, formId: this.createFormId(), selection: choices, score: 5, answer: {
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("Choose your preferred IDE"),
+            type: Content_model_1.QuestionType.Selection,
+            qIdx: 8,
+            formId: this.createFormId(),
+            selection: choices,
+            score: 5,
+            answer: {
                 _id: new mongoose_1.Types.ObjectId(),
-                answer: [1], // Single selection
+                answer: 1, // Single selection
                 isCorrect: true,
-            }, require: true, page: 3, hasAnswer: true, isValidated: true }, overrides);
+            },
+            require: true,
+            page: 3,
+            hasAnswer: true,
+            isValidated: true,
+            ...overrides,
+        };
     }
     static createParagraphContent(overrides) {
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("Describe your biggest programming project"), type: Content_model_1.QuestionType.Paragraph, qIdx: 9, formId: this.createFormId(), text: "", score: 25, answer: {
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle("Describe your biggest programming project"),
+            type: Content_model_1.QuestionType.Paragraph,
+            qIdx: 9,
+            formId: this.createFormId(),
+            text: "",
+            score: 25,
+            answer: {
                 _id: new mongoose_1.Types.ObjectId(),
                 answer: "A comprehensive e-commerce platform built with React and Node.js",
                 isCorrect: true,
-            }, require: false, page: 4, hasAnswer: true, isValidated: false }, overrides);
-    }
-    static createConditionalContent(parentContentId, overrides) {
-        const conditionalData = {
-            _id: new mongoose_1.Types.ObjectId(),
-            key: 0, // Depends on first option of parent
-            contentId: new mongoose_1.Types.ObjectId(parentContentId),
-            contentIdx: 0,
+            },
+            require: false,
+            page: 4,
+            hasAnswer: true,
+            isValidated: false, // Usually requires manual validation
+            ...overrides,
         };
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle("Which JavaScript framework do you prefer? (Conditional)"), type: Content_model_1.QuestionType.MultipleChoice, qIdx: 10, formId: this.createFormId(), multiple: this.createChoiceOptions(3), score: 10, answer: {
-                _id: new mongoose_1.Types.ObjectId(),
-                answer: [0],
-                isCorrect: true,
-            }, conditional: [conditionalData], parentcontent: {
-                _id: new mongoose_1.Types.ObjectId().toString(),
-                qId: parentContentId,
-                qIdx: 0,
-                optIdx: 0,
-            }, require: false, page: 4, hasAnswer: true, isValidated: true }, overrides);
     }
-    // Helper method to create a complete form with various question types
+    static createConditionQuestionWithChilds({ parent, childs, childKey, }) {
+        const parentQ = {
+            ...parent,
+            conditional: childs.map((c, idx) => ({
+                _id: new mongoose_1.Types.ObjectId(),
+                contentId: c._id,
+                key: childKey?.[idx] !== undefined ? childKey[idx] : idx,
+            })),
+        };
+        return [
+            parentQ,
+            ...childs.map((child, idx) => ({
+                ...child,
+                parentcontent: {
+                    _id: new mongoose_1.Types.ObjectId().toString(),
+                    qId: parent._id ? parent._id.toString() : `temp_${parent.qIdx}`,
+                    qIdx: parent.qIdx,
+                    optIdx: parentQ.conditional[idx].key,
+                },
+            })),
+        ];
+    }
+    /**
+   
+     * @param depth          - How many levels to generate (1 = root only, max 20)
+     * @param formId         - Shared formId for all nodes (generated if omitted)
+     * @param startQIdx      - qIdx for the root; children increment from there
+     * @param optionCount    - Number of choice options per node
+     * @param triggerKey     - Which option index (key) triggers the child at each level
+     * @param parentOverrides - Partial<ContentType> applied only to the root node
+     * @param childOverrides  - Array of Partial<ContentType> indexed by depth (0 = root).
+     *                          Entries beyond the array length are ignored.
+     */
+    static createNestedContent({ depth = 1, formId, startQIdx = 0, optionCount = 3, triggerKey = 0, parentOverrides, childOverrides = [], } = {}) {
+        const MAX_DEPTH = 20;
+        const clampedDepth = Math.min(Math.max(depth, 1), MAX_DEPTH);
+        const sharedFormId = formId ?? this.createFormId();
+        const result = [];
+        let parentNode = null;
+        for (let level = 0; level < clampedDepth; level++) {
+            const nodeId = new mongoose_1.Types.ObjectId();
+            const qIdx = startQIdx + level;
+            const choices = this.createChoiceOptions(optionCount);
+            // Build parentcontent linking back to the previous level's node
+            const parentcontent = parentNode
+                ? {
+                    _id: parentNode._id.toString(),
+                    qId: parentNode._id.toString(),
+                    qIdx: parentNode.qIdx,
+                    optIdx: triggerKey,
+                    ...(level === 1 ? (parentOverrides?.parentcontent ?? {}) : {}),
+                }
+                : undefined;
+            // The previous node needs a conditional entry pointing to this new node
+            if (parentNode) {
+                parentNode.conditional = [
+                    ...(parentNode.conditional ?? []),
+                    {
+                        _id: new mongoose_1.Types.ObjectId(),
+                        key: triggerKey,
+                        contentId: nodeId,
+                        contentIdx: qIdx,
+                    },
+                ];
+            }
+            const levelOverride = childOverrides[level] ?? {};
+            const node = Object.assign({
+                _id: nodeId,
+                title: this.createContentTitle(levelOverride.title
+                    ? ""
+                    : level === 0
+                        ? "Root Question"
+                        : `Child Question – Level ${level}`),
+                type: Content_model_1.QuestionType.MultipleChoice,
+                multiple: choices,
+                qIdx,
+                formId: sharedFormId,
+                page: 1,
+                score: 0,
+                require: false,
+                hasAnswer: false,
+                isValidated: false,
+                conditional: [],
+                ...(level === 0 ? (parentOverrides ?? {}) : {}),
+                ...levelOverride,
+            }, 
+            // Pin structural identity fields — always wins over any override
+            { _id: nodeId, qIdx, formId: sharedFormId, parentcontent });
+            result.push(node);
+            parentNode = node;
+        }
+        return result;
+    }
+    /**
+     * Simple form mock data with 10 questions across 4 pages.
+     *
+     * List of created questions:
+     * 1. [qIdx: 0, Page 1] MultipleChoice (4 options): "What is your favorite programming language?"
+     * 2. [qIdx: 1, Page 1] CheckBox (5 options): "Select all programming languages you know"
+     * 3. [qIdx: 2, Page 1] Text: "What is your full name?"
+     * 4. [qIdx: 3, Page 2] ShortAnswer: "Explain the concept of polymorphism"
+     * 5. [qIdx: 4, Page 2] Number: "How many years of programming experience do you have?"
+     * 6. [qIdx: 5, Page 2] Date: "When did you start programming?"
+     * 7. [qIdx: 6, Page 3] RangeNumber: "Select your salary range (in thousands)"
+     * 8. [qIdx: 7, Page 3] RangeDate: "Select your project duration"
+     * 9. [qIdx: 8, Page 3] Selection (3 options): "Choose your preferred IDE"
+     * 10. [qIdx: 9, Page 4] Paragraph: "Describe your biggest programming project"
+     *
+     * @returns Array of 10 ContentType questions sharing a common formId
+     */
     static createSampleForm() {
-        var _a;
         const formId = this.createFormId();
         const multipleChoice = this.createMultipleChoiceContent({
             formId,
@@ -136,10 +364,6 @@ class MockContentFactory {
         const rangeDate = this.createRangeDateContent({ formId, qIdx: 7 });
         const selection = this.createSelectionContent({ formId, qIdx: 8 });
         const paragraph = this.createParagraphContent({ formId, qIdx: 9 });
-        const conditional = this.createConditionalContent((_a = multipleChoice._id) === null || _a === void 0 ? void 0 : _a.toString(), {
-            formId,
-            qIdx: 10,
-        });
         return [
             multipleChoice,
             checkbox,
@@ -151,12 +375,22 @@ class MockContentFactory {
             rangeDate,
             selection,
             paragraph,
-            conditional,
         ];
     }
-    // Helper method to create minimal content for quick testing
+    // Helper method to create content for quick testing
     static createMinimalContent(type, overrides) {
-        return Object.assign({ _id: new mongoose_1.Types.ObjectId(), title: this.createContentTitle(`Sample ${type} Question`), type, qIdx: 0, formId: this.createFormId(), score: 10, page: 1, hasAnswer: false, isValidated: false }, overrides);
+        return {
+            _id: new mongoose_1.Types.ObjectId(),
+            title: this.createContentTitle(`Sample ${type} Question`),
+            type,
+            qIdx: 0,
+            formId: this.createFormId(),
+            score: 10,
+            page: 1,
+            hasAnswer: false,
+            isValidated: false,
+            ...overrides,
+        };
     }
 }
 exports.MockContentFactory = MockContentFactory;

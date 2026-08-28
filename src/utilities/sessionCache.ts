@@ -1,17 +1,13 @@
-/**
- * In-memory cache for session data to reduce database queries
- * Optimized for frequent CheckSession calls
- */
-
-interface CachedSession {
+export interface CachedSession {
   userId: string;
   email: string;
   name: string;
   role: string;
+  expiresAt?: string;
   cachedAt: number;
 }
 
-class SessionCache {
+export class SessionCache {
   private cache: Map<string, CachedSession> = new Map();
   private readonly TTL = 2 * 60 * 1000; // 2 minutes TTL
   private readonly MAX_SIZE = 1000; // Maximum cache size
@@ -40,7 +36,6 @@ class SessionCache {
    * Set session data in cache
    */
   set(sessionId: string, data: Omit<CachedSession, "cachedAt">): void {
-    // Implement LRU-style eviction if cache is full
     if (this.cache.size >= this.MAX_SIZE) {
       // Remove oldest entry
       const firstKey = this.cache.keys().next().value;
@@ -102,11 +97,14 @@ class SessionCache {
 const sessionCache = new SessionCache();
 
 // Run cleanup every 5 minutes
-setInterval(() => {
-  const removed = sessionCache.cleanup();
-  if (removed > 0) {
-    console.log(`[SessionCache] Cleaned up ${removed} expired entries`);
-  }
-}, 5 * 60 * 1000);
+setInterval(
+  () => {
+    const removed = sessionCache.cleanup();
+    if (removed > 0) {
+      console.log(`[SessionCache] Cleaned up ${removed} expired entries`);
+    }
+  },
+  5 * 60 * 1000,
+).unref();
 
 export default sessionCache;

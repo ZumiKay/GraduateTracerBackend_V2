@@ -1,6 +1,7 @@
 import { model, Schema, Types } from "mongoose";
 import { ContentType, RangeType } from "./Content.model";
 
+//Type for multiple choice, checkbox and more
 export type ResponseAnswerType =
   | string
   | number
@@ -9,6 +10,7 @@ export type ResponseAnswerType =
   | RangeType<string>
   | Array<number>;
 
+//Type for selection question type
 export type ResponseAnswerReturnType = {
   key: number | Array<number>;
   val: ResponseAnswerType | Array<string>;
@@ -54,13 +56,15 @@ export interface FormResponseType {
   responseset: Array<ResponseSetType>;
   maxScore?: number;
   totalScore?: number;
+  extraScore?: number;
   isCompleted?: boolean;
-  submittedAt?: Date;
+  submittedAt?: Date | string;
   completionStatus?: ResponseCompletionStatus;
   respondentEmail?: string;
   respondentName?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  completionTime?: string | number;
   respondentType?: RespondentType;
   // Browser fingerprinting fields for anonymous tracking
   respondentFingerprint?: string;
@@ -92,11 +96,13 @@ export enum ScoringMethod {
 export interface SubmitionProcessionReturnType {
   maxScore: number;
   totalScore: number;
+  extraScore?: number;
   message: string;
   responseId?: string;
   respondentEmail?: string;
   isComplete?: boolean;
   isNonScore?: boolean;
+  hasUnansweredScoredQuestion?: boolean;
 }
 
 //Sub Doc
@@ -158,11 +164,18 @@ const ResponseSchema = new Schema<FormResponseType>(
       type: Number,
       default: 0,
     },
-
+    extraScore: {
+      type: Number,
+      default: null,
+    },
     completionStatus: {
       type: String,
       enum: ResponseCompletionStatus,
       default: "partial",
+    },
+    completionTime: {
+      type: Number,
+      default: null,
     },
     respondentEmail: {
       type: String,
@@ -178,7 +191,6 @@ const ResponseSchema = new Schema<FormResponseType>(
       required: false,
       default: null,
     },
-
     // Browser fingerprinting fields for anonymous tracking
     respondentFingerprint: {
       type: String,
@@ -237,7 +249,6 @@ ResponseSchema.pre("save", function (next) {
       return total + (response.score || 0);
     }, 0);
   }
-  next();
 });
 
 const FormResponse = model("Response", ResponseSchema);

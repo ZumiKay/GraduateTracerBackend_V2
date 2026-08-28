@@ -10,9 +10,7 @@ const User_middleware_1 = __importDefault(require("../middleware/User.middleware
 const dotenv_1 = require("dotenv");
 (0, dotenv_1.configDotenv)();
 const encryptRoute = (0, express_1.Router)();
-// Log key initialization (remove in production)
-console.log("✅ RSA keys loaded from .env successfully");
-// RSA Encryption function (for backend testing)
+// RSA Encryption function
 const encryptWithPublicKey = (data) => {
     try {
         const buffer = Buffer.from(data, "utf8");

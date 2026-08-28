@@ -2,10 +2,11 @@ import { Types } from "mongoose";
 import {
   ChoiceQuestionType,
   ContentType,
+  ParentContentType,
   QuestionType,
   RangeType,
-  ConditionalType,
 } from "../model/Content.model";
+
 import { ResponseAnswerType } from "../model/Response.model";
 
 export class MockContentFactory {
@@ -35,13 +36,13 @@ export class MockContentFactory {
   }
 
   static createMultipleChoiceContent(
-    overrides?: Partial<ContentType>
+    overrides?: Partial<ContentType>,
   ): ContentType {
     const choices = this.createChoiceOptions(4);
     return {
       _id: new Types.ObjectId(),
       title: this.createContentTitle(
-        "What is your favorite programming language?"
+        "What is your favorite programming language?",
       ),
       type: QuestionType.MultipleChoice,
       qIdx: 0,
@@ -50,7 +51,7 @@ export class MockContentFactory {
       score: 10,
       answer: {
         _id: new Types.ObjectId(),
-        answer: [0, 2], // Correct options indices
+        answer: 0,
         isCorrect: true,
       },
       require: true,
@@ -66,7 +67,7 @@ export class MockContentFactory {
     return {
       _id: new Types.ObjectId(),
       title: this.createContentTitle(
-        "Select all programming languages you know"
+        "Select all programming languages you know",
       ),
       type: QuestionType.CheckBox,
       qIdx: 1,
@@ -94,7 +95,7 @@ export class MockContentFactory {
       qIdx: 2,
       formId: this.createFormId(),
       text: "",
-      score: 0, // Text questions usually don't have scores
+      score: 0,
       require: true,
       page: 1,
       hasAnswer: false,
@@ -104,7 +105,7 @@ export class MockContentFactory {
   }
 
   static createShortAnswerContent(
-    overrides?: Partial<ContentType>
+    overrides?: Partial<ContentType>,
   ): ContentType {
     return {
       _id: new Types.ObjectId(),
@@ -131,7 +132,7 @@ export class MockContentFactory {
     return {
       _id: new Types.ObjectId(),
       title: this.createContentTitle(
-        "How many years of programming experience do you have?"
+        "How many years of programming experience do you have?",
       ),
       type: QuestionType.Number,
       qIdx: 4,
@@ -139,7 +140,7 @@ export class MockContentFactory {
       score: 5,
       answer: {
         _id: new Types.ObjectId(),
-        answer: 5, // Exact number answer
+        answer: 5,
         isCorrect: true,
       },
       require: false,
@@ -173,7 +174,7 @@ export class MockContentFactory {
   }
 
   static createRangeNumberContent(
-    overrides?: Partial<ContentType>
+    overrides?: Partial<ContentType>,
   ): ContentType {
     return {
       _id: new Types.ObjectId(),
@@ -236,7 +237,7 @@ export class MockContentFactory {
       score: 5,
       answer: {
         _id: new Types.ObjectId(),
-        answer: [1], // Single selection
+        answer: 1, // Single selection
         isCorrect: true,
       },
       require: true,
@@ -251,7 +252,7 @@ export class MockContentFactory {
     return {
       _id: new Types.ObjectId(),
       title: this.createContentTitle(
-        "Describe your biggest programming project"
+        "Describe your biggest programming project",
       ),
       type: QuestionType.Paragraph,
       qIdx: 9,
@@ -272,48 +273,157 @@ export class MockContentFactory {
     };
   }
 
-  static createConditionalContent(
-    parentContentId: string,
-    overrides?: Partial<ContentType>
-  ): ContentType {
-    const conditionalData: ConditionalType = {
-      _id: new Types.ObjectId(),
-      key: 0, // Depends on first option of parent
-      contentId: new Types.ObjectId(parentContentId),
-      contentIdx: 0,
-    };
-
-    return {
-      _id: new Types.ObjectId(),
-      title: this.createContentTitle(
-        "Which JavaScript framework do you prefer? (Conditional)"
-      ),
-      type: QuestionType.MultipleChoice,
-      qIdx: 10,
-      formId: this.createFormId(),
-      multiple: this.createChoiceOptions(3),
-      score: 10,
-      answer: {
+  static createConditionQuestionWithChilds({
+    parent,
+    childs,
+    childKey,
+  }: {
+    parent: ContentType;
+    childs: Array<ContentType>;
+    childKey?: Array<number>; //Modify responsible child by arr Idx
+  }): Array<Partial<ContentType>> {
+    const parentQ = {
+      ...parent,
+      conditional: childs.map((c, idx) => ({
         _id: new Types.ObjectId(),
-        answer: [0],
-        isCorrect: true,
-      },
-      conditional: [conditionalData],
-      parentcontent: {
-        _id: new Types.ObjectId().toString(),
-        qId: parentContentId,
-        qIdx: 0,
-        optIdx: 0,
-      },
-      require: false,
-      page: 4,
-      hasAnswer: true,
-      isValidated: true,
-      ...overrides,
+        contentId: c._id as Types.ObjectId,
+        key: childKey?.[idx] !== undefined ? childKey[idx] : idx,
+      })),
     };
+    return [
+      parentQ,
+      ...childs.map(
+        (child, idx) =>
+          ({
+            ...child,
+            parentcontent: {
+              _id: new Types.ObjectId().toString(),
+              qId: parent._id ? parent._id.toString() : `temp_${parent.qIdx}`,
+              qIdx: parent.qIdx,
+              optIdx: parentQ.conditional[idx].key,
+            },
+          }) as never,
+      ),
+    ];
   }
 
-  // Helper method to create a complete form with various question types
+  /**
+ 
+   * @param depth          - How many levels to generate (1 = root only, max 20)
+   * @param formId         - Shared formId for all nodes (generated if omitted)
+   * @param startQIdx      - qIdx for the root; children increment from there
+   * @param optionCount    - Number of choice options per node
+   * @param triggerKey     - Which option index (key) triggers the child at each level
+   * @param parentOverrides - Partial<ContentType> applied only to the root node
+   * @param childOverrides  - Array of Partial<ContentType> indexed by depth (0 = root).
+   *                          Entries beyond the array length are ignored.
+   */
+  static createNestedContent({
+    depth = 1,
+    formId,
+    startQIdx = 0,
+    optionCount = 3,
+    triggerKey = 0,
+    parentOverrides,
+    childOverrides = [],
+  }: {
+    depth?: number;
+    formId?: Types.ObjectId;
+    startQIdx?: number;
+    optionCount?: number;
+    triggerKey?: number;
+    parentOverrides?: Partial<ContentType>;
+    childOverrides?: Partial<ContentType>[];
+  } = {}): ContentType[] {
+    const MAX_DEPTH = 20;
+    const clampedDepth = Math.min(Math.max(depth, 1), MAX_DEPTH);
+    const sharedFormId = formId ?? this.createFormId();
+    const result: ContentType[] = [];
+
+    let parentNode: ContentType | null = null;
+
+    for (let level = 0; level < clampedDepth; level++) {
+      const nodeId = new Types.ObjectId();
+      const qIdx = startQIdx + level;
+      const choices = this.createChoiceOptions(optionCount);
+
+      // Build parentcontent linking back to the previous level's node
+      const parentcontent: ParentContentType | undefined = parentNode
+        ? {
+            _id: parentNode._id!.toString(),
+            qId: parentNode._id!.toString(),
+            qIdx: parentNode.qIdx,
+            optIdx: triggerKey,
+            ...(level === 1 ? (parentOverrides?.parentcontent ?? {}) : {}),
+          }
+        : undefined;
+
+      // The previous node needs a conditional entry pointing to this new node
+      if (parentNode) {
+        parentNode.conditional = [
+          ...(parentNode.conditional ?? []),
+          {
+            _id: new Types.ObjectId(),
+            key: triggerKey,
+            contentId: nodeId,
+            contentIdx: qIdx,
+          },
+        ];
+      }
+
+      const levelOverride: Partial<ContentType> = childOverrides[level] ?? {};
+
+      const node: ContentType = Object.assign(
+        {
+          _id: nodeId,
+          title: this.createContentTitle(
+            levelOverride.title
+              ? ""
+              : level === 0
+                ? "Root Question"
+                : `Child Question – Level ${level}`,
+          ),
+          type: QuestionType.MultipleChoice,
+          multiple: choices,
+          qIdx,
+          formId: sharedFormId,
+          page: 1,
+          score: 0,
+          require: false,
+          hasAnswer: false,
+          isValidated: false,
+          conditional: [],
+          ...(level === 0 ? (parentOverrides ?? {}) : {}),
+          ...levelOverride,
+        } as ContentType,
+        // Pin structural identity fields — always wins over any override
+        { _id: nodeId, qIdx, formId: sharedFormId, parentcontent },
+      );
+
+      result.push(node);
+      parentNode = node;
+    }
+
+    return result;
+  }
+
+  /**
+   * Simple form mock data with 10 questions across 4 pages.
+   *
+   * List of created questions:
+   * 1. [qIdx: 0, Page 1] MultipleChoice (4 options): "What is your favorite programming language?"
+   * 2. [qIdx: 1, Page 1] CheckBox (5 options): "Select all programming languages you know"
+   * 3. [qIdx: 2, Page 1] Text: "What is your full name?"
+   * 4. [qIdx: 3, Page 2] ShortAnswer: "Explain the concept of polymorphism"
+   * 5. [qIdx: 4, Page 2] Number: "How many years of programming experience do you have?"
+   * 6. [qIdx: 5, Page 2] Date: "When did you start programming?"
+   * 7. [qIdx: 6, Page 3] RangeNumber: "Select your salary range (in thousands)"
+   * 8. [qIdx: 7, Page 3] RangeDate: "Select your project duration"
+   * 9. [qIdx: 8, Page 3] Selection (3 options): "Choose your preferred IDE"
+   * 10. [qIdx: 9, Page 4] Paragraph: "Describe your biggest programming project"
+   *
+   * @returns Array of 10 ContentType questions sharing a common formId
+   */
   static createSampleForm(): ContentType[] {
     const formId = this.createFormId();
 
@@ -330,13 +440,6 @@ export class MockContentFactory {
     const rangeDate = this.createRangeDateContent({ formId, qIdx: 7 });
     const selection = this.createSelectionContent({ formId, qIdx: 8 });
     const paragraph = this.createParagraphContent({ formId, qIdx: 9 });
-    const conditional = this.createConditionalContent(
-      multipleChoice._id?.toString() as string,
-      {
-        formId,
-        qIdx: 10,
-      }
-    );
 
     return [
       multipleChoice,
@@ -349,14 +452,13 @@ export class MockContentFactory {
       rangeDate,
       selection,
       paragraph,
-      conditional,
     ];
   }
 
-  // Helper method to create minimal content for quick testing
+  // Helper method to create content for quick testing
   static createMinimalContent(
     type: QuestionType,
-    overrides?: Partial<ContentType>
+    overrides?: Partial<ContentType>,
   ): ContentType {
     return {
       _id: new Types.ObjectId(),

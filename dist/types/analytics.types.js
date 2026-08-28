@@ -1,8 +1,4 @@
 "use strict";
-/**
- * Analytics Types for Choice Question Graph Visualization
- * Supports Multiple Graph Types: Bar Chart, Pie Chart, Horizontal Bar, Doughnut
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.QuestionType = exports.GraphType = void 0;
 var GraphType;

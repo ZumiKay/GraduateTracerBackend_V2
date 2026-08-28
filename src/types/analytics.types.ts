@@ -1,7 +1,8 @@
-/**
- * Analytics Types for Choice Question Graph Visualization
- * Supports Multiple Graph Types: Bar Chart, Pie Chart, Horizontal Bar, Doughnut
- */
+import { Types } from "mongoose";
+import {
+  ResponseAnswerReturnType,
+  ResponseAnswerType,
+} from "../model/Response.model";
 
 export enum GraphType {
   BAR = "bar",
@@ -24,9 +25,6 @@ export enum QuestionType {
   Paragraph = "paragraph",
 }
 
-/**
- * Distribution data for a single choice option
- */
 export interface ChoiceDistribution {
   choiceIdx: number;
   choiceContent: string;
@@ -35,10 +33,6 @@ export interface ChoiceDistribution {
   color: string;
 }
 
-/**
- * Bar Chart Data Structure
- * Used for vertical and horizontal bar charts
- */
 export interface BarChartData {
   labels: string[];
   datasets: {
@@ -50,9 +44,6 @@ export interface BarChartData {
   }[];
 }
 
-/**
- * Pie/Doughnut Chart Data Structure
- */
 export interface PieChartData {
   labels: string[];
   datasets: {
@@ -63,26 +54,40 @@ export interface PieChartData {
   }[];
 }
 
-/**
- * Main Analytics Response for a Single Choice Question
- * Contains all available graph formats
- */
+export interface ChartDatasetsType {
+  labels: string[];
+  datasets: Array<{
+    label?: string;
+    data: Array<number>;
+    backgroundColor: Array<string>;
+    borderColor: Array<string>;
+    borderWidth: number;
+  }>;
+}
+
+export interface ChartDataType {
+  answer: string;
+  answerIdx: number;
+  count: number;
+  percentage: string;
+}
+
 export interface MultiGraphAnalytics {
   questionId: string;
   questionTitle: string;
   questionType: QuestionType;
+  answerCounts?: Record<string, number>;
+  ranges?: (ResponseAnswerType | ResponseAnswerReturnType)[];
   totalResponses: number;
-  availableGraphTypes: GraphType[];
-  barChart?: BarChartData;
-  pieChart?: PieChartData;
-  horizontalBarChart?: BarChartData;
-  doughnutChart?: PieChartData;
-  rawData: ChoiceDistribution[];
+  chartData?: Array<ChartDataType>;
+  availableGraphTypes: Array<GraphType>;
+  barChart?: ChartDatasetsType;
+  pieChart?: ChartDatasetsType;
+  horizontalBarChart?: ChartDatasetsType;
+  doughnutChart?: ChartDatasetsType;
+  rawData?: Array<ChoiceDistribution>;
 }
 
-/**
- * API Response Format
- */
 export interface ChoiceQuestionAnalyticsResponse {
   success: boolean;
   code: number;
@@ -90,10 +95,7 @@ export interface ChoiceQuestionAnalyticsResponse {
   data: MultiGraphAnalytics[];
 }
 
-/**
- * Request Query Parameters
- */
 export interface AnalyticsQueryParams {
   formId: string;
-  questionId?: string; // Optional: specific question ID, otherwise all choice questions
+  questionId?: string;
 }

@@ -1,4 +1,4 @@
-import { isValidObjectId, RootFilterQuery, Types } from "mongoose";
+import { QueryFilter, isValidObjectId, Types } from "mongoose";
 import FormResponse, {
   FormResponseType,
   ResponseSetType,
@@ -8,30 +8,28 @@ import FormResponse, {
 } from "../model/Response.model";
 import Form from "../model/Form.model";
 import Content, {
-  AnswerKey,
   ChoiceQuestionType,
   ContentType,
-  DetailContentSelection,
   QuestionType,
 } from "../model/Content.model";
 import { ResponseValidationService } from "./ResponseValidationService";
-import { FingerprintService } from "../utilities/fingerprint";
+import {
+  BrowserFingerprint,
+  FingerprintService,
+} from "../utilities/fingerprint";
 import { Response } from "express";
 import { CustomRequest } from "../types/customType";
 import {
   AddQuestionNumbering,
-  contentTitleToString,
   formatDateToDDMMYYYY,
-  FormatToGeneralDate,
-  hashedPassword,
   ReturnCode,
 } from "../utilities/helper";
 import {
   formatResponseValue,
   getLastQuestionIdx,
 } from "../utilities/formHelpers";
-import {} from "../utilities/helper";
 import { compareSync } from "bcrypt";
+import { FormValidationService } from "./FormValidationService";
 
 export interface GroupResponseListItemType {
   respondentEmail?: string;
@@ -62,15 +60,16 @@ export interface ResponseFilterType {
 
 export class ResponseQueryService {
   private static readonly SUMMARY_SELECT_RESPONSE_FIELD =
-    "_id respondentEmail respondentName respondentType submittedAt isCompleted completionStatus createdAt";
+    "_id respondentEmail respondentName respondentType submittedAt isCompleted completionStatus createdAt totalScore";
 
+  //Helper Fetcher
   private static async fetchResponsesWithPagination(
-    query: RootFilterQuery<FormResponseType>,
+    query: QueryFilter<FormResponseType>,
     page: number,
     limit: number,
     sortOptions?: Record<string, 1 | -1>,
     selectFields?: string,
-    populate?: string[]
+    populate?: string[],
   ) {
     const skip = (page - 1) * limit;
 
@@ -94,13 +93,9 @@ export class ResponseQueryService {
       FormResponse.countDocuments(query),
     ]);
 
-    // Extract formId from query if it exists
-    const formId = (query as any).formId;
-
-    // Get response counts for each unique respondentEmail
     const responsesWithCount = await this.addResponseCountByEmail(
       responses,
-      formId
+      query.formId as Types.ObjectId,
     );
 
     return {
@@ -108,20 +103,14 @@ export class ResponseQueryService {
       pagination: ResponseValidationService.createPaginationResponse(
         page,
         limit,
-        totalCount
+        totalCount,
       ),
     };
   }
 
-  /**
-   * Add response count for each respondentEmail
-   * @param responses - Array of response objects
-   * @param formId - Form ID to filter responses by
-   * @returns Responses with responseCount field added
-   */
   private static async addResponseCountByEmail(
     responses: FormResponseType[],
-    formId?: Types.ObjectId | string
+    formId?: Types.ObjectId | string,
   ) {
     if (!responses || responses.length === 0) {
       return responses;
@@ -132,16 +121,13 @@ export class ResponseQueryService {
       ...new Set(
         responses
           .map((r) => r.respondentEmail)
-          .filter((email): email is string => !!email)
+          .filter((email): email is string => !!email),
       ),
     ];
 
     if (emails.length === 0) {
-      // If no emails, return responses with count 0
       return responses.map((r) => ({ ...r, responseCount: 0 }));
     }
-
-    // Build aggregation pipeline to count responses per email
 
     const emailCounts = await FormResponse.aggregate([
       {
@@ -158,9 +144,8 @@ export class ResponseQueryService {
       },
     ]);
 
-    // Create a map for quick lookup
     const emailCountMap = new Map(
-      emailCounts.map((item) => [item._id, item.count])
+      emailCounts.map((item) => [item._id, item.count]),
     );
 
     // Add responseCount to each response
@@ -175,20 +160,14 @@ export class ResponseQueryService {
   static async getResponsesByFormId(
     formId: string,
     page: number,
-    limit: number
+    limit: number,
   ) {
     return this.fetchResponsesWithPagination({ formId }, page, limit);
   }
 
-  /**
-  Get Response by UserId and With Pagination for multiple responses
-  @RequestParam formId | page | resIdx | useId
-  @page for navigate within form
-  @resIdx resIdx for navigate user responses
-  */
   static async getResponsebyUserIdWithPagination(
     req: CustomRequest,
-    res: Response
+    res: Response,
   ) {
     const { formId, page, resIdx, userId } =
       req.params as unknown as ResponseFilterType;
@@ -234,7 +213,7 @@ export class ResponseQueryService {
       const pagination = ResponseValidationService.createPaginationResponse(
         responseIdx + 1,
         limit,
-        totalCount
+        totalCount,
       );
 
       return res.status(200).json({
@@ -254,7 +233,7 @@ export class ResponseQueryService {
     const query = ResponseValidationService.buildFilterQuery(filters);
     const sortOptions = ResponseValidationService.buildSortOptions(
       filters.sortBy,
-      filters.sortOrder
+      filters.sortOrder,
     );
 
     // If group parameter is present, group by respondentEmail
@@ -263,7 +242,7 @@ export class ResponseQueryService {
         query,
         filters.page,
         filters.limit,
-        sortOptions
+        sortOptions,
       );
     }
 
@@ -273,7 +252,7 @@ export class ResponseQueryService {
       filters.limit,
       sortOptions,
       this.SUMMARY_SELECT_RESPONSE_FIELD,
-      ["userId email"]
+      ["userId email"],
     );
   }
 
@@ -281,10 +260,10 @@ export class ResponseQueryService {
    * Get responses grouped by respondent email
    */
   static async getGroupedResponses(
-    query: RootFilterQuery<FormResponseType>,
+    query: QueryFilter<FormResponseType>,
     page: number,
     limit: number,
-    sortOptions?: Record<string, 1 | -1>
+    sortOptions?: Record<string, 1 | -1>,
   ) {
     const skip = (page - 1) * limit;
 
@@ -321,7 +300,6 @@ export class ResponseQueryService {
     pipeline.push({ $skip: skip });
     pipeline.push({ $limit: limit });
 
-    // Project final shape
     pipeline.push({
       $project: {
         _id: 0,
@@ -330,6 +308,7 @@ export class ResponseQueryService {
         respondentType: 1,
         responseCount: 1,
         responseIds: 1,
+        totalscore: 1,
       },
     });
 
@@ -358,7 +337,7 @@ export class ResponseQueryService {
     user: string;
     formId: string;
   }) {
-    const query: RootFilterQuery<FormResponseType> = {
+    const query: QueryFilter<FormResponseType> = {
       formId,
       $or: [{ user }, { respondentEmail: user }],
     };
@@ -379,7 +358,7 @@ export class ResponseQueryService {
     formId: string,
     page: number = 1,
     req: CustomRequest,
-    res: Response
+    isPreview: boolean = false,
   ) {
     if (!Types.ObjectId.isValid(formId)) {
       throw new Error("Invalid form ID");
@@ -397,7 +376,7 @@ export class ResponseQueryService {
         page,
       })
         .select(
-          "_id qIdx title type text multiple selection checkbox rangedate rangenumber date require page conditional parentcontent score"
+          "_id qIdx title type text multiple selection checkbox rangedate rangenumber date require page conditional parentcontent score",
         )
         .sort({ qIdx: 1 })
         .lean(),
@@ -407,16 +386,16 @@ export class ResponseQueryService {
       throw new Error("Form not found");
     }
 
-    if (form.setting?.acceptResponses === false) {
+    if (!isPreview && form.setting?.acceptResponses === false) {
       throw new Error("Form is no longer accepting responses");
     }
 
     //Check if the user has submitted (Single Form)
-    if (form.setting?.submitonce) {
+    if (!isPreview && form.setting?.submitonce) {
       const existingResponse = await this.checkExistingResponse(
         formId,
         form.setting.email as boolean,
-        req
+        req,
       );
 
       if (existingResponse) {
@@ -425,7 +404,6 @@ export class ResponseQueryService {
           isResponsed: {
             message: "You already submitted response",
             ...existingResponse,
-
             _id: undefined,
             formId: undefined,
             responseId: existingResponse._id,
@@ -435,7 +413,6 @@ export class ResponseQueryService {
       }
     }
 
-    // Clean up content data
     const resultContents = contents.map((content) => ({
       ...content,
       parentcontent:
@@ -445,28 +422,52 @@ export class ResponseQueryService {
       answer: undefined,
     }));
 
-    // Get cumulative question count from previous pages for proper numbering
     const lastQuestionIdx = await getLastQuestionIdx(formObjectId, page);
+
+    const numberedContents = AddQuestionNumbering({
+      questions: resultContents,
+      lastIdx: lastQuestionIdx,
+    });
+    const contentValidation = numberedContents.map((c) => {
+      const parentQ = numberedContents.find(
+        (ques) =>
+          ques?._id?.toString() === c.parentcontent?.qId ||
+          ques.qIdx === c.parentcontent?.qIdx,
+      );
+
+      const siblingSumScore = contents
+        .filter((c) => c.parentcontent?.qId === parentQ?._id?.toString())
+        .reduce((sum, c) => sum + (c.score || 0), 0);
+
+      return FormValidationService.validateContent({
+        content: c,
+        parentScore: parentQ?.score,
+        siblingSumScore,
+      });
+    });
+
+    if (contentValidation.some((i) => !i.isValid)) {
+      return { contentValidation };
+    }
+
+    //?Validation for QUIZ Form Content Before Public Access
 
     return {
       ...form,
       contentIds: undefined,
-      contents: AddQuestionNumbering({
-        questions: resultContents,
-        lastIdx: lastQuestionIdx,
-      }),
+      //Return questions with valid numbering
+      contents: numberedContents,
     };
   }
 
   /**
    * Calculate IP match score based on multiple factors
-   * Returns a score from 0-100 indicating confidence level
    */
   private static calculateIPMatchScore(
     currentIP: string,
     storedHashedIP: string,
-    deviceInfo: any,
-    storedDeviceInfo: any
+    deviceInfo: BrowserFingerprint,
+    storedDeviceInfo: BrowserFingerprint,
   ): number {
     let score = 0;
 
@@ -476,7 +477,7 @@ export class ResponseQueryService {
       score += 80;
     }
 
-    // Platform match (10 points) - Secondary verification
+    // Platform match (10 points)
     if (
       deviceInfo?.platform &&
       storedDeviceInfo?.platform &&
@@ -485,7 +486,7 @@ export class ResponseQueryService {
       score += 10;
     }
 
-    // Timezone match (10 points) - Secondary verification
+    // Timezone match (10 points)
     if (
       deviceInfo?.timezone &&
       storedDeviceInfo?.timezone &&
@@ -500,9 +501,9 @@ export class ResponseQueryService {
   private static async checkExistingResponse(
     formId: string,
     requireEmail: boolean,
-    req: CustomRequest
+    req: CustomRequest,
   ) {
-    const baseQuery: RootFilterQuery<FormResponseType> = {
+    const baseQuery: QueryFilter<FormResponseType> = {
       formId: new Types.ObjectId(formId),
     };
 
@@ -512,8 +513,9 @@ export class ResponseQueryService {
       : "_id totalScore completionStatus submittedAt respondentEmail responseName respondentIP deviceInfo";
 
     if (requireEmail) {
-      // Email-based lookup (simpler path)
-      const email = req?.body?.respondentEmail;
+      // Email-based lookup: prefer session email since GET requests have no body
+      const email =
+        (req as CustomRequest).formsession?.email || req?.body?.respondentEmail;
       if (!email) return null;
 
       return FormResponse.findOne({
@@ -547,7 +549,7 @@ export class ResponseQueryService {
           respondentIP,
           response.respondentIP,
           deviceInfo,
-          response.deviceInfo
+          response.deviceInfo as BrowserFingerprint,
         );
 
         if (matchScore > highestScore) {
@@ -575,8 +577,8 @@ export class ResponseQueryService {
     if (invalidIds.length > 0) {
       throw new Error(
         `Invalid response ID(s): ${invalidIds.join(
-          ", "
-        )}. Expected valid MongoDB ObjectIds.`
+          ", ",
+        )}. Expected valid MongoDB ObjectIds.`,
       );
     }
 
@@ -592,7 +594,7 @@ export class ResponseQueryService {
 
     if (responseCount !== validObjectIds.length) {
       throw new Error(
-        "Some responses don't exist or don't belong to this form"
+        "Some responses don't exist or don't belong to this form",
       );
     }
 
@@ -635,7 +637,6 @@ export class ResponseQueryService {
       .sort({ qIdx: 1 })
       .lean();
 
-    // Get response count for this respondent email
     let responseCount = 0;
     if (isResponse.respondentEmail && isResponse.formId) {
       responseCount = await FormResponse.countDocuments({
@@ -644,44 +645,34 @@ export class ResponseQueryService {
       });
     }
 
-    //All require question must have an max score
-    const isScoreable = !contents.some(
-      (question) => question.require && !question.score
-    );
+    const isScoreable = true;
 
-    return {
+    const responseData: Partial<FormResponseType> | { [x: string]: {} } = {
       ...isResponse,
+      submittedAt: formatDateToDDMMYYYY(isResponse.submittedAt as Date),
       responseCount,
       isScoreable,
       responseset: this.ResponsesetProcessQuestion(
         AddQuestionNumbering({
           questions: contents as Array<ContentType>,
         }),
-        isResponse.responseset
+        isResponse.responseset,
       ),
     };
+
+    return responseData;
   }
 
-  /**
-   * Process questions with responses and optionally filter hidden conditional questions
-   * @param questions - Array of questions
-   * @param responseset - Array of responses
-   * @param options - Optional configuration
-   * @param options.filterHidden - If true, filter out conditional questions that don't match responses
-   * @returns Processed response set with question details
-   */
   public static ResponsesetProcessQuestion(
     questions: Array<ContentType>,
     responseset: Array<ResponseSetType>,
-    options?: { filterHidden?: boolean }
+    options?: { filterHidden?: boolean }, //Show child question and parent question
   ) {
-    // Early validation with fast path
     const invalidQuestion = questions.find((q) => !q._id);
     if (invalidQuestion) {
       throw new Error("Invalid Question");
     }
 
-    // Build response map once - O(n) instead of O(n*m) lookups
     const responseMap = new Map<string, ResponseSetType>();
     for (let i = 0; i < responseset.length; i++) {
       const r = responseset[i];
@@ -692,7 +683,6 @@ export class ResponseQueryService {
     const questionsLength = questions.length;
     const result: Array<ResponseSetType> = [];
 
-    // Pre-allocate estimated capacity
     result.length = 0;
 
     for (let i = 0; i < questionsLength; i++) {
@@ -703,13 +693,13 @@ export class ResponseQueryService {
       // Handle conditional question filtering
       if (filterHidden && question.parentcontent) {
         const parentResponse = responseMap.get(
-          question.parentcontent.qId
+          question.parentcontent.qId,
         )?.response;
 
         if (parentResponse !== undefined) {
           const shouldShow = this.shouldShowConditionalQuestion(
             parentResponse,
-            question.parentcontent.optIdx
+            question.parentcontent.optIdx,
           );
           if (!shouldShow && !existingResponse) continue;
         } else if (!existingResponse) {
@@ -717,16 +707,10 @@ export class ResponseQueryService {
         }
       }
 
-      // Cache title conversion - used in both branches
-      const convertedTitle = contentTitleToString(question.title);
-
       // Handle questions without responses
       if (!existingResponse) {
         result.push({
-          question: {
-            ...question,
-            title: convertedTitle as never,
-          },
+          question,
           response: "" as ResponseAnswerType,
         });
         continue;
@@ -735,7 +719,7 @@ export class ResponseQueryService {
       // Process response with question context
       const processedResponse = this.processResponseValue(
         question,
-        existingResponse.response
+        existingResponse.response,
       );
 
       // Process answer key for date types
@@ -747,7 +731,6 @@ export class ResponseQueryService {
         question: {
           ...question,
           answer: processedAnswer,
-          title: convertedTitle as never,
         },
       });
     }
@@ -761,12 +744,11 @@ export class ResponseQueryService {
    */
   private static processResponseValue(
     question: ContentType,
-    response: ResponseAnswerType | ResponseAnswerReturnType
+    response: ResponseAnswerType | ResponseAnswerReturnType,
   ):
     | ResponseAnswerType
     | ResponseAnswerReturnType
     | { key: number | number[]; val: string | string[] | undefined } {
-    // Get choice options if this is a choice-based question
     const choiceOptions = question[question.type as keyof ContentType] as
       | ChoiceQuestionType[]
       | undefined;
@@ -775,7 +757,7 @@ export class ResponseQueryService {
     if (Array.isArray(choiceOptions) && response !== undefined) {
       if (typeof response === "number") {
         const selectedOption = choiceOptions.find(
-          (opt) => opt.idx === response
+          (opt) => opt.idx === response,
         );
         return {
           key: response,
@@ -811,7 +793,7 @@ export class ResponseQueryService {
    * Returns formatted answer object or original answer
    */
   private static processAnswerKey(
-    question: ContentType
+    question: ContentType,
   ): typeof question.answer {
     const questionType = question.type;
     const answer = question.answer;
@@ -825,7 +807,7 @@ export class ResponseQueryService {
       return {
         ...answer,
         answer: formatDateToDDMMYYYY(
-          answer.answer as unknown as string
+          answer.answer as unknown as string,
         ) as unknown as never,
       };
     }
@@ -849,29 +831,20 @@ export class ResponseQueryService {
     return answer;
   }
 
-  /**
-   * Check if a conditional question should be shown based on parent response
-   * @param parentResponse - The response value from the parent question
-   * @param requiredOptIdx - The option index required to show the conditional question
-   * @returns true if question should be shown, false otherwise
-   */
   private static shouldShowConditionalQuestion(
     parentResponse: ResponseAnswerType | ResponseAnswerReturnType,
-    requiredOptIdx: Number
+    requiredOptIdx: Number,
   ): boolean {
     const requiredIdx = Number(requiredOptIdx);
 
-    // Handle direct number response
     if (typeof parentResponse === "number") {
       return parentResponse === requiredIdx;
     }
 
-    // Handle array of numbers (checkbox)
     if (Array.isArray(parentResponse)) {
       return parentResponse.includes(requiredIdx);
     }
 
-    // Handle ResponseAnswerReturnType format
     if (
       typeof parentResponse === "object" &&
       parentResponse !== null &&

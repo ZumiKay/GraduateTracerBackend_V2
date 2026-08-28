@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Include both jest and node types so test globals (describe, it, expect,
+    // jest) and Node globals (process, __dirname, etc.) are all recognised.
+    "types": ["jest", "node"],
+    // Tests are never emitted; this silences the "no-emit" requirement when
+    // allowImportingTsExtensions is used.
+    "noEmit": true
+  },
+  // Re-include the test files that the main tsconfig deliberately excludes.
+  "include": [
+    "src/**/*.ts",
+    "src/types/env.d.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

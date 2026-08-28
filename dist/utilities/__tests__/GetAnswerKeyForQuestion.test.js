@@ -32,24 +32,33 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         it("should return correct choice for multiple choice question", () => {
             const result = (0, helper_1.GetAnswerKeyForQuestion)(mockMultipleChoiceQuestion);
             expect(result);
-            expect(result === null || result === void 0 ? void 0 : result.idx).toBe(1);
-            expect(result === null || result === void 0 ? void 0 : result.content).toBe("Option B");
+            expect(result?.idx).toBe(1);
+            expect(result?.content).toBe("Option B");
         });
         it("should return undefined when answer key is missing", () => {
-            const questionWithoutAnswer = Object.assign(Object.assign({}, mockMultipleChoiceQuestion), { answer: undefined });
+            const questionWithoutAnswer = {
+                ...mockMultipleChoiceQuestion,
+                answer: undefined,
+            };
             const result = (0, helper_1.GetAnswerKeyForQuestion)(questionWithoutAnswer);
             expect(result).toBeUndefined();
         });
         it("should return undefined when multiple choices array is missing", () => {
-            const questionWithoutChoices = Object.assign(Object.assign({}, mockMultipleChoiceQuestion), { multiple: undefined });
+            const questionWithoutChoices = {
+                ...mockMultipleChoiceQuestion,
+                multiple: undefined,
+            };
             const result = (0, helper_1.GetAnswerKeyForQuestion)(questionWithoutChoices);
             expect(result).toBeUndefined();
         });
         it("should return undefined when answer index doesn't match any choice", () => {
-            const questionWithInvalidAnswer = Object.assign(Object.assign({}, mockMultipleChoiceQuestion), { answer: {
+            const questionWithInvalidAnswer = {
+                ...mockMultipleChoiceQuestion,
+                answer: {
                     answer: 99, // Invalid index
                     isCorrect: true,
-                } });
+                },
+            };
             const result = (0, helper_1.GetAnswerKeyForQuestion)(questionWithInvalidAnswer);
             expect(result).toBeUndefined();
         });
@@ -75,14 +84,17 @@ describe("GetAnswerKeyForQuestion Tests", () => {
         it("should return correct choice for selection question", () => {
             const result = (0, helper_1.GetAnswerKeyForQuestion)(mockSelectionQuestion);
             expect(result).toBeDefined();
-            expect(result === null || result === void 0 ? void 0 : result.idx).toBe(2);
-            expect(result === null || result === void 0 ? void 0 : result.content).toBe("Choice C");
+            expect(result?.idx).toBe(2);
+            expect(result?.content).toBe("Choice C");
         });
         it("should handle selection with no matching answer", () => {
-            const questionWithInvalidAnswer = Object.assign(Object.assign({}, mockSelectionQuestion), { answer: {
+            const questionWithInvalidAnswer = {
+                ...mockSelectionQuestion,
+                answer: {
                     answer: 5, // Invalid index
                     isCorrect: true,
-                } });
+                },
+            };
             const result = (0, helper_1.GetAnswerKeyForQuestion)(questionWithInvalidAnswer);
             expect(result).toBeUndefined();
         });
@@ -115,10 +127,13 @@ describe("GetAnswerKeyForQuestion Tests", () => {
             expect(result[1]).toEqual({ key: 2, val: "Option 3" });
         });
         it("should handle single checkbox selection", () => {
-            const singleCheckboxQuestion = Object.assign(Object.assign({}, mockCheckboxQuestion), { answer: {
+            const singleCheckboxQuestion = {
+                ...mockCheckboxQuestion,
+                answer: {
                     answer: [1], // Only one correct answer
                     isCorrect: true,
-                } });
+                },
+            };
             const result = (0, helper_1.GetAnswerKeyForQuestion)(singleCheckboxQuestion);
             expect(result).toBeDefined();
             expect(Array.isArray(result)).toBe(true);
@@ -126,10 +141,13 @@ describe("GetAnswerKeyForQuestion Tests", () => {
             expect(result[0]).toEqual({ key: 1, val: "Option 2" });
         });
         it("should filter out invalid indices for checkbox question", () => {
-            const questionWithInvalidIndices = Object.assign(Object.assign({}, mockCheckboxQuestion), { answer: {
+            const questionWithInvalidIndices = {
+                ...mockCheckboxQuestion,
+                answer: {
                     answer: [0, 5, 2, 10], // Indices 5 and 10 are invalid
                     isCorrect: true,
-                } });
+                },
+            };
             const result = (0, helper_1.GetAnswerKeyForQuestion)(questionWithInvalidIndices);
             expect(result).toBeDefined();
             expect(Array.isArray(result)).toBe(true);
@@ -138,25 +156,34 @@ describe("GetAnswerKeyForQuestion Tests", () => {
             expect(result[1]).toEqual({ key: 2, val: "Option 3" });
         });
         it("should return empty array when no valid indices found", () => {
-            const questionWithNoValidIndices = Object.assign(Object.assign({}, mockCheckboxQuestion), { answer: {
+            const questionWithNoValidIndices = {
+                ...mockCheckboxQuestion,
+                answer: {
                     answer: [10, 20, 30], // All invalid indices
                     isCorrect: true,
-                } });
+                },
+            };
             const result = (0, helper_1.GetAnswerKeyForQuestion)(questionWithNoValidIndices);
             expect(result).toBeDefined();
             expect(Array.isArray(result)).toBe(true);
             expect(result).toHaveLength(0);
         });
         it("should return undefined when checkbox array is missing", () => {
-            const questionWithoutCheckbox = Object.assign(Object.assign({}, mockCheckboxQuestion), { checkbox: undefined });
+            const questionWithoutCheckbox = {
+                ...mockCheckboxQuestion,
+                checkbox: undefined,
+            };
             const result = (0, helper_1.GetAnswerKeyForQuestion)(questionWithoutCheckbox);
             expect(result).toBeUndefined();
         });
         it("should return undefined when answer is not an array", () => {
-            const questionWithInvalidAnswer = Object.assign(Object.assign({}, mockCheckboxQuestion), { answer: {
+            const questionWithInvalidAnswer = {
+                ...mockCheckboxQuestion,
+                answer: {
                     answer: "not an array", // Invalid answer type
                     isCorrect: true,
-                } });
+                },
+            };
             const result = (0, helper_1.GetAnswerKeyForQuestion)(questionWithInvalidAnswer);
             expect(result).toBeUndefined();
         });

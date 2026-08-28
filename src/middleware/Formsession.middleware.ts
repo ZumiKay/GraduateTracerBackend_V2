@@ -1,101 +1,24 @@
 import { NextFunction, Response } from "express";
-import { CustomRequest } from "../types/customType";
+import { CustomRequest, RESPONSES } from "../types/customType";
 import Formsession from "../model/Formsession.model";
 import { isValidObjectId } from "mongoose";
-import Form, { TypeForm } from "../model/Form.model";
+import Form from "../model/Form.model";
 import UserMiddleware, {
   GetPublicFormDataTyEnum,
   GetPublicFormDataType,
 } from "./User.middleware";
 import { JwtPayload } from "jsonwebtoken";
-import { getDateByMinute, ReturnCode } from "../utilities/helper";
+import {
+  ExtractTokenPayload,
+  GenerateToken,
+  getDateByMinute,
+} from "../utilities/helper";
 import FormsessionService from "../controller/form/formsession.controller";
+import { isValidObjectIdString } from "../utilities/formHelpers";
 
 export interface FormSessionJWTPayloadType extends JwtPayload {
   email: string;
 }
-
-// Response templates for common error scenarios
-const RESPONSES = {
-  missingCookieConfig: () => ({
-    success: false,
-    status: 500,
-    message: "Server configuration error",
-    error: "MISSING_COOKIE_CONFIG",
-  }),
-  invalidFormId: () => ({
-    success: false,
-    status: 400,
-    message: "Invalid or missing form ID",
-    error: "INVALID_FORM_ID",
-  }),
-  formClosed: () => ({
-    success: false,
-    status: 403,
-    message: "Form is closed",
-    error: "FORM_CLOSED",
-  }),
-  missingSessionToken: () => ({
-    success: false,
-    status: 401,
-    message: "Session token required",
-    error: "MISSING_SESSION_TOKEN",
-  }),
-  invalidSessionToken: () => ({
-    success: false,
-    status: 401,
-    message: "Invalid session token",
-    error: "INVALID_SESSION_TOKEN",
-  }),
-  sessionNotFound: () => ({
-    success: false,
-    status: 401,
-    message: "Session not found",
-    error: "SESSION_NOT_FOUND",
-  }),
-  sessionExpired: () => ({
-    success: false,
-    status: 401,
-    message: "Session expired",
-    error: "SESSION_EXPIRED",
-  }),
-  invalidAccessToken: () => ({
-    success: false,
-    status: 401,
-    message: "Invalid Session",
-    error: "INVALID_ACCESS_TOKEN",
-  }),
-  tokenRenewalError: () => ({
-    success: false,
-    status: 500,
-    message: "Token renewal failed",
-    error: "TOKEN_RENEWAL_ERROR",
-  }),
-  internalServerError: () => ({
-    success: false,
-    status: 500,
-    message: "Internal server error",
-    error: "INTERNAL_SERVER_ERROR",
-  }),
-  missingFormId: () => ({
-    success: false,
-    status: 400,
-    message: "Form ID is missing",
-    error: "MISSING_FORM_ID",
-  }),
-  invalidRequestType: () => ({
-    success: false,
-    status: 400,
-    message: "Invalid request type",
-    error: "INVALID_REQUEST_TYPE",
-  }),
-  missingRefreshTokenConfig: () => ({
-    success: false,
-    status: 500,
-    message: "Server configuration error",
-    error: "MISSING_REFRESH_TOKEN_CONFIG",
-  }),
-} as const;
 
 export default class FormsessionMiddleware {
   /**
@@ -114,40 +37,35 @@ export default class FormsessionMiddleware {
     return !!(formId && isValidObjectId(formId));
   }
 
-  /**
-   * Checks if session has expired
-   */
-  private static isSessionExpired(
-    dbExpiredAt: Date,
-    isTokenExpired: boolean | undefined
-  ): boolean {
-    return dbExpiredAt <= new Date() || !!isTokenExpired;
-  }
-
   public static VerifyFormsession = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
-    if (!this.validateCookieConfig())
-      return res.status(500).json(RESPONSES.missingCookieConfig());
-
+    if (!this.validateCookieConfig()) {
+      res.status(500).json(RESPONSES.missingCookieConfig());
+      return;
+    }
     //Verify required param
     const { formId } = req.params as { formId?: string };
 
-    if (!this.validateFormId(formId))
-      return res.status(400).json(RESPONSES.invalidFormId());
-
+    if (!this.validateFormId(formId)) {
+      res.status(400).json(RESPONSES.invalidFormId());
+      return;
+    }
     try {
       //Verify initial formdata
       const form = await Form.findById(formId)
         .select("type setting.email setting.acceptResponses")
         .lean();
-      if (!form?.setting?.acceptResponses)
-        return res.status(403).json(RESPONSES.formClosed());
+      if (!form?.setting?.acceptResponses) {
+        res.status(403).json(RESPONSES.formClosed());
+        return;
+      }
 
-      if (form?.type === TypeForm.Normal && !form.setting.email) {
-        return next();
+      if (!form.setting.email) {
+        next();
+        return;
       }
 
       // Extract both session_id and access_id from cookies
@@ -156,16 +74,21 @@ export default class FormsessionMiddleware {
         req.cookies[process.env.ACCESS_RESPONDENT_COOKIE as string];
 
       if (!sessionToken) {
-        return res.status(401).json(RESPONSES.missingSessionToken());
+        res.status(401).json(RESPONSES.missingSessionToken());
+        return;
       }
 
       // Verify session token
-      const extractedSessionToken = FormsessionService.ExtractToken({
+      const extractedSessionToken = ExtractTokenPayload({
         token: sessionToken,
+        customSecret: process.env.RESPONDENT_TOKEN_JWT_SECRET as string,
       });
 
-      if (!extractedSessionToken.data) {
-        return res.status(401).json(RESPONSES.invalidSessionToken());
+      //invalid token handle
+      if (!extractedSessionToken) {
+        await Formsession.deleteOne({ session_id: sessionToken });
+        res.status(401).json(RESPONSES.invalidSessionToken());
+        return;
       }
 
       try {
@@ -181,45 +104,34 @@ export default class FormsessionMiddleware {
         const isSession = await Formsession.findOne(sessionQuery).lean();
 
         if (!isSession) {
-          return res.status(401).json(RESPONSES.sessionNotFound());
-        }
+          res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
+          res.clearCookie(process.env.RESPONDENT_COOKIE as string);
 
-        const dbExpiredAt = new Date(isSession.expiredAt);
-        if (
-          this.isSessionExpired(dbExpiredAt, extractedSessionToken.isExpired)
-        ) {
-          await Formsession.deleteOne({ session_id: sessionToken });
-          return res.status(401).json(RESPONSES.sessionExpired());
+          res.status(401).json(RESPONSES.sessionNotFound());
+          return;
         }
 
         //Access Token Handler
         const verifiedAccessToken = accessToken
-          ? FormsessionService.ExtractToken({
+          ? ExtractTokenPayload({
               token: accessToken,
+              customSecret: process.env.RESPONDENT_TOKEN_JWT_SECRET,
             })
           : undefined;
 
-        if (
-          verifiedAccessToken &&
-          !verifiedAccessToken?.isExpired &&
-          !verifiedAccessToken?.data
-        ) {
-          return res.status(401).json(RESPONSES.invalidAccessToken());
-        }
-
-        // Renew access tokens if needed
-        if (!verifiedAccessToken || verifiedAccessToken.isExpired) {
-          const newAccessId = await FormsessionService.GenerateUniqueAccessId({
-            email: isSession.respondentEmail,
-            expireIn: "30m",
-          });
+        // Renew access tokens if needed happen cuz session token still valid
+        if (!verifiedAccessToken) {
+          const newAccessId = GenerateToken(
+            { email: isSession.respondentEmail },
+            "30m",
+          );
 
           // Update both session_id and access_id in database
           await Formsession.updateOne(
             { session_id: sessionToken },
             {
               access_id: newAccessId,
-            }
+            },
           );
 
           const newExtractedAccessToken = FormsessionService.ExtractToken({
@@ -227,7 +139,6 @@ export default class FormsessionMiddleware {
           });
 
           req.formsession = {
-            ...extractedSessionToken,
             sub: sessionToken,
             access_token: newAccessId,
             access_payload: newExtractedAccessToken,
@@ -237,39 +148,42 @@ export default class FormsessionMiddleware {
             res,
             newAccessId,
             process.env.ACCESS_RESPONDENT_COOKIE as string,
-            getDateByMinute(30)
+            getDateByMinute(30),
           );
 
-          return next();
+          next();
+          return;
         }
 
         // No renewal needed - use existing tokens
         req.formsession = {
-          ...extractedSessionToken,
           sub: sessionToken,
           access_token: accessToken,
-          access_payload: verifiedAccessToken.data,
+          access_payload: verifiedAccessToken,
         } as never;
-        return next();
+        next();
       } catch (error) {
         console.error("Token renewal failed:", error);
-        return res.status(500).json(RESPONSES.tokenRenewalError());
+        res.status(500).json(RESPONSES.tokenRenewalError());
       }
     } catch (error) {
-      console.error("Verify Form session error:", error);
-      return res.status(500).json(RESPONSES.internalServerError());
+      console.error("Verify Form session error:");
+      res.status(500).json(RESPONSES.internalServerError());
     }
   };
 
   public static VerifyRespondentFormSessionData = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     const { ty } = req.query as GetPublicFormDataType;
     const { formId } = req.params as { formId?: string };
 
-    if (!formId) return res.status(400).json(RESPONSES.missingFormId());
+    if (!formId || !isValidObjectIdString(formId)) {
+      res.status(400).json(RESPONSES.missingFormId());
+      return;
+    }
 
     try {
       switch (ty) {
@@ -284,11 +198,17 @@ export default class FormsessionMiddleware {
             return;
           }
 
-          return next();
+          next();
+          return;
         }
         case GetPublicFormDataTyEnum.data: {
           //Verify Session with both tokens
           await this.VerifyFormsession(req, res, next);
+          return;
+        }
+
+        case GetPublicFormDataTyEnum.preview: {
+          await UserMiddleware.VerifyToken(req, res, next);
           return;
         }
 
@@ -303,7 +223,7 @@ export default class FormsessionMiddleware {
   public static VerifyUserRespondentLogin = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     if (!process.env.REFRESH_TOKEN_COOKIE)
       return res.status(500).json(RESPONSES.missingRefreshTokenConfig());

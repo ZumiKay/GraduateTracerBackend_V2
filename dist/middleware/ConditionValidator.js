@@ -74,72 +74,72 @@ class ConditionQuestionValidator {
         });
         return { isValid: errors.length === 0, errors };
     }
+    /**
+     * Middleware to validate condition questions on content creation/update
+     */
+    static validateConditionMiddleware = (req, res, next) => {
+        try {
+            const { content, contents, data } = req.body;
+            let validationResult;
+            if (content) {
+                // Single content validation
+                validationResult =
+                    ConditionQuestionValidator.validateSingleContent(content);
+            }
+            else if (contents) {
+                // Single content validation (alternative field name)
+                validationResult =
+                    ConditionQuestionValidator.validateSingleContent(contents);
+            }
+            else if (data && Array.isArray(data)) {
+                // Multiple content validation
+                validationResult =
+                    ConditionQuestionValidator.validateMultipleContent(data);
+            }
+            else {
+                // No content to validate, proceed
+                return next();
+            }
+            if (!validationResult.isValid) {
+                return res
+                    .status(400)
+                    .json((0, helper_1.ReturnCode)(400, `Invalid condition question configuration: ${validationResult.errors.join(", ")}`));
+            }
+            next();
+        }
+        catch (error) {
+            console.error("Condition validation middleware error:", error);
+            return res.status(500).json((0, helper_1.ReturnCode)(500, "Internal server error"));
+        }
+    };
+    /**
+     * Middleware specifically for handling condition creation
+     */
+    static validateConditionCreationMiddleware = (req, res, next) => {
+        try {
+            const { content, key, newContent } = req.body;
+            if (!content || !content._id) {
+                return res
+                    .status(400)
+                    .json((0, helper_1.ReturnCode)(400, "Parent content ID is required for condition creation"));
+            }
+            if (key === undefined || key === null) {
+                return res
+                    .status(400)
+                    .json((0, helper_1.ReturnCode)(400, "Condition key is required"));
+            }
+            if (!newContent) {
+                return res
+                    .status(400)
+                    .json((0, helper_1.ReturnCode)(400, "New content is required for condition creation"));
+            }
+            next();
+        }
+        catch (error) {
+            console.error("Condition creation validation middleware error:", error);
+            return res.status(500).json((0, helper_1.ReturnCode)(500, "Internal server error"));
+        }
+    };
 }
 exports.ConditionQuestionValidator = ConditionQuestionValidator;
-/**
- * Middleware to validate condition questions on content creation/update
- */
-ConditionQuestionValidator.validateConditionMiddleware = (req, res, next) => {
-    try {
-        const { content, contents, data } = req.body;
-        let validationResult;
-        if (content) {
-            // Single content validation
-            validationResult =
-                ConditionQuestionValidator.validateSingleContent(content);
-        }
-        else if (contents) {
-            // Single content validation (alternative field name)
-            validationResult =
-                ConditionQuestionValidator.validateSingleContent(contents);
-        }
-        else if (data && Array.isArray(data)) {
-            // Multiple content validation
-            validationResult =
-                ConditionQuestionValidator.validateMultipleContent(data);
-        }
-        else {
-            // No content to validate, proceed
-            return next();
-        }
-        if (!validationResult.isValid) {
-            return res
-                .status(400)
-                .json((0, helper_1.ReturnCode)(400, `Invalid condition question configuration: ${validationResult.errors.join(", ")}`));
-        }
-        next();
-    }
-    catch (error) {
-        console.error("Condition validation middleware error:", error);
-        return res.status(500).json((0, helper_1.ReturnCode)(500, "Internal server error"));
-    }
-};
-/**
- * Middleware specifically for handling condition creation
- */
-ConditionQuestionValidator.validateConditionCreationMiddleware = (req, res, next) => {
-    try {
-        const { content, key, newContent } = req.body;
-        if (!content || !content._id) {
-            return res
-                .status(400)
-                .json((0, helper_1.ReturnCode)(400, "Parent content ID is required for condition creation"));
-        }
-        if (key === undefined || key === null) {
-            return res
-                .status(400)
-                .json((0, helper_1.ReturnCode)(400, "Condition key is required"));
-        }
-        if (!newContent) {
-            return res
-                .status(400)
-                .json((0, helper_1.ReturnCode)(400, "New content is required for condition creation"));
-        }
-        next();
-    }
-    catch (error) {
-        console.error("Condition creation validation middleware error:", error);
-        return res.status(500).json((0, helper_1.ReturnCode)(500, "Internal server error"));
-    }
-};
 exports.default = ConditionQuestionValidator;

@@ -47,8 +47,6 @@ class FormResponseController {
   public GetPublicFormData = FormResponseSubmissionController.GetPublicFormData;
 
   // Utility methods
-  public ValidateFormForSubmission =
-    FormResponseUtilityController.ValidateFormForSubmission;
   public SendFormLinks = FormResponseUtilityController.SendFormLinks;
   public GenerateFormLink = FormResponseUtilityController.GenerateFormLink;
   public SendResponseCardEmail =

@@ -1,52 +1,66 @@
-# Use Node.js 20 Alpine as base image for smaller size
-FROM node:20-alpine
+# ==========================================
+# Stage 1: Build & compile TypeScript
+# ==========================================
+FROM node:24-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies for Puppeteer and other native packages
+# Install native build tools for modules like bcrypt
+RUN apk add --no-cache python3 make g++
+
+# Copy package definition files
+COPY package*.json ./
+
+# Install ALL dependencies (including devDependencies required for tsc)
+RUN npm ci
+
+# Copy application source code and configurations
+COPY tsconfig*.json ./
+COPY src/ ./src/
+
+# Compile TypeScript to dist/
+RUN npm run build
+
+# Prune devDependencies to keep only production dependencies
+RUN npm prune --omit=dev && npm cache clean --force
+
+# ==========================================
+# Stage 2: Production runtime
+# ==========================================
+FROM node:24-alpine AS runner
+
+WORKDIR /app
+
+# Install system runtime dependencies for Chromium / Puppeteer
 RUN apk add --no-cache \
     chromium \
     nss \
     freetype \
-    freetype-dev \
     harfbuzz \
     ca-certificates \
-    ttf-freefont \
-    python3 \
-    make \
-    g++
+    ttf-freefont
 
-# Tell Puppeteer to skip installing Chromium. We'll be using the installed package.
+# Configure Puppeteer environment variables
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    NODE_ENV=production \
+    PORT=8000
 
-# Copy package files
-COPY package*.json ./
+# Copy production artifacts from builder stage
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY healthcheck.js ./healthcheck.js
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Use non-root node user provided by alpine node base image
+USER node
 
-# Copy source code
-COPY . .
-
-# Build the TypeScript code
-RUN npm run build
-
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodeuser -u 1001
-
-# Change ownership of the app directory
-RUN chown -R nodeuser:nodejs /app
-USER nodeuser
-
-# Expose port
+# Expose backend service port
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD node healthcheck.js || exit 1
 
-# Start the application
+# Start backend application
 CMD ["node", "dist/server.js"]

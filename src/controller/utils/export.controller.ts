@@ -1,9 +1,5 @@
 import { Response } from "express";
 import { CustomRequest } from "../../types/customType";
-import {
-  generateOperationId,
-  handleDatabaseError,
-} from "../../utilities/MongoErrorHandler";
 import Form from "../../model/Form.model";
 import { ReturnCode } from "../../utilities/helper";
 import FormResponse from "../../model/Response.model";
@@ -11,8 +7,6 @@ import { getResponseDisplayName } from "../../utilities/respondentUtils";
 
 // Get available columns for export
 export async function getAvailableColumns(req: CustomRequest, res: Response) {
-  const operationId = generateOperationId("get_available_columns");
-
   try {
     const { formId } = req.params;
 
@@ -38,7 +32,7 @@ export async function getAvailableColumns(req: CustomRequest, res: Response) {
       // Add form content/question columns
       ...(form.contents || []).map(
         (content: any) =>
-          content.questionText || content.title || `question_${content._id}`
+          content.questionText || content.title || `question_${content._id}`,
       ),
     ];
 
@@ -47,16 +41,12 @@ export async function getAvailableColumns(req: CustomRequest, res: Response) {
       data: { columns },
     });
   } catch (error) {
-    if (handleDatabaseError(error, res, "get available columns")) {
-      return;
-    }
-
-    console.error(`[${operationId}] Error fetching available columns:`, error);
-    res.status(500).json(ReturnCode(500, "Failed to fetch available columns"));
+    return res
+      .status(500)
+      .json(ReturnCode(500, "Failed to fetch available columns"));
   }
 }
 
-// Get export jobs for a form
 export async function getExportJobs(req: CustomRequest, res: Response) {
   try {
     const { formId } = req.params;
@@ -208,14 +198,14 @@ const processExportJob = async (jobId: string, formId: string, config: any) => {
     // Get form responses
     const responses = await FormResponse.find({ formId }).populate(
       "userId",
-      "email"
+      "email",
     );
 
     // Generate export file based on format
     const exportData = await generateExportFile(config, responses);
 
     console.log(
-      `Export job ${jobId} completed with ${responses.length} records`
+      `Export job ${jobId} completed with ${responses.length} records`,
     );
   } catch (error) {
     console.error(`Error processing export job ${jobId}:`, error);
@@ -290,7 +280,7 @@ export async function quickExport(req: CustomRequest, res: Response) {
       res.setHeader("Content-Type", "text/csv");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${filename}"`
+        `attachment; filename="${filename}"`,
       );
       res.send(csvContent);
       return;
@@ -298,7 +288,7 @@ export async function quickExport(req: CustomRequest, res: Response) {
       res.setHeader("Content-Type", "application/json");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${filename}"`
+        `attachment; filename="${filename}"`,
       );
       res.json(exportData);
       return;
@@ -355,7 +345,7 @@ const generateExportFile = async (config: any, responses: any[]) => {
         default:
           // Handle form field data
           const fieldData = response.responseset?.find(
-            (r: any) => r.questionId.toString() === column
+            (r: any) => r.questionId.toString() === column,
           );
           row[column] = fieldData ? fieldData.response : "";
       }

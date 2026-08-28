@@ -5,15 +5,6 @@
  * This file shows how to use the sendRemovalLinkEmail function
  * in different scenarios throughout your application.
  */
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -22,9 +13,9 @@ exports.removalEmailRouteExample = exports.manualRemovalTrigger = exports.handle
 const formsession_controller_1 = __importDefault(require("../controller/form/formsession.controller"));
 const removalEmail_1 = require("../utilities/removalEmail");
 // Example 1: Send single removal email
-const sendSingleRemovalExample = () => __awaiter(void 0, void 0, void 0, function* () {
+const sendSingleRemovalExample = async () => {
     try {
-        const result = yield (0, removalEmail_1.sendRemovalLinkEmail)("user@example.com", "123456", "Customer Satisfaction Survey");
+        const result = await (0, removalEmail_1.sendRemovalLinkEmail)("user@example.com", "123456", "Customer Satisfaction Survey");
         if (result.success) {
             console.log("✅ Removal email sent successfully");
         }
@@ -35,17 +26,17 @@ const sendSingleRemovalExample = () => __awaiter(void 0, void 0, void 0, functio
     catch (error) {
         console.error("Error:", error);
     }
-});
+};
 exports.sendSingleRemovalExample = sendSingleRemovalExample;
 // Example 2: Send bulk removal emails
-const sendBulkRemovalExample = () => __awaiter(void 0, void 0, void 0, function* () {
+const sendBulkRemovalExample = async () => {
     const recipients = [
         { email: "user1@example.com", removeCode: "123456" },
         { email: "user2@example.com", removeCode: "789012" },
         { email: "user3@example.com", removeCode: "345678" },
     ];
     try {
-        const results = yield (0, removalEmail_1.sendBulkRemovalEmails)(recipients, "Employee Survey 2024");
+        const results = await (0, removalEmail_1.sendBulkRemovalEmails)(recipients, "Employee Survey 2024");
         results.forEach((result) => {
             if (result.success) {
                 console.log(`✅ Sent removal email to: ${result.email}`);
@@ -58,13 +49,13 @@ const sendBulkRemovalExample = () => __awaiter(void 0, void 0, void 0, function*
     catch (error) {
         console.error("Bulk email error:", error);
     }
-});
+};
 exports.sendBulkRemovalExample = sendBulkRemovalExample;
 // Example 3: Integration with form session logic
-const handleDuplicateSession = (respondentEmail, formId, removeCode) => __awaiter(void 0, void 0, void 0, function* () {
+const handleDuplicateSession = async (respondentEmail, formId, removeCode) => {
     try {
         // This is how it's used in FormsessionService.RespondentLogin
-        const emailResult = yield (0, removalEmail_1.sendRemovalLinkEmail)(respondentEmail, removeCode, formId, process.env.FRONTEND_URL);
+        const emailResult = await (0, removalEmail_1.sendRemovalLinkEmail)(respondentEmail, removeCode, formId, process.env.FRONTEND_URL);
         if (emailResult.success) {
             console.log(`Removal instructions sent to ${respondentEmail}`);
             return {
@@ -87,10 +78,10 @@ const handleDuplicateSession = (respondentEmail, formId, removeCode) => __awaite
             message: "An error occurred while sending removal instructions",
         };
     }
-});
+};
 exports.handleDuplicateSession = handleDuplicateSession;
 // Example 4: Manual trigger (for admin dashboard or support)
-const manualRemovalTrigger = (sessionId) => __awaiter(void 0, void 0, void 0, function* () {
+const manualRemovalTrigger = async (sessionId) => {
     try {
         // This would be called from an admin endpoint
         // You could add this to your FormsessionService
@@ -102,7 +93,7 @@ const manualRemovalTrigger = (sessionId) => __awaiter(void 0, void 0, void 0, fu
     catch (error) {
         console.error("Manual removal trigger error:", error);
     }
-});
+};
 exports.manualRemovalTrigger = manualRemovalTrigger;
 /**
  * Route handler example for manual email sending

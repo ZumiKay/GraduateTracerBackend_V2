@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -22,7 +13,7 @@ const email_1 = __importDefault(require("./email"));
  * @param baseUrl - Base URL of your application (defaults to FRONTEND_URL env var)
  * @returns Promise with success status
  */
-const sendRemovalLinkEmail = (respondentEmail, removeCode, formId, formTitle, baseUrl) => __awaiter(void 0, void 0, void 0, function* () {
+const sendRemovalLinkEmail = async (respondentEmail, removeCode, formId, formTitle, baseUrl) => {
     const encodedRemoveCode = encodeURIComponent(removeCode);
     const encodedFormId = encodeURIComponent(formId);
     const frontendUrl = baseUrl || process.env.FRONTEND_URL || "http://localhost:3000";
@@ -277,7 +268,7 @@ const sendRemovalLinkEmail = (respondentEmail, removeCode, formId, formTitle, ba
     </html>
   `;
     try {
-        const result = yield (0, email_1.default)(respondentEmail, subject, htmlTemplate);
+        const result = await (0, email_1.default)(respondentEmail, subject, htmlTemplate);
         return result;
     }
     catch (error) {
@@ -287,7 +278,7 @@ const sendRemovalLinkEmail = (respondentEmail, removeCode, formId, formTitle, ba
             message: `Failed to send removal email: ${error.message}`,
         };
     }
-});
+};
 exports.sendRemovalLinkEmail = sendRemovalLinkEmail;
 /**
  * Send bulk removal link emails to multiple respondents
@@ -296,11 +287,11 @@ exports.sendRemovalLinkEmail = sendRemovalLinkEmail;
  * @param baseUrl - Base URL of your application
  * @returns Promise with results for each email sent
  */
-const sendBulkRemovalEmails = (recipients, formId, formTitle, baseUrl) => __awaiter(void 0, void 0, void 0, function* () {
+const sendBulkRemovalEmails = async (recipients, formId, formTitle, baseUrl) => {
     const results = [];
     for (const recipient of recipients) {
         try {
-            const result = yield (0, exports.sendRemovalLinkEmail)(recipient.email, recipient.removeCode, formId, formTitle, baseUrl);
+            const result = await (0, exports.sendRemovalLinkEmail)(recipient.email, recipient.removeCode, formId, formTitle, baseUrl);
             results.push({
                 email: recipient.email,
                 success: result.success,
@@ -316,7 +307,7 @@ const sendBulkRemovalEmails = (recipients, formId, formTitle, baseUrl) => __awai
         }
     }
     return results;
-});
+};
 exports.sendBulkRemovalEmails = sendBulkRemovalEmails;
 exports.default = {
     sendRemovalLinkEmail: exports.sendRemovalLinkEmail,

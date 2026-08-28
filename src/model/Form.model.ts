@@ -61,6 +61,13 @@ export interface PendingOwnershipTransferType {
   code: string;
 }
 
+export interface SummaryFormType {
+  totalQuestion: number;
+  totalConditions: number;
+  dynamicTotalScore: number;
+  lastQuestionIdx: number;
+}
+
 export interface FormType {
   _id: Types.ObjectId;
   title: string;
@@ -75,6 +82,7 @@ export interface FormType {
   setting?: FromSettingType;
   totalpage?: number;
   totalscore?: number;
+  extraScore?: number;
   respondants?: Array<Types.ObjectId>;
   responses?: Array<FormResponseType>;
   createdAt?: Date;
@@ -82,6 +90,8 @@ export interface FormType {
   inviteCodes?: Array<string>;
   pendingCollarborators: Array<PendingCollarboratorsType>;
   pendingOwnershipTransfer?: PendingOwnershipTransferType;
+  pendingInvite?: Array<string>;
+  lastQuestionIdx?: number;
 }
 
 const FormSettingSchema = new Schema<FromSettingType>({
@@ -162,7 +172,7 @@ const PendingOwnershipTransferSchema = new Schema<PendingOwnershipTransferType>(
       ref: "User",
       required: true,
     },
-  }
+  },
 );
 
 const FormSchema = new Schema<FormType>(
@@ -208,6 +218,11 @@ const FormSchema = new Schema<FormType>(
       required: false,
       default: null,
     },
+    pendingInvite: {
+      type: [String],
+      require: false,
+      default: null,
+    },
     totalpage: {
       type: Number,
       default: 1,
@@ -217,8 +232,17 @@ const FormSchema = new Schema<FormType>(
       type: Number,
       required: false,
     },
+    extraScore: {
+      type: Number,
+      required: false,
+      default: 0,
+    },
   },
-  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  },
 );
 
 FormSchema.index({ user: 1 });
@@ -232,7 +256,6 @@ FormSchema.index({ _id: 1, responses: 1 });
 FormSchema.pre("deleteOne", async function (next) {
   const formId = this.getQuery()._id;
   await FormResponse.deleteMany({ formId });
-  next();
 });
 
 const Form = model<FormType>("Form", FormSchema);

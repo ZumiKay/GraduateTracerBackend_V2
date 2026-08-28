@@ -16,35 +16,35 @@ const router = express.Router();
 router.get(
   "/forms/:formId/columns",
   UserMiddleware.VerifyToken as never,
-  getAvailableColumns
+  getAvailableColumns as never,
 );
 
 // Get export jobs for a form - Enhanced Security
 router.get(
   "/forms/:formId/exports",
   UserMiddleware.VerifyToken as never,
-  getExportJobs
+  getExportJobs,
 );
 
 // Create new export job - Enhanced Security
 router.post(
   "/forms/:formId/exports",
   UserMiddleware.VerifyToken as never,
-  createExportJob
+  createExportJob,
 );
 
 // Get export job by ID - Enhanced Security
 router.get(
   "/forms/:formId/exports/:jobId",
   UserMiddleware.VerifyToken as never,
-  getExportJob
+  getExportJob,
 );
 
 // Delete export job - Enhanced Security
 router.delete(
   "/forms/:formId/exports/:jobId",
   UserMiddleware.VerifyToken as never,
-  deleteExportJob
+  deleteExportJob,
 );
 
 // Download export file - Public access (requires valid filename token)
@@ -54,7 +54,7 @@ router.get("/download/:filename", downloadExportFile);
 router.get(
   "/forms/:formId/quick",
   UserMiddleware.VerifyToken as never,
-  quickExport
+  quickExport,
 );
 
 export default router;

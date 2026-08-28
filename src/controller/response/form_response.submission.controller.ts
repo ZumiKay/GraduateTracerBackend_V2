@@ -1,9 +1,12 @@
 import { Response } from "express";
-import { ReturnCode } from "../../utilities/helper";
-import { MongoErrorHandler } from "../../utilities/MongoErrorHandler";
+import {
+  AddQuestionNumbering,
+  ReturnCode,
+  SendResponse,
+} from "../../utilities/helper";
 import Zod from "zod";
 import { Types } from "mongoose";
-import Form, { TypeForm } from "../../model/Form.model";
+import Form, { FormType, TypeForm } from "../../model/Form.model";
 import {
   ProcessNormalFormSubmissionType,
   ResponseProcessingService,
@@ -17,11 +20,18 @@ import {
   SubmitionProcessionReturnType,
 } from "../../model/Response.model";
 import {
-  GetPublicFormDataType,
   GetPublicFormDataTyEnum,
+  GetPublicFormDataType,
 } from "../../middleware/User.middleware";
 import { CustomRequest } from "../../types/customType";
 import { NotificationController } from "../utils/notification.controller";
+import { FingerprintService } from "../../utilities/fingerprint";
+import {
+  getLastQuestionIdx,
+  hasFormAccess,
+  isValidObjectIdString,
+} from "../../utilities/formHelpers";
+import Content from "../../model/Content.model";
 
 interface SubmitResponseBodyType {
   responseSet?: Array<ResponseSetType>;
@@ -73,6 +83,7 @@ export class FormResponseSubmissionController {
         return res.status(404).json(ReturnCode(404, "Form not found"));
       }
 
+      //Prepare submission data
       let submissionDataWithTracking: ProcessNormalFormSubmissionType;
 
       const baseSubmissionData: Partial<FormResponseType> = {
@@ -85,7 +96,7 @@ export class FormResponseSubmissionController {
       submissionDataWithTracking =
         RespondentTrackingService.createSubmissionWithTracking(
           baseSubmissionData,
-          req
+          req,
         );
 
       let result: Partial<SubmitionProcessionReturnType | undefined>;
@@ -94,25 +105,25 @@ export class FormResponseSubmissionController {
         if (form.type === TypeForm.Quiz) {
           result = await ResponseProcessingService.processFormSubmission(
             submissionDataWithTracking,
-            form
+            form,
           );
         }
         //Normal type process
         else {
           result = await ResponseProcessingService.processNormalFormSubmission(
-            submissionDataWithTracking
+            submissionDataWithTracking,
           );
         }
       } catch (processingError) {
         console.error(
           `[${submissionId}] Error during form processing:`,
-          processingError
+          processingError,
         );
 
         if (processingError instanceof Error) {
           const errorResponse = this.handleProcessingError(
             processingError,
-            submissionId
+            submissionId,
           );
           if (errorResponse) {
             return res.status(errorResponse.status).json(errorResponse.body);
@@ -143,7 +154,7 @@ export class FormResponseSubmissionController {
           {
             name: respondentName,
             email: respondentEmail,
-          }
+          },
         );
       }
 
@@ -158,39 +169,9 @@ export class FormResponseSubmissionController {
         },
       });
     } catch (error) {
-      console.error(
-        `[${submissionId}] Unexpected error in SubmitFormResponse:`,
-        {
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : error,
-          requestBody: req.body,
-          userAgent: req.headers["user-agent"],
-          ip: req.ip,
-        }
-      );
-
       if (error instanceof Error) {
-        const mongoErrorHandled = MongoErrorHandler.handleMongoError(
-          error,
-          res,
-          {
-            operationId: submissionId,
-            customMessage: "Database operation failed during form submission",
-            includeErrorDetails: true,
-          }
-        );
-
-        if (mongoErrorHandled.handled) {
-          return;
-        }
-
-        if (error.name === "ValidationError" || error.name === "CastError") {
+        //Catch validation error
+        if (error.name === "ValidationError") {
           return res.status(400).json({
             ...ReturnCode(400, "Invalid data provided"),
             submissionId,
@@ -198,6 +179,7 @@ export class FormResponseSubmissionController {
           });
         }
 
+        //Handle timeout error
         if (
           error.message.includes("timeout") ||
           error.name === "TimeoutError"
@@ -210,10 +192,11 @@ export class FormResponseSubmissionController {
         }
       }
 
+      //Critical Error
       return res.status(500).json({
         ...ReturnCode(
           500,
-          "An unexpected error occurred during form submission"
+          "An unexpected error occurred during form submission",
         ),
         submissionId,
         timestamp: new Date().toISOString(),
@@ -280,7 +263,7 @@ export class FormResponseSubmissionController {
 
   private handleProcessingError(
     error: Error,
-    submissionId: string
+    submissionId: string,
   ): {
     status: number;
     body: any;
@@ -440,67 +423,91 @@ export class FormResponseSubmissionController {
 
       const isUserAlreadyAuthenticated = !!req.formsession;
 
-      if (req.formsession) {
-        ty = GetPublicFormDataTyEnum.data;
-      }
-
       switch (ty) {
         case "initial": {
           const initialData = await Form.findById(formId)
             .select(
-              "_id title type totalpage totalscore setting.email setting.acceptResponses setting.acceptGuest setting.submitonce"
+              "_id title type totalpage totalscore setting.email setting.acceptResponses setting.acceptGuest setting.submitonce",
             )
             .lean();
 
           if (!initialData || !initialData.setting?.acceptResponses) {
-            return res
-              .status(404)
-              .json(
-                ReturnCode(
-                  404,
-                  initialData ? "Form is closed" : "Form not found"
-                )
-              );
+            return SendResponse.notFound(
+              res,
+              initialData ? "Form is closed" : "Form not found",
+            );
+          }
+
+          //Check if the respondent already response
+          if (initialData.setting.submitonce) {
+            const respondentFingerPrint =
+              FingerprintService.extractFingerprintFromRequest(req);
+            const fingerprintHash = FingerprintService.generateFingerprint(
+              respondentFingerPrint,
+            );
+            const trackingResult =
+              await RespondentTrackingService.checkRespondentExists({
+                formId: new Types.ObjectId(formId),
+                ...(!isUserAlreadyAuthenticated
+                  ? {
+                      respondentFingerprint: fingerprintHash,
+                      respondentIP: FingerprintService.getClientIP(req),
+                      fingerprintStrength:
+                        FingerprintService.getFingerprintStrength(
+                          respondentFingerPrint,
+                        ),
+                    }
+                  : {}),
+                respondentEmail: isUserAlreadyAuthenticated
+                  ? req.formsession?.access_payload?.email
+                  : undefined,
+              });
+
+            if (trackingResult?.hasResponded) {
+              return res.status(200).json({
+                ...ReturnCode(200),
+                data: {
+                  ...initialData,
+                  isAuthenticated: true,
+                  isResponsed: trackingResult.hasResponded,
+                },
+              });
+            }
           }
 
           let isAuthenticated = false;
 
           if (initialData.setting?.email) {
             if (isUserAlreadyAuthenticated) {
-              try {
-                const formData = await ResponseQueryService.getPublicFormData(
-                  formId,
-                  page,
-                  req,
-                  res
-                );
+              const formData = await ResponseQueryService.getPublicFormData(
+                formId,
+                page,
+                req,
+              );
 
-                return res.status(200).json({
-                  ...ReturnCode(200),
+              if (formData.contentValidation?.some((i) => !i.isValid)) {
+                return SendResponse(res, 400, {
                   data: {
-                    ...initialData,
-                    isAuthenticated: true,
-                    isLoggedin: true,
-                    ...formData,
+                    contentValidation: formData.contentValidation.filter(
+                      (i) => !i.isValid,
+                    ),
                   },
                 });
-              } catch (error) {
-                console.warn(
-                  "Failed to fetch form content for authenticated user:",
-                  error
-                );
-                return res.status(200).json(ReturnCode(500));
               }
+
+              return SendResponse.success(res, {
+                ...initialData,
+                isAuthenticated: true,
+                isLoggedin: true,
+                ...formData,
+              });
             }
             isAuthenticated = false;
           } else {
             isAuthenticated = true;
           }
 
-          return res.status(200).json({
-            ...ReturnCode(200),
-            data: { ...initialData, isAuthenticated },
-          });
+          return SendResponse.success(res, { ...initialData, isAuthenticated });
         }
 
         case "data": {
@@ -512,8 +519,17 @@ export class FormResponseSubmissionController {
             formId,
             page,
             req,
-            res
           );
+
+          if (formData.contentValidation?.some((i) => !i.isValid)) {
+            return SendResponse(res, 400, {
+              data: {
+                contentValidation: formData.contentValidation.filter(
+                  (i) => !i.isValid,
+                ),
+              },
+            });
+          }
 
           return res.status(200).json({
             ...ReturnCode(200),
@@ -524,23 +540,63 @@ export class FormResponseSubmissionController {
             },
           });
         }
+
+        case GetPublicFormDataTyEnum.preview: {
+          if (!req.user?.sub || !isValidObjectIdString(req.user?.sub)) {
+            return SendResponse.unauthorized(res);
+          }
+
+          const isForm = await Form.findById(formId).lean();
+          const isAccess = hasFormAccess(
+            isForm as FormType,
+            new Types.ObjectId(req.user.sub),
+          );
+
+          if (!isAccess) return SendResponse.forbidden(res);
+
+          const contents = await Content.find({ formId, page })
+            .select(
+              "_id qIdx title type text multiple selection checkbox rangedate rangenumber date require page conditional parentcontent score",
+            )
+            .lean();
+
+          const resultContents = contents.map((content) => ({
+            ...content,
+            parentcontent:
+              content.parentcontent?.qId === content._id.toString()
+                ? undefined
+                : content.parentcontent,
+            answer: undefined,
+          }));
+
+          const lastQuestionIdx = await getLastQuestionIdx(
+            new Types.ObjectId(formId),
+            page,
+          );
+
+          const numberedContents = AddQuestionNumbering({
+            questions: resultContents,
+            lastIdx: lastQuestionIdx,
+          });
+
+          return SendResponse.success(res, {
+            ...isForm,
+            contents: numberedContents,
+            isAuthenticated: true,
+          });
+        }
+
         default:
-          res.status(204).json(ReturnCode(204));
+          return SendResponse.badRequest(res);
       }
     } catch (error) {
       console.error("Get Public Form Data Error:", error);
       if (error instanceof Error) {
-        if (error.message === "Form not found") {
-          return res.status(404).json(ReturnCode(404, error.message));
-        }
-        if (error.message === "Form is no longer accepting responses") {
-          return res.status(403).json(ReturnCode(403, error.message));
-        }
         if (error.message === "You already submitted this form") {
-          return res.status(400).json(ReturnCode(400, error.message));
+          return SendResponse.badRequest(res, error.message);
         }
       }
-      res.status(500).json(ReturnCode(500, "Failed to retrieve form data"));
+      return SendResponse.error(res);
     }
   };
 }

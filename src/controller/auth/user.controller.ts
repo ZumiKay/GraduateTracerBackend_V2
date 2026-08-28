@@ -5,7 +5,6 @@ import {
   ReturnCode,
   ValidatePassword,
 } from "../../utilities/helper";
-import { MongoErrorHandler } from "../../utilities/MongoErrorHandler";
 import { z } from "zod";
 import User, { ROLE, UserType } from "../../model/User.model";
 import HandleEmail from "../../utilities/email";
@@ -18,35 +17,10 @@ export const UserValidate = z.object({
     name: z.string().optional(),
     password: z
       .string()
-      .refine((pass) => ValidatePassword(pass), "Some Data Has Invalid Format"),
+      .refine((pass) => ValidatePassword(pass), "Invalid Credential"),
     role: z.nativeEnum(ROLE).optional(),
   }),
 });
-
-export async function GetRespondentProfile(req: Request, res: Response) {
-  const data = req.body as { email: string };
-  const operationId = MongoErrorHandler.generateOperationId("get_profile");
-
-  try {
-    const profile = await User.findOne({ email: data.email })
-      .select("_id")
-      .lean();
-
-    if (profile) {
-      return res.status(200).json({ ...ReturnCode(200), data: profile });
-    }
-    return res.status(404).json(ReturnCode(404, "No User Found"));
-  } catch (error) {
-    const mongoErrorHandled = MongoErrorHandler.handleMongoError(error, res, {
-      operationId,
-      customMessage: "Failed to retrieve user profile",
-    });
-
-    if (!mongoErrorHandled.handled) {
-      return res.status(500).json(ReturnCode(500));
-    }
-  }
-}
 
 export async function GetUserProfile(req: CustomRequest, res: Response) {
   const user = req.user;
@@ -71,7 +45,6 @@ export async function GetUserProfile(req: CustomRequest, res: Response) {
 
 export async function RegisterUser(req: Request, res: Response) {
   const data = req.body as UserType;
-  const operationId = MongoErrorHandler.generateOperationId("register_user");
 
   try {
     const isUser = await User.findOne({
@@ -91,16 +64,7 @@ export async function RegisterUser(req: Request, res: Response) {
 
     return res.status(201).json(ReturnCode(201, "User registered"));
   } catch (error) {
-    console.log(`[${operationId}] Register User Error:`, error);
-
-    const mongoErrorHandled = MongoErrorHandler.handleMongoError(error, res, {
-      operationId,
-      customMessage: "Failed to register user",
-    });
-
-    if (!mongoErrorHandled.handled) {
-      return res.status(500).json(ReturnCode(500));
-    }
+    return res.status(500).json(ReturnCode(500));
   }
 }
 
@@ -126,7 +90,7 @@ export async function EditUser(req: Request, res: Response) {
 
       await User.updateOne(
         { _id: edituserdata._id },
-        { name: edituserdata.name }
+        { name: edituserdata.name },
       );
     }
 
@@ -138,7 +102,7 @@ export async function EditUser(req: Request, res: Response) {
             let isUnqiue = false;
 
             while (!isUnqiue) {
-              const isCode = await User.findOne({ code: generateCode });
+              const isCode = await User.findOne({ code: String(generateCode) });
               if (!isCode) {
                 isUnqiue = true;
               }
@@ -153,7 +117,7 @@ export async function EditUser(req: Request, res: Response) {
               edituserdata.email,
               "Confirm Email Address",
               "Email Address Confirmation",
-              ""
+              "",
             );
 
             if (!sendemail.success) {
@@ -192,7 +156,7 @@ export async function EditUser(req: Request, res: Response) {
 
       const isPassword = bcrypt.compareSync(
         edituserdata.password,
-        user.password
+        user.password,
       );
 
       if (!isPassword) return res.status(400).json(ReturnCode(400));

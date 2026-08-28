@@ -8,7 +8,7 @@ import { CustomRequest } from "../../types/customType";
 export class FormResponseScoringController {
   public UpdateResponseScore = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,
@@ -25,7 +25,7 @@ export class FormResponseScoringController {
         return res
           .status(400)
           .json(
-            ReturnCode(400, "Scores array is required and must not be empty")
+            ReturnCode(400, "Scores array is required and must not be empty"),
           );
       }
 
@@ -34,7 +34,10 @@ export class FormResponseScoringController {
           return res
             .status(400)
             .json(
-              ReturnCode(400, "Each score entry must have questionId and score")
+              ReturnCode(
+                400,
+                "Each score entry must have questionId and score",
+              ),
             );
         }
       }
@@ -43,7 +46,7 @@ export class FormResponseScoringController {
         await ResponseValidationService.validateResponseAccess(
           responseId,
           validation.user.sub,
-          res
+          res,
         );
       if (!response || !form) return;
 
@@ -77,7 +80,7 @@ export class FormResponseScoringController {
         return res
           .status(400)
           .json(
-            ReturnCode(400, "Response ID, question ID, and score are required")
+            ReturnCode(400, "Response ID, question ID, and score are required"),
           );
       }
 
@@ -85,7 +88,7 @@ export class FormResponseScoringController {
         await ResponseValidationService.validateResponseAccess(
           responseId,
           validation.user.sub,
-          res
+          res,
         );
       if (!response || !form) return;
 
@@ -105,7 +108,7 @@ export class FormResponseScoringController {
 
   public BatchUpdateScores = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,
@@ -131,15 +134,14 @@ export class FormResponseScoringController {
             .json(
               ReturnCode(
                 400,
-                "Each update must have responseId and scores array"
-              )
+                "Each update must have responseId and scores array",
+              ),
             );
         }
       }
 
-      const result = await ResponseProcessingService.batchUpdateResponseScores(
-        updates
-      );
+      const result =
+        await ResponseProcessingService.batchUpdateResponseScores(updates);
 
       res.status(200).json({
         ...ReturnCode(200, "Batch update completed"),
@@ -153,10 +155,10 @@ export class FormResponseScoringController {
 
   public RecalculateResponseScore = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,
@@ -171,7 +173,7 @@ export class FormResponseScoringController {
 
       const result =
         await ResponseProcessingService.recalculateResponseTotalScore(
-          responseId
+          responseId,
         );
 
       res.status(200).json({

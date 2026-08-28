@@ -32,15 +32,6 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SolutionValidationService = void 0;
 const Content_model_1 = __importStar(require("../model/Content.model"));
@@ -236,84 +227,78 @@ class SolutionValidationService {
         - totalScore
         - validationResults,
      */
-    static validateForm(formId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
-            const form = yield Form_model_1.default.findById(formId);
-            if (!form) {
-                throw new Error("Form not found");
-            }
-            const contents = yield Content_model_1.default.find({
-                formId: new mongoose_1.Types.ObjectId(formId),
-            }).lean();
-            const validationResults = [];
-            let totalValidQuestions = 0;
-            let totalInvalidQuestions = 0;
-            let totalScore = 0;
-            for (const content of (0, helper_1.AddQuestionNumbering)({ questions: contents })) {
-                if (content.type === Content_model_1.QuestionType.Text) {
-                    //Validate Text Display Only question
-                    const result = this.validateContent(content);
-                    validationResults.push(result);
-                    continue;
-                }
-                //Validate question with condition
-                const parentScore = (_a = contents.find((ques) => { var _a; return ques._id.toString() === ((_a = content.parentcontent) === null || _a === void 0 ? void 0 : _a.qId); })) === null || _a === void 0 ? void 0 : _a.score;
-                const result = this.validateContent(content, parentScore);
+    static async validateForm(formId) {
+        const form = await Form_model_1.default.findById(formId);
+        if (!form) {
+            throw new Error("Form not found");
+        }
+        const contents = await Content_model_1.default.find({
+            formId: new mongoose_1.Types.ObjectId(formId),
+        }).lean();
+        const validationResults = [];
+        let totalValidQuestions = 0;
+        let totalInvalidQuestions = 0;
+        let totalScore = 0;
+        for (const content of (0, helper_1.AddQuestionNumbering)({ questions: contents })) {
+            if (content.type === Content_model_1.QuestionType.Text) {
+                //Validate Text Display Only question
+                const result = this.validateContent(content);
                 validationResults.push(result);
-                if (!content.parentcontent)
-                    totalScore += content.score || 0;
-                if (result.isValid) {
-                    totalValidQuestions++;
-                }
-                else {
-                    totalInvalidQuestions++;
-                }
+                continue;
             }
-            const scorableQuestions = contents.filter((content) => content.type !== Content_model_1.QuestionType.Text);
-            const canReturnScoreAutomatically = form.type === Form_model_1.TypeForm.Quiz &&
-                totalInvalidQuestions === 0 &&
-                scorableQuestions.length > 0 &&
-                ((_b = form.setting) === null || _b === void 0 ? void 0 : _b.returnscore) === Form_model_1.returnscore.partial;
-            // Combine all validation results into aggregated arrays
-            const combinedResults = {
-                errors: validationResults.flatMap((r) => r.errors),
-                warnings: validationResults.flatMap((r) => r.warnings),
-                missingAnswers: validationResults.flatMap((r) => r.missingAnswers),
-                missingScores: validationResults.flatMap((r) => r.missingScores),
-                wrongScores: validationResults.flatMap((r) => r.wrongScores),
-            };
-            // Get detailed scoring analysis
-            const scoringAnalysis = (0, scoreHelper_1.getFormScoringAnalysis)({ questions: contents });
-            return {
-                canReturnScoreAutomatically,
-                totalValidQuestions,
-                totalInvalidQuestions,
-                totalScore,
-                validationResults: combinedResults,
-                scoringAnalysis,
-            };
-        });
+            //Validate question with condition
+            const parentScore = contents.find((ques) => ques._id.toString() === content.parentcontent?.qId)?.score;
+            const result = this.validateContent(content, parentScore);
+            validationResults.push(result);
+            if (!content.parentcontent)
+                totalScore += content.score || 0;
+            if (result.isValid) {
+                totalValidQuestions++;
+            }
+            else {
+                totalInvalidQuestions++;
+            }
+        }
+        const scorableQuestions = contents.filter((content) => content.type !== Content_model_1.QuestionType.Text);
+        const canReturnScoreAutomatically = form.type === Form_model_1.TypeForm.Quiz &&
+            totalInvalidQuestions === 0 &&
+            scorableQuestions.length > 0 &&
+            form.setting?.returnscore === Form_model_1.returnscore.partial;
+        // Combine all validation results into aggregated arrays
+        const combinedResults = {
+            errors: validationResults.flatMap((r) => r.errors),
+            warnings: validationResults.flatMap((r) => r.warnings),
+            missingAnswers: validationResults.flatMap((r) => r.missingAnswers),
+            missingScores: validationResults.flatMap((r) => r.missingScores),
+            wrongScores: validationResults.flatMap((r) => r.wrongScores),
+        };
+        // Get detailed scoring analysis
+        const scoringAnalysis = (0, scoreHelper_1.getFormScoringAnalysis)({ questions: contents });
+        return {
+            canReturnScoreAutomatically,
+            totalValidQuestions,
+            totalInvalidQuestions,
+            totalScore,
+            validationResults: combinedResults,
+            scoringAnalysis,
+        };
     }
-    static getFormValidationErrors(formId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const summary = yield this.validateForm(formId);
-            const errors = [];
-            if (summary.totalInvalidQuestions > 0) {
-                errors.push(`${summary.totalInvalidQuestions} question(s) have validation errors`);
-            }
-            const { missingAnswers, missingScores } = summary.validationResults;
-            if (missingAnswers.length > 0) {
-                errors.push(`Missing answers: ${missingAnswers.length} question(s)`);
-            }
-            if (missingScores.length > 0) {
-                errors.push(`Missing scores: ${missingScores.length} question(s)`);
-            }
-            return errors;
-        });
+    static async getFormValidationErrors(formId) {
+        const summary = await this.validateForm(formId);
+        const errors = [];
+        if (summary.totalInvalidQuestions > 0) {
+            errors.push(`${summary.totalInvalidQuestions} question(s) have validation errors`);
+        }
+        const { missingAnswers, missingScores } = summary.validationResults;
+        if (missingAnswers.length > 0) {
+            errors.push(`Missing answers: ${missingAnswers.length} question(s)`);
+        }
+        if (missingScores.length > 0) {
+            errors.push(`Missing scores: ${missingScores.length} question(s)`);
+        }
+        return errors;
     }
     static calcualteResponseTotalScore(responseSet) {
-        var _a;
         let totalscore = 0;
         for (let r = 0; r < responseSet.length; r++) {
             const res = responseSet[r];
@@ -321,7 +306,7 @@ class SolutionValidationService {
             if (res.question) {
                 const ques = res.question;
                 if (!ques.parentcontent) {
-                    totalscore += (_a = res.score) !== null && _a !== void 0 ? _a : 0;
+                    totalscore += res.score ?? 0;
                 }
             }
         }

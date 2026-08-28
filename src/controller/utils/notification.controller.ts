@@ -1,7 +1,6 @@
 import { Response } from "express";
-import { RootFilterQuery, Types } from "mongoose";
-import { generateOperationId } from "../../utilities/MongoErrorHandler";
-import Notification from "../../model/Notification.model";
+import { QueryFilter, Types } from "mongoose";
+import Notification, { NotificationType } from "../../model/Notification.model";
 import { CustomRequest } from "../../types/customType";
 import { ReturnCode } from "../../utilities/helper";
 
@@ -36,7 +35,7 @@ class SSEConnectionManager {
     console.log(
       `[SSE] Client added for user ${userId}. Total: ${
         this.clients.get(userId)?.length
-      }`
+      }`,
     );
   }
 
@@ -79,8 +78,6 @@ export const sseManager = new SSEConnectionManager();
 export class NotificationController {
   // Create a new notification
   public static async CreateNotification(data: NotificationData) {
-    const operationId = generateOperationId("create_notification");
-
     try {
       const notification = await Notification.create({
         ...data,
@@ -95,7 +92,6 @@ export class NotificationController {
 
       return notification;
     } catch (error) {
-      console.error(`[${operationId}] Create Notification Error:`, error);
       throw error;
     }
   }
@@ -113,7 +109,7 @@ export class NotificationController {
         return;
       }
 
-      const query: RootFilterQuery<NotificationData> = {
+      const query: QueryFilter<NotificationType> = {
         userId: new Types.ObjectId(userId as string),
       };
       if (unreadOnly) {
@@ -151,10 +147,9 @@ export class NotificationController {
   // Mark notification as read
   public MarkAsRead = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     const { notificationId } = req.params;
-    const user = req.user;
 
     try {
       const notification = await Notification.findById(notificationId);
@@ -180,7 +175,7 @@ export class NotificationController {
   // Mark all notifications as read
   public MarkAllAsRead = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     const { userId } = req.body;
     const user = req.user;
@@ -193,7 +188,7 @@ export class NotificationController {
 
       await Notification.updateMany(
         { userId: new Types.ObjectId(userId), isRead: false },
-        { isRead: true, readAt: new Date() }
+        { isRead: true, readAt: new Date() },
       );
 
       res.status(200).json(ReturnCode(200, "All notifications marked as read"));
@@ -208,7 +203,7 @@ export class NotificationController {
   // Delete notification
   public DeleteNotification = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     const { notificationId } = req.params;
     const user = req.user;
@@ -232,7 +227,7 @@ export class NotificationController {
   // Get notification settings
   public GetNotificationSettings = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     const user = req.user;
 
@@ -258,7 +253,7 @@ export class NotificationController {
   // Update notification settings
   public UpdateNotificationSettings = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     const { settings } = req.body;
     const user = req.user;
@@ -277,7 +272,7 @@ export class NotificationController {
   // SSE endpoint for real-time notifications
   public SubscribeToNotifications = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     const user = req.user;
 
@@ -299,7 +294,7 @@ export class NotificationController {
       `data: ${JSON.stringify({
         type: "connected",
         message: "Connected to notification stream",
-      })}\n\n`
+      })}\n\n`,
     );
 
     // Add client to SSE manager
@@ -373,7 +368,7 @@ export class NotificationController {
       name?: string;
       email?: string;
       score?: number;
-    }
+    },
   ) {
     try {
       const Form = require("../../model/Form.model").default;
@@ -382,9 +377,8 @@ export class NotificationController {
       if (!form) return;
 
       // Get all recipients (user, owners, editors)
-      const recipients = await NotificationController.getAllFormRecipients(
-        form
-      );
+      const recipients =
+        await NotificationController.getAllFormRecipients(form);
 
       // Create notifications for all recipients
       const notifications = await Promise.all(
@@ -407,8 +401,8 @@ export class NotificationController {
               score: respondentData.score,
               responseCount: 1,
             },
-          })
-        )
+          }),
+        ),
       );
 
       // Send real-time notifications via SSE to all recipients
@@ -434,7 +428,7 @@ export class NotificationController {
       type: "responses" | "views" | "completion";
       count: number;
       threshold: number;
-    }
+    },
   ) {
     try {
       const Form = require("../../model/Form.model").default;
@@ -449,9 +443,8 @@ export class NotificationController {
       };
 
       // Get all recipients (user, owners, editors)
-      const recipients = await NotificationController.getAllFormRecipients(
-        form
-      );
+      const recipients =
+        await NotificationController.getAllFormRecipients(form);
 
       // Create notifications for all recipients
       const notifications = await Promise.all(
@@ -471,8 +464,8 @@ export class NotificationController {
               completionRate:
                 milestone.type === "completion" ? milestone.count : undefined,
             },
-          })
-        )
+          }),
+        ),
       );
 
       return notifications;
@@ -490,7 +483,7 @@ export class NotificationController {
       | "review"
       | "unscoredResponses"
       | "missingQuizConfig"
-      | "incompleteForm"
+      | "incompleteForm",
   ) {
     try {
       const Form = require("../../model/Form.model").default;
@@ -508,9 +501,8 @@ export class NotificationController {
       };
 
       // Get all recipients (user, owners, editors)
-      const recipients = await NotificationController.getAllFormRecipients(
-        form
-      );
+      const recipients =
+        await NotificationController.getAllFormRecipients(form);
 
       // For incomplete form reminders, check if notification was already sent
       if (reminderType === "incompleteForm") {
@@ -522,7 +514,7 @@ export class NotificationController {
 
         if (existingReminder) {
           console.log(
-            `[NotifyFormReminder] Incomplete form reminder already sent for form ${formId}`
+            `[NotifyFormReminder] Incomplete form reminder already sent for form ${formId}`,
           );
           return [];
         }
@@ -563,8 +555,8 @@ export class NotificationController {
             formTitle: form.title,
             priority,
             actionUrl,
-          })
-        )
+          }),
+        ),
       );
 
       return notifications;

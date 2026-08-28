@@ -9,17 +9,17 @@ import {
   ResponseFilterType,
   ResponseQueryService,
 } from "../../services/ResponseQueryService";
-import { ResponseAnalyticsService } from "../../services/ResponseAnalyticsService";
 import {
   hasFormAccess,
   isValidObjectIdString,
 } from "../../utilities/formHelpers";
 import { CustomRequest } from "../../types/customType";
+import { FormOverViewAnalyticsService } from "../../services/ResponseAnalyticsService";
 
 export class FormResponseQueryController {
   public GetResponseByFormId = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
       });
@@ -28,14 +28,14 @@ export class FormResponseQueryController {
       const form = await ResponseValidationService.validateFormAccess(
         validation.formId!,
         validation.user.sub,
-        res
+        res,
       );
       if (!form) return;
 
       const result = await ResponseQueryService.getResponsesByFormId(
         validation.formId!,
         validation.page!,
-        validation.limit!
+        validation.limit!,
       );
 
       res.status(200).json({ ...ReturnCode(200), data: result });
@@ -47,13 +47,16 @@ export class FormResponseQueryController {
 
   public GetResponseByUser = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
       });
       if (!validation.isValid || !validation.user?.sub) return;
 
-      const { respondentEmail, formId } = req.query;
+      const { respondentEmail, formId } = req.query as {
+        respondentEmail: string;
+        formId: string;
+      };
       if (!respondentEmail || !formId) {
         return res.status(400).json(ReturnCode(400));
       }
@@ -61,7 +64,7 @@ export class FormResponseQueryController {
       const form = await ResponseValidationService.validateFormAccess(
         formId as string,
         validation.user.sub,
-        res
+        res,
       );
       if (!form) return;
 
@@ -76,13 +79,17 @@ export class FormResponseQueryController {
         ],
       })
         .select(
-          "_id responseset totalScore isCompleted completionStatus respondentEmail respondentName respondentType submittedAt"
+          "_id responseset totalScore isCompleted completionStatus respondentEmail respondentName respondentType submittedAt",
         )
         .lean();
 
       //Populate response set question
       const responseContent = await Content.find({
-        _id: { $in: populatedResponse?.responseset.map((i) => i.question) },
+        _id: {
+          $in: populatedResponse?.responseset.map(
+            (i) => i.question as Types.ObjectId,
+          ),
+        },
       }).lean();
 
       populatedResponse = {
@@ -110,19 +117,18 @@ export class FormResponseQueryController {
     if (!req.user) return res.status(403).json(ReturnCode(403));
 
     const { formId } = req.params as { formId: string };
-    const { group } = req.query as { group?: string };
 
     if (!formId || !isValidObjectIdString(formId))
       return res.status(400).json(ReturnCode(400));
 
     try {
       const form = await Form.findById(formId).select(
-        "_id owners editors user"
+        "_id owners editors user",
       );
 
       const hasAccess = hasFormAccess(
         form as FormType,
-        new Types.ObjectId(req.user.sub)
+        new Types.ObjectId(req.user.sub),
       );
 
       if (!hasAccess) return res.status(403).json(ReturnCode(403));
@@ -167,20 +173,19 @@ export class FormResponseQueryController {
 
   public GetResponsesWithFilters = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
-        requireFormId: true,
       });
       if (!validation.isValid || !validation.user?.sub) return;
 
       const form = await ResponseValidationService.validateFormAccess(
         validation.formId!,
         validation.user.sub,
-        res
+        res,
       );
       if (!form) return;
 
@@ -202,9 +207,8 @@ export class FormResponseQueryController {
         group: req.query.group as string,
       };
 
-      const result = await ResponseQueryService.getResponsesWithFilters(
-        filters
-      );
+      const result =
+        await ResponseQueryService.getResponsesWithFilters(filters);
 
       if (!result)
         return res.status(404).json(ReturnCode(404, "Response not found"));
@@ -239,11 +243,10 @@ export class FormResponseQueryController {
   public GetUserResponses = async (req: CustomRequest, res: Response) => {
     try {
       const { formId, page, uid, isValid } =
-        await ResponseValidationService.validateRequest({
+        ResponseValidationService.validateRequest({
           req,
           res,
           requireUserInfo: true,
-          requireFormId: true,
         });
       if (!isValid || !uid || !formId) return;
 
@@ -275,7 +278,7 @@ export class FormResponseQueryController {
         await ResponseValidationService.validateResponseAccess(
           responseId,
           req.user?.sub,
-          res
+          res,
         );
       if (!response || !form) return;
 
@@ -312,13 +315,13 @@ export class FormResponseQueryController {
       const form = await ResponseValidationService.validateFormAccess(
         formId,
         req.user?.sub as never,
-        res
+        res,
       );
       if (!form) return;
 
       const result = await ResponseQueryService.bulkDeleteResponses(
         isValidIds,
-        formId
+        formId,
       );
       res.status(200).json({
         ...ReturnCode(200, "Responses deleted successfully"),
@@ -338,7 +341,7 @@ export class FormResponseQueryController {
 
   public GetResponseAnalytics = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
       });
@@ -347,23 +350,17 @@ export class FormResponseQueryController {
       const form = await ResponseValidationService.validateFormAccess(
         validation.formId!,
         validation.user?.sub,
-        res
+        res,
       );
       if (!form) return;
 
       const responses = await ResponseQueryService.getResponsesByFormId(
         validation.formId!,
         1,
-        1000
+        1000,
       );
 
-      const analytics = await ResponseAnalyticsService.getResponseAnalytics(
-        validation.formId!,
-        responses.responses,
-        form
-      );
-
-      res.status(200).json({ ...ReturnCode(200), data: analytics });
+      res.status(200).json({ ...ReturnCode(200) });
     } catch (error) {
       console.error("Get Response Analytics Error:", error);
       res.status(500).json(ReturnCode(500, "Failed to retrieve analytics"));
@@ -372,7 +369,7 @@ export class FormResponseQueryController {
 
   public GetChoiceQuestionAnalytics = async (
     req: CustomRequest,
-    res: Response
+    res: Response,
   ) => {
     try {
       const validation = await ResponseValidationService.validateRequest({
@@ -384,21 +381,14 @@ export class FormResponseQueryController {
       const form = await ResponseValidationService.validateFormAccess(
         validation.formId!,
         validation.user?.sub,
-        res
+        res,
       );
       if (!form) return;
 
       const { questionId } = req.query as { questionId?: string };
 
-      const analytics =
-        await ResponseAnalyticsService.getChoiceQuestionAnalytics(
-          validation.formId!,
-          questionId
-        );
-
       res.status(200).json({
         ...ReturnCode(200),
-        data: analytics,
         message: "Choice question analytics retrieved successfully",
       });
     } catch (error) {
@@ -411,7 +401,7 @@ export class FormResponseQueryController {
 
   public GetFormAnalytics = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
       });
@@ -423,13 +413,13 @@ export class FormResponseQueryController {
       const form = await ResponseValidationService.validateFormAccess(
         formId,
         validation.user.sub,
-        res
+        res,
       );
       if (!form) return;
 
-      const analyticsData = await ResponseAnalyticsService.getFormAnalytics(
+      const analyticsData = await FormOverViewAnalyticsService.getFormAnalytics(
         formId,
-        period as string
+        period as string,
       );
 
       res.status(200).json({ ...ReturnCode(200), data: analyticsData });
@@ -441,7 +431,7 @@ export class FormResponseQueryController {
 
   public ExportAnalytics = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,
@@ -454,29 +444,27 @@ export class FormResponseQueryController {
       const form = await ResponseValidationService.validateFormAccess(
         formId,
         validation.user.sub,
-        res
+        res,
       );
       if (!form) return;
 
-      const analyticsData = await ResponseAnalyticsService.getFormAnalytics(
-        formId
-      );
+      const analyticsData =
+        await FormOverViewAnalyticsService.getFormAnalytics(formId);
 
       if (format === "csv") {
         const responses = await ResponseQueryService.getResponsesByFormId(
           formId,
           1,
-          1000
+          1000,
         );
-        const csvData = ResponseAnalyticsService.generateCSVData(
-          analyticsData,
-          responses.responses
+        const csvData = FormOverViewAnalyticsService.generateCSVData(
+          responses.responses,
         );
 
         res.setHeader("Content-Type", "text/csv");
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${form.title}-analytics.csv"`
+          `attachment; filename="${form.title}-analytics.csv"`,
         );
         res.send(csvData);
       } else {

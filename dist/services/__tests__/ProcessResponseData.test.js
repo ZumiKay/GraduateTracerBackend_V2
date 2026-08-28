@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -31,10 +22,9 @@ const questionIds = {
     q8: new mongoose_1.Types.ObjectId(),
     q999: new mongoose_1.Types.ObjectId(),
 };
-//Mock Data Generators
+/* ---------------------------------- Tests --------------------------------- */
 describe("ResponseProcessingService - Adding Score Tests", () => {
     const formId = new mongoose_1.Types.ObjectId();
-    // Generate valid ObjectIds for questions
     const mockContentData = [
         mockdata_1.MockContentFactory.createMultipleChoiceContent({
             _id: questionIds.q1,
@@ -69,13 +59,13 @@ describe("ResponseProcessingService - Adding Score Tests", () => {
         }),
     ];
     describe("addScore method", () => {
-        test("should return empty response array when input is empty", () => __awaiter(void 0, void 0, void 0, function* () {
+        test("should return empty response array when input is empty", async () => {
             const mockReturn = [];
-            const result = yield ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
+            const result = await ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
             expect(result.response).toEqual([]);
             expect(result.response.length).toBe(0);
-        }));
-        test("should calculate scores for correct answers", () => __awaiter(void 0, void 0, void 0, function* () {
+        });
+        test("should calculate scores for correct answers", async () => {
             const mockReturn = [
                 { question: questionIds.q1, response: [1] },
                 { question: questionIds.q2, response: [1, 2, 3] },
@@ -85,15 +75,15 @@ describe("ResponseProcessingService - Adding Score Tests", () => {
             Content_model_1.default.find.mockReturnValue({
                 lean: jest.fn().mockResolvedValue(mockContentData),
             });
-            const result = yield ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
+            const result = await ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
             expect(result.response).toHaveLength(3);
             expect(result.response[0].score).toBe(5);
             expect(result.response[0].scoringMethod).toBe(Response_model_1.ScoringMethod.AUTO);
             expect(result.response[1].score).toBe(10);
             expect(result.response[2].score).toBe(10);
             expect(result.isNonScore).toBe(false);
-        }));
-        test("should return 0 score for incorrect answers", () => __awaiter(void 0, void 0, void 0, function* () {
+        });
+        test("should return 0 score for incorrect answers", async () => {
             const mockReturn = [
                 { question: questionIds.q1, response: [2] }, // Wrong answer
                 { question: questionIds.q2, response: [1, 2, 3, 4, 5, 6] }, // Partially wrong
@@ -103,13 +93,13 @@ describe("ResponseProcessingService - Adding Score Tests", () => {
             Content_model_1.default.find.mockReturnValue({
                 lean: jest.fn().mockResolvedValue(mockContentData),
             });
-            const result = yield ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
+            const result = await ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
             expect(result.response).toHaveLength(3);
             expect(result.response[0].score).toBe(0);
             expect(result.response[1].score).toBe(5);
             expect(result.response[2].score).toBe(0);
-        }));
-        test("should return isNonScore=true when all questions have no score", () => __awaiter(void 0, void 0, void 0, function* () {
+        });
+        test("should return isNonScore=true when all questions have no score", async () => {
             const noScoreContent = [
                 mockdata_1.MockContentFactory.createShortAnswerContent({
                     _id: questionIds.q4,
@@ -132,11 +122,11 @@ describe("ResponseProcessingService - Adding Score Tests", () => {
             Content_model_1.default.find.mockReturnValue({
                 lean: jest.fn().mockResolvedValue(noScoreContent),
             });
-            const result = yield ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
+            const result = await ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
             expect(result.isNonScore).toBe(true);
             expect(result.response).toHaveLength(2);
-        }));
-        test("should set scoringMethod to MANUAL for questions without answers", () => __awaiter(void 0, void 0, void 0, function* () {
+        });
+        test("should set scoringMethod to MANUAL for questions without answers", async () => {
             const manualScoreContent = [
                 mockdata_1.MockContentFactory.createShortAnswerContent({
                     _id: questionIds.q6,
@@ -152,12 +142,12 @@ describe("ResponseProcessingService - Adding Score Tests", () => {
             Content_model_1.default.find.mockReturnValue({
                 lean: jest.fn().mockResolvedValue(manualScoreContent),
             });
-            const result = yield ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
+            const result = await ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
             expect(result.response).toHaveLength(1);
             expect(result.response[0].score).toBe(undefined);
             expect(result.response[0].scoringMethod).toBe(Response_model_1.ScoringMethod.MANUAL);
-        }));
-        test("should handle mixed scoring methods", () => __awaiter(void 0, void 0, void 0, function* () {
+        });
+        test("should handle mixed scoring methods", async () => {
             const mixedContent = [
                 mockdata_1.MockContentFactory.createMultipleChoiceContent({
                     _id: questionIds.q7,
@@ -182,13 +172,13 @@ describe("ResponseProcessingService - Adding Score Tests", () => {
             Content_model_1.default.find.mockReturnValue({
                 lean: jest.fn().mockResolvedValue(mixedContent),
             });
-            const result = yield ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
+            const result = await ResponseProcessingService_1.ResponseProcessingService.addScore(mockReturn);
             expect(result.response).toHaveLength(2);
             expect(result.response[0].scoringMethod).toBe(Response_model_1.ScoringMethod.AUTO);
             expect(result.response[0].score).toBe(10);
             expect(result.response[1].scoringMethod).toBe(Response_model_1.ScoringMethod.MANUAL);
             expect(result.response[1].score).toBe(undefined);
             expect(result.isNonScore).toBe(false);
-        }));
+        });
     });
 });

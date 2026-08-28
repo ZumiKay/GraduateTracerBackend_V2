@@ -65,12 +65,6 @@ describe("groupContentByParent with nested hierarchies", () => {
 
     const result = groupContentByParent(data);
 
-    // Log the result for debugging
-    console.log(
-      "Result order:",
-      result.map((item) => item._id),
-    );
-
     // Check the nesting structure
     const resultIds = result.map((item) => item._id?.toString() || "");
 

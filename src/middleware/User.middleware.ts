@@ -11,6 +11,7 @@ export enum GetPublicFormDataTyEnum {
   initial = "initial",
   verify = "verify",
   data = "data",
+  preview = "preview",
 }
 
 export interface GetPublicFormDataType {
@@ -32,8 +33,6 @@ interface VerifiedTokenResult {
   isExpired: boolean;
   data?: TokenPayload;
 }
-
-// ==================== Constants ====================
 
 const TOKEN_CONFIG = {
   ACCESS_TOKEN_EXPIRY: "30m",
@@ -64,11 +63,7 @@ const ERROR_CODES = {
   REFRESH_REQUIRED: "REFRESH_REQUIRED",
 } as const;
 
-// ==================== Authentication Middleware Class ====================
-
 class AuthenticateMiddleWare {
-  // ==================== Private Helper Methods ====================
-
   /**
    * Validates required environment variables
    */
@@ -87,7 +82,7 @@ class AuthenticateMiddleWare {
     try {
       const decoded = JWT.verify(
         token,
-        process.env.JWT_SECRET ?? "secret"
+        process.env.JWT_SECRET ?? "secret",
       ) as TokenPayload;
 
       return {
@@ -95,8 +90,9 @@ class AuthenticateMiddleWare {
         isExpired: false,
         data: decoded,
       };
-    } catch (error: any) {
-      if (error.name === "TokenExpiredError") {
+    } catch (error) {
+      const err = error as Error;
+      if (err.name === "TokenExpiredError") {
         return { isValid: false, isExpired: true };
       }
       return { isValid: false, isExpired: false };
@@ -117,29 +113,6 @@ class AuthenticateMiddleWare {
   }
 
   /**
-   * Validates and retrieves active session
-   */
-  private async validateSession(
-    sessionToken: string,
-    userId?: string
-  ): Promise<any | null> {
-    const query: any = {
-      session_id: sessionToken,
-      expireAt: { $gte: new Date() },
-    };
-
-    if (userId) {
-      query.user = userId;
-    }
-
-    return await Usersession.findOne(query)
-      .select("session_id expireAt userId")
-      .populate({ path: "user", select: "_id email role" })
-      .lean()
-      .exec();
-  }
-
-  /**
    * Cleans up expired session
    */
   private async cleanupExpiredSession(sessionToken: string): Promise<void> {
@@ -150,8 +123,6 @@ class AuthenticateMiddleWare {
     }
   }
 
-  // ==================== Public Middleware Methods ====================
-
   /**
    * Verifies access token (Hybrid approach - no auto-refresh)
    * Returns specific error codes for frontend to handle refresh
@@ -159,7 +130,7 @@ class AuthenticateMiddleWare {
   public VerifyToken = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ): Promise<void> => {
     // Validate environment variables
     if (!this.validateEnvVars()) {
@@ -187,7 +158,6 @@ class AuthenticateMiddleWare {
       // Verify access token
       const verifiedToken = this.verifyJWT(accessToken);
 
-      // Token expired - signal frontend to refresh
       if (verifiedToken.isExpired) {
         res.status(401).json({
           success: false,
@@ -230,7 +200,7 @@ class AuthenticateMiddleWare {
   public VerifyRefreshToken = async (
     req: CustomRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       const { refreshToken } = this.getTokensFromCookies(req);
@@ -247,7 +217,7 @@ class AuthenticateMiddleWare {
       //Clean up invalid token
       if (!verifiedToken.isValid) {
         await Usersession.deleteOne({
-          session_id: verifiedToken,
+          session_id: refreshToken,
         });
 
         //Clear Cookie
@@ -292,38 +262,6 @@ class AuthenticateMiddleWare {
       return res
         .status(500)
         .json(ReturnCode(500, ERROR_MESSAGES.VERIFICATION_FAILED));
-    }
-  };
-
-  /**
-   * Middleware to require admin role
-   */
-  public RequireAdmin = (
-    req: CustomRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      if (!req.user) {
-        return res
-          .status(401)
-          .json(ReturnCode(401, ERROR_MESSAGES.NOT_AUTHENTICATED));
-      }
-
-      const userRole = req.user.userDetails?.role || req.user.role;
-
-      if (userRole !== "ADMIN") {
-        return res
-          .status(403)
-          .json(ReturnCode(403, ERROR_MESSAGES.ADMIN_REQUIRED));
-      }
-
-      return next();
-    } catch (error) {
-      console.error("Admin check error:", error);
-      return res
-        .status(500)
-        .json(ReturnCode(500, ERROR_MESSAGES.PERMISSION_CHECK_FAILED));
     }
   };
 }

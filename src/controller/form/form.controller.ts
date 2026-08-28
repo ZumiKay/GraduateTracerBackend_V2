@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { ReturnCode } from "../../utilities/helper";
 import Form, { FormType } from "../../model/Form.model";
 import { CustomRequest } from "../../types/customType";
@@ -18,11 +18,8 @@ export {
   ResendPendingInvitation,
   DeletePendingCollaborator,
 } from "./form.collaborator.controller";
-export {
-  GetFilterForm,
-  ValidateFormBeforeAction,
-} from "./form.query.controller";
 export { GetFilledForm, GetFormDetails } from "./form.response.controller";
+export { GetFilterForm } from "./form.query.controller";
 
 export async function CreateForm(req: CustomRequest, res: Response) {
   const formdata = req.body as FormType;
@@ -152,12 +149,14 @@ export async function PageHandler(req: CustomRequest, res: Response) {
       const toBeDeleteContent = await Content.find({ page: deletepage })
         .select("_id")
         .lean();
+
+      //update form totalpage and delete questions
       await Form.updateOne(
         { _id: formId },
         {
           $inc: { totalpage: -1 },
           $pull: { contentIds: { $in: toBeDeleteContent.map((i) => i._id) } },
-        }
+        },
       );
       await Content.deleteMany({ page: deletepage });
     }
@@ -168,22 +167,5 @@ export async function PageHandler(req: CustomRequest, res: Response) {
   } catch (error) {
     console.error("Page Handler Error:", error);
     return res.status(500).json(ReturnCode(500, "Operation failed"));
-  }
-}
-
-export async function GetAllForm(req: Request, res: Response) {
-  const { limit = "5", page = "1" } = req.query;
-  const p = Number(page);
-  const lt = Number(limit);
-
-  try {
-    const allForm = await Form.find()
-      .skip((p - 1) * lt)
-      .limit(lt);
-
-    return res.status(200).json({ ...ReturnCode(200), data: allForm });
-  } catch (error) {
-    console.error("Get All Form Error:", error);
-    return res.status(500).json(ReturnCode(500));
   }
 }

@@ -1,16 +1,12 @@
 import { Response } from "express";
 import { CustomRequest } from "../../types/customType";
-import {
-  AddQuestionNumbering,
-  groupContentByParent,
-  ReturnCode,
-} from "../../utilities/helper";
+import { AddQuestionNumbering, ReturnCode } from "../../utilities/helper";
 import { GetAnalyticsParamType } from "./analytics.type";
 import { isValidObjectIdString } from "../../utilities/formHelpers";
-import { ResponseAnalyticsService } from "../../services/ResponseAnalyticsService";
 import { ResponseValidationService } from "../../services/ResponseValidationService";
 import Content, {
   ChoiceQuestionType,
+  ContentTitle,
   ContentType,
   QuestionType,
 } from "../../model/Content.model";
@@ -19,7 +15,8 @@ import FormResponse, {
   ResponseSetType,
 } from "../../model/Response.model";
 import { FormType } from "../../model/Form.model";
-import { RootFilterQuery, Types } from "mongoose";
+import { QueryFilter, Types } from "mongoose";
+import { FormOverViewAnalyticsService } from "../../services/ResponseAnalyticsService";
 
 type ExtendedResponseSet = ResponseSetType & {
   respondentId: Types.ObjectId;
@@ -31,7 +28,7 @@ type ExtendedResponseSet = ResponseSetType & {
 interface QuestionBaseData {
   id: string;
   questionId: string;
-  questionTitle: string;
+  questionTitle: ContentTitle;
   questionType: QuestionType;
   questionIndex: number | undefined;
   totalResponses: number;
@@ -39,8 +36,30 @@ interface QuestionBaseData {
 }
 
 class AnalyticsController {
+  /**Get OverView Performance Metrics */
+  public GetFormOverviewPerformance = async (
+    req: CustomRequest,
+    res: Response,
+  ) => {
+    const query = this.ValidateParamData(
+      req.query as unknown as GetAnalyticsParamType,
+    );
+    if (!query) return res.status(400).json(ReturnCode(400));
+    try {
+      const isOverViewData =
+        await FormOverViewAnalyticsService.getFormAnalytics(
+          query.formId,
+          query.period,
+        );
+
+      return res.status(200).json({ data: isOverViewData });
+    } catch (error) {
+      console.log("Get Form Overview", error);
+      return res.status(500).json(ReturnCode(500));
+    }
+  };
+
   public GetAnalyticsData = async (req: CustomRequest, res: Response) => {
-    //Process Request Params
     const query = this.ValidateParamData(
       req.query as unknown as GetAnalyticsParamType,
     );
@@ -53,7 +72,6 @@ class AnalyticsController {
     try {
       const { formId, page, questionId } = query;
 
-      // Verify form exists and validate access (only creator and owners can access analytics)
       const form = await ResponseValidationService.validateFormAccess(
         formId,
         user.sub,
@@ -63,23 +81,8 @@ class AnalyticsController {
         return;
       }
 
-      // Get all responses for the form
-      const responses = await FormResponse.find({
-        formId: new Types.ObjectId(formId),
-      })
-        .lean()
-        .sort({ createdAt: -1 });
-
-      if (!responses || responses.length === 0) {
-        return res.status(204).json({
-          data: {
-            isResponse: false,
-          },
-        });
-      }
-
-      // Get questions for the specified page or all questions
-      const questionFilter: RootFilterQuery<FormResponseType> = {
+      // Fetch questions first based on filters
+      const questionFilter: QueryFilter<FormResponseType> = {
         formId: new Types.ObjectId(formId),
       };
 
@@ -91,6 +94,7 @@ class AnalyticsController {
         questionFilter._id = new Types.ObjectId(questionId);
       }
 
+      //Get all responsible questions
       let questions = await Content.find(questionFilter)
         .sort({ qIdx: 1 })
         .lean();
@@ -103,6 +107,53 @@ class AnalyticsController {
       questions = AddQuestionNumbering({
         questions: questions as unknown as Array<ContentType>,
       }) as never;
+
+      // Extract question IDs
+      const questionIds = questions
+        .filter((q) => q._id)
+        .map((q) => {
+          const id = q._id;
+          return typeof id === "string"
+            ? new Types.ObjectId(id)
+            : (id as Types.ObjectId);
+        });
+
+      // Get total response count for the form
+      const totalResponseCount = await FormResponse.countDocuments({
+        formId: new Types.ObjectId(formId),
+      });
+
+      if (totalResponseCount === 0) {
+        return res.status(204).json({
+          data: {
+            isResponse: false,
+          },
+        });
+      }
+
+      const responses = await FormResponse.aggregate<FormResponseType>([
+        {
+          $match: {
+            formId: new Types.ObjectId(formId),
+            "responseset.question": { $in: questionIds },
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            respondentName: 1,
+            respondentEmail: 1,
+            responseset: 1,
+            score: 1,
+            submittedAt: 1,
+            totalScore: 1,
+            completionTime: 1,
+          },
+        },
+        {
+          $sort: { createdAt: -1 },
+        },
+      ]);
 
       // Process analytics for each question based on type
       const analyticsData = await Promise.all(
@@ -121,7 +172,7 @@ class AnalyticsController {
           formId,
           formTitle: form.title,
           page,
-          totalResponses: responses.length,
+          totalResponses: totalResponseCount,
           formStats,
           questions: analyticsData.filter(Boolean),
           timestamp: new Date().toISOString(),
@@ -133,9 +184,6 @@ class AnalyticsController {
     }
   };
 
-  /**
-   * Process analytics for a single question based on its type
-   */
   private ProcessQuestionAnalytics = async (
     question: ContentType,
     responses: Array<FormResponseType>,
@@ -170,9 +218,7 @@ class AnalyticsController {
     const baseData: QuestionBaseData = {
       id,
       questionId: question.questionId as string,
-      questionTitle: ResponseAnalyticsService["extractQuestionTitle"](
-        question.title,
-      ),
+      questionTitle: question.title,
       questionType,
       questionIndex: question.qIdx,
       totalResponses: questionResponses.length,
@@ -217,9 +263,6 @@ class AnalyticsController {
     }
   };
 
-  /**
-   * Process choice-based questions (Multiple Choice, Checkbox, Selection)
-   */
   private ProcessChoiceQuestion = (
     question: ContentType,
     questionResponses: ExtendedResponseSet[],
@@ -240,7 +283,6 @@ class AnalyticsController {
       }
     });
 
-    // Get correct answer(s) for validation
     const correctAnswers = new Set<number>();
     if (
       question.answer?.answer !== undefined &&
@@ -262,11 +304,8 @@ class AnalyticsController {
       const score = response.score || 0;
       const maxScore = question.score || 0;
 
-      // For checkbox (multiple selections), user gets full score only when selecting ALL correct answers
-      // For multiple choice/selection (single selection), score === maxScore means correct
       const isFullScore = score === maxScore;
 
-      // Handle different response formats
       const selectedIndices: number[] = [];
 
       if (Array.isArray(responseValue)) {
@@ -285,14 +324,12 @@ class AnalyticsController {
       // Count selections
       selectedIndices.forEach((idx) => {
         choiceCounts.set(idx, (choiceCounts.get(idx) || 0) + 1);
-        // Only count as "correct" if the user achieved full score
         if (isFullScore) {
           choiceCorrect.set(idx, (choiceCorrect.get(idx) || 0) + 1);
         }
       });
     });
 
-    // Generate distribution data
     const distribution = choices.map((choice) => {
       const count = choiceCounts.get(choice.idx) || 0;
       const correctCount = choiceCorrect.get(choice.idx) || 0;
@@ -306,24 +343,21 @@ class AnalyticsController {
         choiceContent: choice.content,
         count,
         percentage: Math.round(percentage * 100) / 100,
-        correctCount, // How many times this choice was selected in a fully correct answer
-        isCorrectAnswer: correctAnswers.has(choice.idx), // Whether this choice is part of the correct answer(s)
+        correctCount,
+        isCorrectAnswer: correctAnswers.has(choice.idx),
       };
     });
 
-    // Calculate how many responses got full marks
     const fullScoreCount = questionResponses.filter(
       (r) => (r.score || 0) === (question.score || 0),
     ).length;
 
-    // Calculate average score
     const avgScore =
       questionResponses.length > 0
         ? questionResponses.reduce((sum, r) => sum + (r.score || 0), 0) /
           questionResponses.length
         : 0;
 
-    // Generate graph data
     const colors = [
       "#FF6384",
       "#36A2EB",
@@ -349,7 +383,7 @@ class AnalyticsController {
         averageScore: Math.round(avgScore * 100) / 100,
         maxScore: question.score || 0,
         totalCorrectAnswers: fullScoreCount, // How many respondents got full marks
-        hasCorrectAnswer: correctAnswers.size > 0, // Whether this question has defined correct answer(s)
+        hasCorrectAnswer: correctAnswers.size > 0,
         graphs: {
           bar: {
             labels,
@@ -383,9 +417,6 @@ class AnalyticsController {
     };
   };
 
-  /**
-   * Process range questions (RangeDate, RangeNumber)
-   */
   private ProcessRangeQuestion = (
     question: ContentType,
     questionResponses: ExtendedResponseSet[],
@@ -578,9 +609,6 @@ class AnalyticsController {
     };
   };
 
-  /**
-   * Process text questions (ShortAnswer, Paragraph)
-   */
   private ProcessTextQuestion = (
     questionResponses: ExtendedResponseSet[],
     baseData: QuestionBaseData,
@@ -599,7 +627,6 @@ class AnalyticsController {
       };
     }
 
-    // Calculate text metrics
     const lengths = textResponses.map((r) => r.length);
     const wordCounts = textResponses.map(
       (r) => r.split(/\s+/).filter(Boolean).length,
@@ -617,7 +644,7 @@ class AnalyticsController {
     };
 
     // Word frequency
-    const stopWords = new Set([
+    const frequencyWords = new Set([
       "the",
       "a",
       "an",
@@ -641,7 +668,7 @@ class AnalyticsController {
         .toLowerCase()
         .replace(/[^\w\s]/g, "")
         .split(/\s+/)
-        .filter((word) => word.length > 2 && !stopWords.has(word));
+        .filter((word) => word.length > 2 && !frequencyWords.has(word));
 
       words.forEach((word) => {
         wordCount.set(word, (wordCount.get(word) || 0) + 1);
@@ -653,7 +680,6 @@ class AnalyticsController {
       .sort((a, b) => b.count - a.count)
       .slice(0, 20);
 
-    // Sample responses
     const sampleResponses = textResponses.slice(0, 5).map((text, idx) => ({
       id: idx + 1,
       response: text.length > 200 ? text.substring(0, 200) + "..." : text,
@@ -672,9 +698,6 @@ class AnalyticsController {
     };
   };
 
-  /**
-   * Process number questions
-   */
   private ProcessNumberQuestion = (
     questionResponses: ExtendedResponseSet[],
     baseData: QuestionBaseData,
@@ -719,9 +742,6 @@ class AnalyticsController {
     };
   };
 
-  /**
-   * Process date questions
-   */
   private ProcessDateQuestion = (
     questionResponses: ExtendedResponseSet[],
     baseData: QuestionBaseData,

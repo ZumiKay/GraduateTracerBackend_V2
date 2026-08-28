@@ -31,7 +31,7 @@ const UsersessionSchema = new Schema<UsersessionschemaType>(
       default: null,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Indexes for optimized CheckSession queries

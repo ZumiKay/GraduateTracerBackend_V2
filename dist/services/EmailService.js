@@ -1,13 +1,4 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -15,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const helper_1 = require("../utilities/helper");
 class EmailService {
+    transporter;
     constructor() {
         this.transporter = nodemailer_1.default.createTransport({
             service: "gmail",
@@ -25,29 +17,26 @@ class EmailService {
         });
     }
     // Generic email sending method
-    sendEmail(emailData) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const mailOptions = {
-                    from: process.env.SMTP_USER,
-                    to: emailData.to.join(","),
-                    subject: emailData.subject,
-                    html: emailData.html,
-                };
-                yield this.transporter.sendMail(mailOptions);
-                return true;
-            }
-            catch (error) {
-                console.error("Error sending email:", error);
-                return false;
-            }
-        });
+    async sendEmail(emailData) {
+        try {
+            const mailOptions = {
+                from: process.env.SMTP_USER,
+                to: emailData.to.join(","),
+                subject: emailData.subject,
+                html: emailData.html,
+            };
+            await this.transporter.sendMail(mailOptions);
+            return true;
+        }
+        catch (error) {
+            console.error("Error sending email:", error);
+            return false;
+        }
     }
     // Send form link to multiple recipients
-    sendFormLinks(data) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const formUrl = `${process.env.FRONTEND_URL}/form-access/${data.formId}`;
-            const html = `
+    async sendFormLinks(data) {
+        const formUrl = `${process.env.FRONTEND_URL}/form-access/${data.formId}`;
+        const html = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -92,23 +81,21 @@ class EmailService {
       </body>
       </html>
     `;
-            return yield this.sendEmail({
-                to: data.recipientEmails,
-                subject: `Form Invitation: ${this.convertTitleToString(data.formTitle)}`,
-                html,
-            });
+        return await this.sendEmail({
+            to: data.recipientEmails,
+            subject: `Form Invitation: ${this.convertTitleToString(data.formTitle)}`,
+            html,
         });
     }
     // Send response results to respondent
-    sendResponseResults(data) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const scorePercentage = data.totalScore === 0
-                ? 0
-                : ((data.totalScore / data.maxScore) * 100).toFixed(1);
-            const submittedDate = data.submittedAt
-                ? new Date(data.submittedAt).toLocaleDateString()
-                : new Date().toLocaleDateString();
-            const html = `
+    async sendResponseResults(data) {
+        const scorePercentage = data.totalScore === 0
+            ? 0
+            : ((data.totalScore / data.maxScore) * 100).toFixed(1);
+        const submittedDate = data.submittedAt
+            ? new Date(data.submittedAt).toLocaleDateString()
+            : new Date().toLocaleDateString();
+        const html = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -311,21 +298,21 @@ class EmailService {
               <p><strong>Submitted:</strong> ${submittedDate}</p>
               <p><strong>Response ID:</strong> ${data.responseId}</p>
               <p><strong>Scoring Method:</strong> ${data.isAutoScored
-                ? "🤖 Automatically calculated"
-                : "👨‍💼 Manually reviewed"}</p>
+            ? "🤖 Automatically calculated"
+            : "👨‍💼 Manually reviewed"}</p>
             </div>
             
             ${data.questions && data.questions.length > 0
-                ? `
+            ? `
             <!-- Questions Section -->
             <div class="questions-section">
               <h2 class="questions-title">📝 Detailed Results</h2>
               
               ${data.questions
-                    .map((question, index) => {
-                    const isCorrect = question.score === question.maxScore;
-                    const isPartial = question.score > 0 && question.score < question.maxScore;
-                    return `
+                .map((question, index) => {
+                const isCorrect = question.score === question.maxScore;
+                const isPartial = question.score > 0 && question.score < question.maxScore;
+                return `
                 <div class="question-card">
                   <div class="question-header">
                     <h4 class="question-title">Question ${index + 1}: ${this.escapeHtml(this.convertTitleToString(question.title))}</h4>
@@ -341,7 +328,7 @@ class EmailService {
                     </div>
                     
                     ${question.answer
-                        ? `
+                    ? `
                     <div class="answer-section">
                       <div class="answer-label">Correct Answer:</div>
                       <div class="answer-value correct-answer">
@@ -349,36 +336,36 @@ class EmailService {
                       </div>
                     </div>
                     `
-                        : ""}
+                    : ""}
                     
                     <div class="score-section">
                       <div class="question-score ${isCorrect
-                        ? "score-correct"
-                        : isPartial
-                            ? "score-partial"
-                            : "score-incorrect"}">
+                    ? "score-correct"
+                    : isPartial
+                        ? "score-partial"
+                        : "score-incorrect"}">
                         ${question.score}/${question.maxScore} points
                       </div>
                       <div class="status-badge ${isCorrect
-                        ? "badge-correct"
-                        : isPartial
-                            ? "badge-partial"
-                            : "badge-incorrect"}">
+                    ? "badge-correct"
+                    : isPartial
+                        ? "badge-partial"
+                        : "badge-incorrect"}">
                         ${isCorrect
-                        ? "✓ Correct"
-                        : isPartial
-                            ? "~ Partial"
-                            : "✗ Incorrect"}
+                    ? "✓ Correct"
+                    : isPartial
+                        ? "~ Partial"
+                        : "✗ Incorrect"}
                       </div>
                     </div>
                   </div>
                 </div>
                 `;
-                })
-                    .join("")}
+            })
+                .join("")}
             </div>
             `
-                : ""}
+            : ""}
             
             <div style="text-align: center; margin-top: 40px; padding: 20px; background: #fef3c7; border-radius: 12px;">
               <p style="margin: 0; font-size: 16px; color: #92400e;">
@@ -396,133 +383,131 @@ class EmailService {
       </body>
       </html>
     `;
-            return yield this.sendEmail({
-                to: [data.to],
-                subject: `🎯 Results for: ${this.convertTitleToString(data.formTitle)}`,
-                html,
-            });
+        return await this.sendEmail({
+            to: [data.to],
+            subject: `🎯 Results for: ${this.convertTitleToString(data.formTitle)}`,
+            html,
         });
     }
     // Enhanced Response Card Email with modern design
-    sendResponseCardEmail(data) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const submittedDate = data.submittedAt
-                ? new Date(data.submittedAt).toLocaleDateString("en-US", {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                })
-                : new Date().toLocaleDateString();
-            const getScoreGrade = (percentage) => {
-                if (percentage >= 90)
-                    return {
-                        grade: "Excellent",
-                        color: "#059669",
-                        bgColor: "#d1fae5",
-                        emoji: "🏆",
-                    };
-                if (percentage >= 80)
-                    return {
-                        grade: "Very Good",
-                        color: "#0891b2",
-                        bgColor: "#cffafe",
-                        emoji: "🌟",
-                    };
-                if (percentage >= 70)
-                    return {
-                        grade: "Good",
-                        color: "#2563eb",
-                        bgColor: "#dbeafe",
-                        emoji: "👍",
-                    };
-                if (percentage >= 60)
-                    return {
-                        grade: "Satisfactory",
-                        color: "#ca8a04",
-                        bgColor: "#fef9c3",
-                        emoji: "📝",
-                    };
-                if (percentage >= 50)
-                    return {
-                        grade: "Pass",
-                        color: "#d97706",
-                        bgColor: "#ffedd5",
-                        emoji: "✓",
-                    };
+    async sendResponseCardEmail(data) {
+        const submittedDate = data.submittedAt
+            ? new Date(data.submittedAt).toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+            })
+            : new Date().toLocaleDateString();
+        const getScoreGrade = (percentage) => {
+            if (percentage >= 90)
                 return {
-                    grade: "Needs Improvement",
-                    color: "#dc2626",
-                    bgColor: "#fee2e2",
-                    emoji: "📚",
+                    grade: "Excellent",
+                    color: "#059669",
+                    bgColor: "#d1fae5",
+                    emoji: "🏆",
                 };
+            if (percentage >= 80)
+                return {
+                    grade: "Very Good",
+                    color: "#0891b2",
+                    bgColor: "#cffafe",
+                    emoji: "🌟",
+                };
+            if (percentage >= 70)
+                return {
+                    grade: "Good",
+                    color: "#2563eb",
+                    bgColor: "#dbeafe",
+                    emoji: "👍",
+                };
+            if (percentage >= 60)
+                return {
+                    grade: "Satisfactory",
+                    color: "#ca8a04",
+                    bgColor: "#fef9c3",
+                    emoji: "📝",
+                };
+            if (percentage >= 50)
+                return {
+                    grade: "Pass",
+                    color: "#d97706",
+                    bgColor: "#ffedd5",
+                    emoji: "✓",
+                };
+            return {
+                grade: "Needs Improvement",
+                color: "#dc2626",
+                bgColor: "#fee2e2",
+                emoji: "📚",
             };
-            const gradeInfo = getScoreGrade(data.scorePercentage);
-            const formatUserResponse = (question) => {
-                const response = question.userResponse;
-                if (response === null || response === undefined || response === "") {
-                    return '<span style="color: #9ca3af; font-style: italic;">No answer provided</span>';
+        };
+        const gradeInfo = getScoreGrade(data.scorePercentage);
+        const formatUserResponse = (question) => {
+            const response = question.userResponse;
+            if (response === null || response === undefined || response === "") {
+                return '<span style="color: #9ca3af; font-style: italic;">No answer provided</span>';
+            }
+            // For choice questions, show selected option(s) with their content
+            if (question.choices && question.choices.length > 0) {
+                if (typeof response === "number") {
+                    const selected = question.choices.find((c) => c.idx === response);
+                    return selected
+                        ? this.escapeHtml(selected.content)
+                        : String(response);
                 }
-                // For choice questions, show selected option(s) with their content
-                if (question.choices && question.choices.length > 0) {
-                    if (typeof response === "number") {
-                        const selected = question.choices.find((c) => c.idx === response);
-                        return selected
-                            ? this.escapeHtml(selected.content)
-                            : String(response);
-                    }
-                    if (Array.isArray(response)) {
-                        const selectedChoices = question.choices
-                            .filter((c) => response.includes(c.idx))
-                            .map((c) => this.escapeHtml(c.content));
-                        return selectedChoices.length > 0
-                            ? selectedChoices.map((s) => `• ${s}`).join("<br>")
-                            : '<span style="color: #9ca3af; font-style: italic;">No selections made</span>';
-                    }
-                    // Handle object with key/val format
-                    if (typeof response === "object" && "val" in response) {
-                        const val = response.val;
-                        if (Array.isArray(val)) {
-                            return val
-                                .map((v) => `• ${this.escapeHtml(v)}`)
-                                .join("<br>");
-                        }
-                        return this.escapeHtml(String(val));
-                    }
+                if (Array.isArray(response)) {
+                    const selectedChoices = question.choices
+                        .filter((c) => response.includes(c.idx))
+                        .map((c) => this.escapeHtml(c.content));
+                    return selectedChoices.length > 0
+                        ? selectedChoices.map((s) => `• ${s}`).join("<br>")
+                        : '<span style="color: #9ca3af; font-style: italic;">No selections made</span>';
                 }
-                // For other question types
-                if (typeof response === "object") {
-                    if ("start" in response && "end" in response) {
-                        return `${response.start} → ${response.end}`;
-                    }
-                    return this.escapeHtml(JSON.stringify(response));
-                }
-                return this.escapeHtml(String(response));
-            };
-            const formatCorrectAnswer = (question) => {
-                if (!question.answer)
-                    return "";
-                if (question.choices && question.choices.length > 0) {
-                    const correctChoices = question.choices.filter((c) => c.isCorrect);
-                    if (correctChoices.length > 0) {
-                        return correctChoices
-                            .map((c) => `✓ ${this.escapeHtml(c.content)}`)
+                // Handle object with key/val format
+                if (typeof response === "object" && "val" in response) {
+                    const val = response.val;
+                    if (Array.isArray(val)) {
+                        return val
+                            .map((v) => `• ${this.escapeHtml(v)}`)
                             .join("<br>");
                     }
+                    return this.escapeHtml(String(val));
                 }
-                if (Array.isArray(question.answer)) {
-                    return question.answer
-                        .map((a) => `✓ ${this.escapeHtml(String(a))}`)
+            }
+            // For other question types
+            if (typeof response === "object") {
+                if ("start" in response && "end" in response) {
+                    return `${response.start} → ${response.end}`;
+                }
+                return this.escapeHtml(JSON.stringify(response));
+            }
+            return this.escapeHtml(String(response));
+        };
+        const formatCorrectAnswer = (question) => {
+            if (!question.answer)
+                return "";
+            if (question.choices && question.choices.length > 0) {
+                const correctChoices = question.choices.filter((c) => c.isCorrect);
+                if (correctChoices.length > 0) {
+                    return correctChoices
+                        .map((c) => `✓ ${this.escapeHtml(c.content)}`)
                         .join("<br>");
                 }
-                if (typeof question.answer === "object" && "start" in question.answer) {
-                    return `${question.answer.start} → ${question.answer.end}`;
-                }
-                return this.escapeHtml(String(question.answer));
-            };
-            const html = `
+            }
+            if (Array.isArray(question.answer)) {
+                return question.answer
+                    .map((a) => `✓ ${this.escapeHtml(String(a))}`)
+                    .join("<br>");
+            }
+            if (typeof question.answer === "object" && "start" in question.answer) {
+                return `${question.answer.start} → ${question.answer.end}`;
+            }
+            return this.escapeHtml(String(question.answer));
+        };
+        const html = `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -638,8 +623,8 @@ class EmailService {
                         <td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;">
                           <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">${data.respondentEmail ? "✉️ Email" : "📊 Status"}</div>
                           <div style="font-size: 14px; font-weight: 600; color: #1f2937; word-break: break-word;">${data.respondentEmail
-                ? this.escapeHtml(data.respondentEmail)
-                : data.completionStatus || "Completed"}</div>
+            ? this.escapeHtml(data.respondentEmail)
+            : data.completionStatus || "Completed"}</div>
                         </td>
                         <td class="info-cell" style="background: white; padding: 14px; border-radius: 10px; border: 1px solid #e5e7eb; width: 50%; vertical-align: top;">
                           <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">🔖 Response ID</div>
@@ -652,39 +637,39 @@ class EmailService {
                 
                 <!-- Questions Section -->
                 ${data.questions.length > 0
-                ? `
+            ? `
                 <tr>
                   <td class="questions-section" style="padding: 20px;">
                     <h2 style="font-size: 18px; font-weight: 700; color: #1f2937; margin: 0 0 16px 0;">📋 Detailed Results</h2>
                     
                     ${data.questions
-                    .map((question, index) => {
-                    const isCorrect = question.isCorrect;
-                    const isNoScore = question.maxScore === 0;
-                    const isPartial = question.score > 0 &&
-                        question.score < question.maxScore;
-                    const statusBgColor = isNoScore
-                        ? ""
-                        : isCorrect
-                            ? "#d1fae5"
-                            : isPartial
-                                ? "#fef3c7"
-                                : "#fee2e2";
-                    const statusTextColor = isNoScore
-                        ? ""
-                        : isCorrect
-                            ? "#065f46"
-                            : isPartial
-                                ? "#92400e"
-                                : "#991b1b";
-                    const statusText = isNoScore
-                        ? ""
-                        : isCorrect
-                            ? "✓ Correct"
-                            : isPartial
-                                ? "~ Partial"
-                                : "✗ Incorrect";
-                    return `
+                .map((question, index) => {
+                const isCorrect = question.isCorrect;
+                const isNoScore = question.maxScore === 0;
+                const isPartial = question.score > 0 &&
+                    question.score < question.maxScore;
+                const statusBgColor = isNoScore
+                    ? ""
+                    : isCorrect
+                        ? "#d1fae5"
+                        : isPartial
+                            ? "#fef3c7"
+                            : "#fee2e2";
+                const statusTextColor = isNoScore
+                    ? ""
+                    : isCorrect
+                        ? "#065f46"
+                        : isPartial
+                            ? "#92400e"
+                            : "#991b1b";
+                const statusText = isNoScore
+                    ? ""
+                    : isCorrect
+                        ? "✓ Correct"
+                        : isPartial
+                            ? "~ Partial"
+                            : "✗ Incorrect";
+                return `
                     <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 12px; overflow: hidden;">
                       <tr>
                         <td class="question-header" style="padding: 14px 16px; background: #f8fafc; border-bottom: 1px solid #e5e7eb;">
@@ -701,17 +686,17 @@ class EmailService {
                           </div>
                           
                           ${data.includeAnswerKey && question.answer !== null
-                        ? `
+                    ? `
                           <div style="padding: 14px; border-radius: 8px; background: #ecfdf5; border-left: 4px solid #10b981;">
                             <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; color: #059669;">✓ Correct Answer</div>
                             <div style="font-size: 14px; line-height: 1.5; color: #1f2937;">${formatCorrectAnswer(question)}</div>
                           </div>
                           `
-                        : ""}
+                    : ""}
                         </td>
                       </tr>
                       ${!isNoScore
-                        ? `
+                    ? `
                       <tr>
                         <td style="padding: 10px 16px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
                           <table role="presentation" class="question-footer-table" cellpadding="0" cellspacing="0" width="100%">
@@ -726,15 +711,15 @@ class EmailService {
                           </table>
                         </td>
                       </tr>`
-                        : ""}
+                    : ""}
                     </table>
                     `;
-                })
-                    .join("")}
+            })
+                .join("")}
                   </td>
                 </tr>
                 `
-                : ""}
+            : ""}
                 
                 <!-- Thank You Banner -->
                 <tr>
@@ -770,11 +755,10 @@ class EmailService {
       </body>
       </html>
     `;
-            return yield this.sendEmail({
-                to: [data.to],
-                subject: `${gradeInfo.emoji} Your Results: ${this.convertTitleToString(data.formTitle)} (${data.scorePercentage.toFixed(0)}%)`,
-                html,
-            });
+        return await this.sendEmail({
+            to: [data.to],
+            subject: `${gradeInfo.emoji} Your Results: ${this.convertTitleToString(data.formTitle)} (${data.scorePercentage.toFixed(0)}%)`,
+            html,
         });
     }
     escapeHtml(text) {

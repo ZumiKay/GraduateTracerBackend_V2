@@ -1,25 +1,88 @@
-# GraduateTracer Backend V2
+# GraduateTracer API
 
-REST API backend for the **GraduateTracer** system — a platform for managing graduate tracer survey forms, respondent sessions, form responses, analytics, and notifications.
+REST API for the **GraduateTracer** which is the system for managing form.
 
-Built with **Node.js**, **Express**, **TypeScript**, and **MongoDB**.
+Built with **Node.js**, **ExpressJS**, **TypeScript**, and **MongoDB**.
 
 ---
 
 ## Tech Stack
 
-| Layer            | Technology                                    |
-| ---------------- | --------------------------------------------- |
-| Runtime          | Node.js 20                                    |
-| Language         | TypeScript 5                                  |
-| Framework        | Express 4                                     |
-| Database         | MongoDB (Mongoose 8)                          |
-| Auth             | JWT (jsonwebtoken) + RSA keys                 |
-| Email            | Nodemailer (SMTP)                             |
-| PDF Export       | Puppeteer                                     |
-| Validation       | Zod                                           |
-| Security         | Helmet, express-rate-limit, bcrypt, reCAPTCHA |
-| Containerization | Docker                                        |
+<div align="center">
+
+<!-- Runtime -->
+
+<a href="https://nodejs.org/" target="_blank">
+  <img src="https://img.shields.io/badge/Node.js_24-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
+</a>
+
+<!-- Language -->
+
+<a href="https://www.typescriptlang.org/" target="_blank">
+  <img src="https://img.shields.io/badge/TypeScript_5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+</a>
+
+<!-- Framework -->
+
+<a href="https://expressjs.com/" target="_blank">
+  <img src="https://img.shields.io/badge/Express_5-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express" />
+</a>
+
+<!-- Database -->
+
+<a href="https://www.mongodb.com/" target="_blank">
+  <img src="https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white" alt="MongoDB" />
+</a>
+
+<!-- ODM -->
+
+<a href="https://mongoosejs.com/" target="_blank">
+  <img src="https://img.shields.io/badge/Mongoose_8-880000?style=for-the-badge&logo=mongoose&logoColor=white" alt="Mongoose" />
+</a>
+
+<!-- Auth -->
+
+<a href="https://jwt.io/" target="_blank">
+  <img src="https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white" alt="JWT" />
+</a>
+
+<!-- PDF Export -->
+
+<a href="https://pptr.dev/" target="_blank">
+  <img src="https://img.shields.io/badge/Puppeteer-40B5A4?style=for-the-badge&logo=puppeteer&logoColor=white" alt="Puppeteer" />
+</a>
+
+<!-- Validation -->
+
+<a href="https://zod.dev/" target="_blank">
+  <img src="https://img.shields.io/badge/Zod-3E67B1?style=for-the-badge&logo=zod&logoColor=white" alt="Zod" />
+</a>
+
+<!-- Security: Helmet -->
+
+<a href="https://helmetjs.github.io/" target="_blank">
+  <img src="https://img.shields.io/badge/Helmet-FF6C37?style=for-the-badge&logo=helmet&logoColor=white" alt="Helmet" />
+</a>
+
+<!-- Security: bcrypt -->
+
+<a href="https://github.com/kelektiv/node.bcrypt.js" target="_blank">
+  <img src="https://img.shields.io/badge/bcrypt-4A90D9?style=for-the-badge&logo=lock&logoColor=white" alt="bcrypt" />
+</a>
+
+<!-- reCAPTCHA -->
+
+<a href="https://developers.google.com/recaptcha" target="_blank">
+  <img src="https://img.shields.io/badge/reCAPTCHA_v2-4285F4?style=for-the-badge&logo=google&logoColor=white" alt="reCAPTCHA" />
+</a>
+
+<!-- Containerization -->
+
+<a href="https://www.docker.com/" target="_blank">
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
+</a>
+
+</div>
 
 ---
 
@@ -27,27 +90,27 @@ Built with **Node.js**, **Express**, **TypeScript**, and **MongoDB**.
 
 ```
 src/
-├── app.ts                  # Express app setup (middleware, routes)
+├── app.ts                  # Express app setup (middlewares, routes,
+                            DB Connection)
 ├── server.ts               # HTTP server entry point
 ├── database/               # MongoDB connection
 ├── router/                 # Route definitions
 │   ├── user.route.ts       # Auth, users, forms, content
 │   ├── response.route.ts   # Respondent sessions & form responses
-│   ├── notification.route.ts
+│   ├── notification.route.ts # Notifications Service
 │   ├── export.route.ts     # PDF/data export
-│   └── encrypt.route.ts    # RSA encryption utilities
 ├── controller/
 │   ├── auth/               # Login, registration, token management
 │   ├── form/               # Form CRUD, content, collaborators, sessions
 │   ├── response/           # Response submission and retrieval
 │   ├── analytics/          # Choice & response analytics
 │   └── utils/              # reCAPTCHA, misc helpers
-├── middleware/             # Auth guards, validators, rate control
+├── middleware/             # Auth verification, validators, rate control
 ├── model/                  # Mongoose models
 ├── services/               # Business logic services
-├── types/                  # TypeScript type declarations (env.d.ts)
+├── types/                  # TypeScript type declarations
 ├── utilities/              # Shared utility functions
-└── scripts/                # One-off admin/migration scripts
+└── scripts/                # Seed Data Methods
 ```
 
 ---
@@ -56,7 +119,7 @@ src/
 
 ### Prerequisites
 
-- Node.js ≥ 20
+- Node.js ≥ 24
 - MongoDB instance (local or Atlas)
 - (Optional) Docker
 
@@ -74,20 +137,6 @@ npm install
 cp .env.example .env
 # Edit .env with your values
 ```
-
-### Generate RSA Keys
-
-The backend uses RSA key pairs for token encryption:
-
-```bash
-# Generate private key
-openssl genrsa -out private.key 2048
-
-# Extract public key
-openssl rsa -in private.key -pubout -out public.key
-```
-
-Set the key contents (base64 or path) in `RSA_PUBLIC_KEY` and `RSA_PRIVATE_KEY` in your `.env`.
 
 ### Run in Development
 
@@ -110,19 +159,17 @@ npm start
 
 Copy `.env.example` to `.env` and fill in all values. Key variables:
 
-| Variable                                    | Description                                        |
-| ------------------------------------------- | -------------------------------------------------- |
-| `PORT`                                      | Server port (default: `4000`)                      |
-| `DATABASE_URL`                              | MongoDB connection string                          |
-| `JWT_SECRET`                                | Secret for signing access/refresh tokens           |
-| `RESPONDENT_TOKEN_JWT_SECRET`               | Secret for respondent session tokens               |
-| `RSA_PUBLIC_KEY`                            | RSA public key for encryption                      |
-| `RSA_PRIVATE_KEY`                           | RSA private key for decryption                     |
-| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` | Email (SMTP) credentials                           |
-| `FRONTEND_URL`                              | Allowed CORS origin (e.g. `http://localhost:5173`) |
-| `RECAPCHA_SECRETKEY`                        | Google reCAPTCHA v2 secret                         |
-| `INVITE_LINK_SECRET`                        | Secret for signing invitation links                |
-| `FORM_LINK_EXPIRATION`                      | Invite link TTL in hours                           |
+| Variable                                    | Description                                       |
+| ------------------------------------------- | ------------------------------------------------- |
+| `PORT`                                      | Server port (default:`4000`)                      |
+| `DATABASE_URL`                              | MongoDB connection string                         |
+| `JWT_SECRET`                                | Secret for signing access/refresh tokens          |
+| `RESPONDENT_TOKEN_JWT_SECRET`               | Secret for respondent session tokens              |
+| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` | Email (SMTP) credentials                          |
+| `FRONTEND_URL`                              | Allowed CORS origin (e.g.`http://localhost:5173`) |
+| `RECAPCHA_SECRETKEY`                        | Google reCAPTCHA v2 secret                        |
+| `INVITE_LINK_SECRET`                        | Secret for signing invitation links               |
+| `FORM_LINK_EXPIRATION`                      | Invite link TTL in hours                          |
 
 See [.env.example](.env.example) for the full list.
 
@@ -176,10 +223,6 @@ Handles real-time notification delivery and management.
 ### Exports — `/v0/api/exports`
 
 PDF and data export endpoints powered by Puppeteer.
-
-### Encryption — `/v0/api/de`
-
-RSA-based payload encryption/decryption utilities for the frontend.
 
 ---
 
