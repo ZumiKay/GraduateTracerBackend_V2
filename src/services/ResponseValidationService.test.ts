@@ -4,9 +4,7 @@ import { ResponseValidationService } from "./ResponseValidationService";
 import { CustomRequest, UserToken } from "../types/customType";
 import { ReturnCode } from "../utilities/helper";
 import Form from "../model/Form.model";
-import FormResponse, {
-  ResponseCompletionStatus,
-} from "../model/Response.model";
+import FormResponse from "../model/Response.model";
 import { hasFormAccess } from "../utilities/formHelpers";
 import { ROLE } from "../model/User.model";
 

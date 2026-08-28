@@ -264,38 +264,6 @@ class AuthenticateMiddleWare {
         .json(ReturnCode(500, ERROR_MESSAGES.VERIFICATION_FAILED));
     }
   };
-
-  /**
-   * Middleware to require admin role
-   */
-  public RequireAdmin = (
-    req: CustomRequest,
-    res: Response,
-    next: NextFunction,
-  ) => {
-    try {
-      if (!req.user) {
-        return res
-          .status(401)
-          .json(ReturnCode(401, ERROR_MESSAGES.NOT_AUTHENTICATED));
-      }
-
-      const userRole = req.user.userDetails?.role || req.user.role;
-
-      if (userRole !== "ADMIN") {
-        return res
-          .status(403)
-          .json(ReturnCode(403, ERROR_MESSAGES.ADMIN_REQUIRED));
-      }
-
-      return next();
-    } catch (error) {
-      console.error("Admin check error:", error);
-      return res
-        .status(500)
-        .json(ReturnCode(500, ERROR_MESSAGES.PERMISSION_CHECK_FAILED));
-    }
-  };
 }
 
 export default new AuthenticateMiddleWare();
