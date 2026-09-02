@@ -8,6 +8,7 @@ module.exports = {
     "/node_modules/",
     "contentTitleHelper\\.example\\.ts$",
     "EmailService\\.contentTitle\\.test\\.ts$",
+    ".*\\.integration.*",
   ],
   transform: {
     "^.+\\.tsx?$": ["ts-jest", {

@@ -1,0 +1,25 @@
+FROM node:20-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package definition files
+COPY package*.json ./
+
+# Install all dependencies including devDependencies for running tests
+RUN npm install
+
+# Copy source code and configuration files
+COPY . .
+
+# Default test environment variables
+ENV NODE_ENV=TEST
+ENV PORT=8000
+ENV API_BASEURL=/v0/api
+ENV JWT_SECRET=test_integration_jwt_secret_key_1234567890
+ENV ACCESS_TOKEN_COOKIE=graduate_accessT
+ENV REFRESH_TOKEN_COOKIE=graduate_refreshT
+ENV DATABASE_URL=mongodb://mongo:27017/graduatetracer_test
+
+# Command to execute integration tests
+CMD ["npm", "run", "test:integration"]

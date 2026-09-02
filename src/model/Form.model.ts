@@ -70,6 +70,7 @@ export interface SummaryFormType {
 
 export interface FormType {
   _id: Types.ObjectId;
+  id?: string;
   title: string;
   type: TypeForm;
   contentIds?: Array<Types.ObjectId>;

@@ -48,10 +48,6 @@ export class FormResponseSubmissionController {
     }),
   });
 
-  public GetFormForRespondent = async (req: CustomRequest, res: Response) => {
-    return this.GetPublicFormData(req, res);
-  };
-
   public SubmitFormResponse = async (req: CustomRequest, res: Response) => {
     const submissionId = `submission_${Date.now()}_${Math.random()
       .toString(36)
@@ -414,11 +410,6 @@ export class FormResponseSubmissionController {
       const { formId } = req.params;
       let { p, ty } = req.query as GetPublicFormDataType;
 
-      if (!ty) return res.status(400).json(ReturnCode(400));
-      if (!Types.ObjectId.isValid(formId)) {
-        return res.status(400).json(ReturnCode(400, "Invalid form ID"));
-      }
-
       const page = Number(p ?? "1");
 
       const isUserAlreadyAuthenticated = !!req.formsession;
@@ -464,13 +455,10 @@ export class FormResponseSubmissionController {
               });
 
             if (trackingResult?.hasResponded) {
-              return res.status(200).json({
-                ...ReturnCode(200),
-                data: {
-                  ...initialData,
-                  isAuthenticated: true,
-                  isResponsed: trackingResult.hasResponded,
-                },
+              return SendResponse.success(res, {
+                ...initialData,
+                isAuthenticated: true,
+                isResponsed: trackingResult.hasResponded,
               });
             }
           }
@@ -590,7 +578,8 @@ export class FormResponseSubmissionController {
           return SendResponse.badRequest(res);
       }
     } catch (error) {
-      console.error("Get Public Form Data Error:", error);
+      if (process.env.NODE_ENV === "DEV")
+        console.error("Get Public Form Data Error:", error);
       if (error instanceof Error) {
         if (error.message === "You already submitted this form") {
           return SendResponse.badRequest(res, error.message);

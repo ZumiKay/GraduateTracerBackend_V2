@@ -6,7 +6,7 @@ import FormResponse, {
   ResponseAnswerType,
   ResponseAnswerReturnType,
 } from "../model/Response.model";
-import Form from "../model/Form.model";
+import Form, { TypeForm } from "../model/Form.model";
 import Content, {
   ChoiceQuestionType,
   ContentType,
@@ -443,6 +443,7 @@ export class ResponseQueryService {
         content: c,
         parentScore: parentQ?.score,
         siblingSumScore,
+        validateContentDetail: form.type === TypeForm.Quiz,
       });
     });
 

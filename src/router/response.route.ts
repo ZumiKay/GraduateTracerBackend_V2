@@ -49,6 +49,7 @@ ResponseRouter.get(
   FormResponseController.GetResponsesInfo as unknown as RequestHandler,
 );
 
+//TODO ToBE Test
 // Get responses with filters and pagination
 ResponseRouter.get(
   "/getresponselist",
@@ -56,6 +57,7 @@ ResponseRouter.get(
   FormResponseController.GetResponsesWithFilters as unknown as RequestHandler,
 );
 
+//TODO ToBeTest
 //Get response by id
 ResponseRouter.get(
   "/getresponseById/:id/:formId",
@@ -110,20 +112,6 @@ ResponseRouter.put(
   "/update-question-score",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   FormResponseController.UpdateQuestionScore as unknown as RequestHandler,
-);
-
-// Batch update scores for multiple responses
-ResponseRouter.put(
-  "/batch-update-scores",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  FormResponseController.BatchUpdateScores as unknown as RequestHandler,
-);
-
-// Recalculate total score for a response
-ResponseRouter.put(
-  "/recalculate-score",
-  UserMiddleware.VerifyToken as unknown as RequestHandler,
-  FormResponseController.RecalculateResponseScore as unknown as RequestHandler,
 );
 
 // Delete a response

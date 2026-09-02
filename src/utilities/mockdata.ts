@@ -7,7 +7,17 @@ import {
   RangeType,
 } from "../model/Content.model";
 
-import { ResponseAnswerType } from "../model/Response.model";
+import {
+  ResponseAnswerType,
+  ResponseSetType,
+  ScoringMethod,
+} from "../model/Response.model";
+import {
+  FormType,
+  returnscore,
+  SubmitType,
+  TypeForm,
+} from "../model/Form.model";
 
 export class MockContentFactory {
   static createFormId(): Types.ObjectId {
@@ -424,8 +434,11 @@ export class MockContentFactory {
    *
    * @returns Array of 10 ContentType questions sharing a common formId
    */
-  static createSampleForm(): ContentType[] {
-    const formId = this.createFormId();
+  static createSampleForm(
+    newFormId?: Types.ObjectId,
+    additional?: ContentType[],
+  ): ContentType[] {
+    const formId = newFormId ?? this.createFormId();
 
     const multipleChoice = this.createMultipleChoiceContent({
       formId,
@@ -452,6 +465,7 @@ export class MockContentFactory {
       rangeDate,
       selection,
       paragraph,
+      ...(additional ?? []),
     ];
   }
 
@@ -471,6 +485,38 @@ export class MockContentFactory {
       hasAnswer: false,
       isValidated: false,
       ...overrides,
+    };
+  }
+
+  static createFormObj(override?: FormType): Partial<FormType> {
+    return {
+      title: "Testing Form",
+      type: TypeForm.Normal,
+      submittype: SubmitType.Once,
+      user: new Types.ObjectId(),
+      pendingCollarborators: [],
+      setting: {
+        submitonce: true,
+        returnscore: returnscore.partial,
+        acceptResponses: false,
+        email: true,
+      },
+      ...override,
+    };
+  }
+
+  /**Function to create mock function
+   * @requires Form,User,Question
+   */
+  static createResponseSet(
+    override?: Partial<ResponseSetType>,
+  ): Partial<ResponseSetType> {
+    return {
+      question: new Types.ObjectId(),
+      response: 0,
+      score: 20,
+      scoringMethod: ScoringMethod.AUTO,
+      ...override,
     };
   }
 }

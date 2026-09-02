@@ -6,6 +6,7 @@ import {
   getDateByMinute,
   getDateByNumDay,
   ReturnCode,
+  SendResponse,
 } from "../../utilities/helper";
 import { z } from "zod";
 import JWT, { JwtPayload } from "jsonwebtoken";
@@ -334,21 +335,14 @@ export default class FormsessionService {
       !process.env.ACCESS_RESPONDENT_COOKIE ||
       !process.env.RESPONDENT_COOKIE
     ) {
-      return res.status(500).json({
-        success: false,
-        status: 500,
-        message: "Server configuration error",
-      });
+      SendResponse(res, 500);
+      return;
     }
 
     const validationResult = this.respondentLoginSchema.safeParse(req.body);
     if (!validationResult.success) {
-      return res.status(400).json({
-        success: false,
-        status: 400,
-        message: "Validation failed",
-        errors: validationResult.error.errors,
-      });
+      SendResponse(res, 400);
+      return;
     }
 
     const { formId, email, password, rememberMe, isGuest, name, existed } =
@@ -369,62 +363,41 @@ export default class FormsessionService {
       ]);
 
       if (!form) {
-        return res.status(400).json({
-          success: false,
-          status: 400,
-          message: "Form not found",
-        });
+        SendResponse(res, 404, undefined, "Form not found");
+        return;
       }
 
       if (!form.setting?.acceptResponses) {
-        return res.status(403).json({
-          success: false,
-          status: 403,
-          message: "Form is closed",
-        });
+        SendResponse(res, 403, undefined, "Form is closed");
+        return;
       }
 
       if (form.type === TypeForm.Normal) {
-        return res.status(204).json({
-          success: true,
-          status: 204,
-          message: "Normal form type",
-        });
+        SendResponse(res, 204);
+        return;
       }
 
       // Validate guest access
       if (isGuest && !form.setting?.acceptGuest) {
-        return res.status(403).json({
-          success: false,
-          status: 403,
-          message: "Form does not accept guest",
-        });
+        SendResponse(res, 403, undefined, "Form don't accept guest");
+        return;
       }
 
       if (!isGuest && !existed) {
         if (!password) {
-          return res.status(400).json({
-            success: false,
-            status: 400,
-            message: "Password required",
-          });
+          SendResponse(res, 400);
+          return;
         }
 
         if (!userData) {
-          return res.status(401).json({
-            success: false,
-            status: 401,
-            message: "Incorrect Credential",
-          });
+          SendResponse(res, 401);
+          return;
         }
 
         const isValidPassword = compareSync(password, userData.password);
         if (!isValidPassword) {
-          return res.status(401).json({
-            success: false,
-            status: 401,
-            message: "Incorrect Credential",
-          });
+          SendResponse(res, 401);
+          return;
         }
       }
 
@@ -446,9 +419,8 @@ export default class FormsessionService {
       if (isGuest) {
         const registeredUser = await User.findOne({ email });
         if (registeredUser) {
-          return res
-            .status(400)
-            .json(ReturnCode(400, "User exist please login as user"));
+          SendResponse(res, 400, undefined, "User exist please login as user");
+          return;
         }
       }
 
@@ -467,12 +439,15 @@ export default class FormsessionService {
           .populate("user")
           .lean();
 
-        if (!isUser || !isUser.user?.email)
-          return res.status(401).json(ReturnCode(401));
+        if (!isUser || !isUser.user?.email) {
+          SendResponse(res, 401);
+          return;
+        }
 
         if (isUser.expireAt <= new Date()) {
           await Usersession.deleteOne({ _id: isUser._id });
-          return res.status(401).json(ReturnCode(401));
+          SendResponse(res, 401);
+          return;
         }
 
         existedUserRefreshToken = {
@@ -537,18 +512,8 @@ export default class FormsessionService {
           }),
         ]);
       } catch (tokenError) {
-        return res.status(500).json({
-          success: false,
-          status: 500,
-          message: "Failed to generate session tokens",
-          error: "TOKEN_GENERATION_ERROR",
-          details:
-            process.env.NODE_ENV === "DEV"
-              ? tokenError instanceof Error
-                ? tokenError.message
-                : String(tokenError)
-              : undefined,
-        });
+        SendResponse(res, 500);
+        return;
       }
 
       await Formsession.create({
@@ -583,19 +548,7 @@ export default class FormsessionService {
         },
       });
     } catch (error) {
-      console.error("RespondentLogin error:", error);
-      return res.status(500).json({
-        success: false,
-        status: 500,
-        message: "Internal server error during login",
-        error: "INTERNAL_SERVER_ERROR",
-        details:
-          process.env.NODE_ENV === "DEV"
-            ? error instanceof Error
-              ? error.message
-              : String(error)
-            : undefined,
-      });
+      SendResponse(res, 500);
     }
   };
 

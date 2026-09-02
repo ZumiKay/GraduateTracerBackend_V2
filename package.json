@@ -6,6 +6,10 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "jest",
+    "test:unit": "jest",
+    "test:integration": "jest --config=jest.integration.config.js --runInBand --forceExit",
+    "test:docker": "docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test-runner && docker compose -f docker-compose.test.yml down -v",
+    "test:docker:down": "docker compose -f docker-compose.test.yml down -v",
     "test:watch": "jest --watch",
     "test:helper": "jest -t \"groupContentByParent\" --no-cache",
     "dev": "nodemon"

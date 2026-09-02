@@ -25,7 +25,9 @@ app.use(express.json());
 app.use(express.text());
 app.use(cookieparser());
 
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+app.use(
+  cors({ origin: process.env.FRONTEND_URL as string, credentials: true }),
+);
 app.use(helmet());
 app.use(morgan("dev"));
 

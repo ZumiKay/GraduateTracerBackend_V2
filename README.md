@@ -269,9 +269,6 @@ Tests use **Jest** with **ts-jest**.
 - Rate limiting: 100 requests per 15 minutes per IP.
 - Respondent sessions use short-lived JWTs with RSA signing.
 - reCAPTCHA validation on sensitive endpoints.
-- Non-root Docker user for container hardening.
-
----
 
 ## License
 

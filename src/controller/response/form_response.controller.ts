@@ -39,7 +39,7 @@ class FormResponseController {
 
   // Submission methods
   public GetFormForRespondent =
-    FormResponseSubmissionController.GetFormForRespondent;
+    FormResponseSubmissionController.GetPublicFormData;
   public SubmitFormResponse =
     FormResponseSubmissionController.SubmitFormResponse;
   public GetInititalFormData =

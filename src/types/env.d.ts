@@ -27,6 +27,7 @@ declare namespace NodeJS {
     INVITE_LINK_SECRET: string;
     RSA_PUBLIC_KEY: string;
     RSA_PRIVATE_KEY: string;
+    API_BASEURL: string;
     [key: string]: string | undefined; // Optional: For additional dynamic environment variables
   }
 }

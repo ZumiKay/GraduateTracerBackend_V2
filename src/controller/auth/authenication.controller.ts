@@ -167,9 +167,8 @@ class AuthenticationController {
 
         default:
           {
-            res.status(400).json(ReturnCode(400, "Invalid request type"));
+            return res.status(400).json(ReturnCode(400, "Invalid request type"));
           }
-          break;
       }
 
       return res.status(200).json(ReturnCode(200));
