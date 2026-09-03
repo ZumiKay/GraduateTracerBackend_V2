@@ -226,25 +226,23 @@ describe("ResponseProcessingService", () => {
       },
     } as never;
 
-    test("should throw error if responseset is empty", async () => {
-      await expect(
-        ResponseProcessingService.processFormSubmission(
-          { formId, responseset: [] },
-          mockForm,
-        ),
-      ).rejects.toThrow("Invalid Response Data");
+    test("should return null if responseset is empty", async () => {
+      const result = await ResponseProcessingService.processFormSubmission(
+        { formId, responseset: [] },
+        mockForm,
+      );
+      expect(result).toBeNull();
     });
 
-    test("should throw error if form requires email but none is provided", async () => {
-      await expect(
-        ResponseProcessingService.processFormSubmission(
-          {
-            formId,
-            responseset: [{ question: q1Id.toString(), response: "Ans" }],
-          },
-          mockForm,
-        ),
-      ).rejects.toThrow("Email is required for this form");
+    test("should return null if form requires email but none is provided", async () => {
+      const result = await ResponseProcessingService.processFormSubmission(
+        {
+          formId,
+          responseset: [{ question: q1Id.toString(), response: "Ans" }],
+        },
+        mockForm,
+      );
+      expect(result).toBeNull();
     });
 
     test("should process auto-scored submission, save response, and send email", async () => {
@@ -293,9 +291,9 @@ describe("ResponseProcessingService", () => {
         mockForm,
       );
 
-      expect(result.responseId).toBe(responseId.toString());
-      expect(result.totalScore).toBe(10);
-      expect(result.message).toBe("This your final score");
+      expect(result!.responseId).toBe(responseId.toString());
+      expect(result!.totalScore).toBe(10);
+      expect(result!.message).toBe("This your final score");
       expect(sendResponseResultsMock).toHaveBeenCalledWith(
         expect.objectContaining({
           to: "user@example.com",
@@ -352,7 +350,7 @@ describe("ResponseProcessingService", () => {
         mockForm,
       );
 
-      expect(result.message).toBe(
+      expect(result!.message).toBe(
         "Totalscore is partial only might change when form owner return your score.",
       );
       expect(FormResponse.create).toHaveBeenCalledWith(

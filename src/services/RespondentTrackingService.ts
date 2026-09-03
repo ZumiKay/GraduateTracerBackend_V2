@@ -112,7 +112,6 @@ export class RespondentTrackingService {
         acceptLanguage: browserFingerprint.acceptLanguage,
         acceptEncoding: browserFingerprint.acceptEncoding,
       },
-      sessionId: (req as any).session?.id || (req as any).sessionID,
       fingerprintStrength,
     };
   }
@@ -149,7 +148,6 @@ export class RespondentTrackingService {
       respondentFingerprint: trackingData.fingerprint,
       respondentIP: hashedIP,
       deviceInfo: trackingData.deviceInfo,
-      respondentSessionId: trackingData.sessionId,
       fingerprintStrength: trackingData.fingerprintStrength,
     };
   }

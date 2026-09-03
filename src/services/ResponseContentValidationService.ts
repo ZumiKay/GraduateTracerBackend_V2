@@ -247,7 +247,9 @@ export class ResponseContentValidationService {
 
   //Cleanly cast type of choice answer to Array of number
   private static normalizeChoiceAnswer = (answer: ResponseAnswerType) => {
-    return answer as number[];
+    if (Array.isArray(answer)) return answer as number[];
+    if (typeof answer === "number") return [answer];
+    return null;
   };
 
   static calculateResponseScore(
@@ -256,7 +258,8 @@ export class ResponseContentValidationService {
     questionType: QuestionType,
     maxScore: number,
   ): number {
-    if (!correctAnswer || maxScore === 0) return 0;
+    if (correctAnswer === undefined || correctAnswer === null || maxScore === 0)
+      return 0;
 
     switch (questionType) {
       case QuestionType.Text:

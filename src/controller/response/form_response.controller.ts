@@ -34,8 +34,6 @@ class FormResponseController {
   public UpdateQuestionScore =
     FormResponseScoringController.UpdateQuestionScore;
   public BatchUpdateScores = FormResponseScoringController.BatchUpdateScores;
-  public RecalculateResponseScore =
-    FormResponseScoringController.RecalculateResponseScore;
 
   // Submission methods
   public GetFormForRespondent =

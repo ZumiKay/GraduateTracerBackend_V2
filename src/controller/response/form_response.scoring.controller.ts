@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { ReturnCode } from "../../utilities/helper";
+import { ReturnCode, SendResponse } from "../../utilities/helper";
 import { ResponseValidationService } from "../../services/ResponseValidationService";
 import { ResponseProcessingService } from "../../services/ResponseProcessingService";
 import { UpdateResponseScoretype } from "../../model/Response.model";
@@ -55,19 +55,16 @@ export class FormResponseScoringController {
         scores,
       });
 
-      res.status(200).json({
-        ...ReturnCode(200, "Scores updated successfully"),
-        data: result,
-      });
+      SendResponse.success(res, result, "Scores updated successfully");
     } catch (error) {
       console.error("Update Response Score Error:", error);
-      res.status(500).json(ReturnCode(500, "Failed to update scores"));
+      SendResponse.error(res, "Failed To Update Score");
     }
   };
 
   public UpdateQuestionScore = async (req: CustomRequest, res: Response) => {
     try {
-      const validation = await ResponseValidationService.validateRequest({
+      const validation = ResponseValidationService.validateRequest({
         req,
         res,
         requireFormId: false,
@@ -150,39 +147,6 @@ export class FormResponseScoringController {
     } catch (error) {
       console.error("Batch Update Scores Error:", error);
       res.status(500).json(ReturnCode(500, "Failed to batch update scores"));
-    }
-  };
-
-  public RecalculateResponseScore = async (
-    req: CustomRequest,
-    res: Response,
-  ) => {
-    try {
-      const validation = ResponseValidationService.validateRequest({
-        req,
-        res,
-        requireFormId: false,
-      });
-      if (!validation.isValid || !validation.user?.sub) return;
-
-      const { responseId } = req.body;
-
-      if (!responseId) {
-        return res.status(400).json(ReturnCode(400, "Response ID is required"));
-      }
-
-      const result =
-        await ResponseProcessingService.recalculateResponseTotalScore(
-          responseId,
-        );
-
-      res.status(200).json({
-        ...ReturnCode(200, "Score recalculated successfully"),
-        data: result,
-      });
-    } catch (error) {
-      console.error("Recalculate Score Error:", error);
-      res.status(500).json(ReturnCode(500, "Failed to recalculate score"));
     }
   };
 }

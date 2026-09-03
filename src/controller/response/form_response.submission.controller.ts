@@ -33,7 +33,7 @@ import {
 } from "../../utilities/formHelpers";
 import Content from "../../model/Content.model";
 
-interface SubmitResponseBodyType {
+export interface SubmitResponseBodyType {
   responseSet?: Array<ResponseSetType>;
   respondentEmail?: string;
   respondentName?: string;
@@ -95,7 +95,18 @@ export class FormResponseSubmissionController {
           req,
         );
 
-      let result: Partial<SubmitionProcessionReturnType | undefined>;
+      const checkResponseExist =
+        await RespondentTrackingService.checkRespondentExists(
+          submissionDataWithTracking,
+        );
+
+      if (checkResponseExist.hasResponded) {
+        return SendResponse.badRequest(res, "Form already submitted", {
+          isResponded: true,
+        });
+      }
+
+      let result: Partial<SubmitionProcessionReturnType | null>;
       try {
         //Quiz type process
         if (form.type === TypeForm.Quiz) {
@@ -116,19 +127,8 @@ export class FormResponseSubmissionController {
           processingError,
         );
 
-        if (processingError instanceof Error) {
-          const errorResponse = this.handleProcessingError(
-            processingError,
-            submissionId,
-          );
-          if (errorResponse) {
-            return res.status(errorResponse.status).json(errorResponse.body);
-          }
-        }
-
         return res.status(500).json({
           ...ReturnCode(500, "Failed to process form submission"),
-          submissionId,
           error:
             processingError instanceof Error
               ? processingError.message
@@ -136,6 +136,7 @@ export class FormResponseSubmissionController {
         });
       }
 
+      //Loggout current user for submitonce form
       if (form.setting?.submitonce && req.formsession) {
         res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
         res.clearCookie(process.env.RESPONDENT_COOKIE as string);
@@ -143,16 +144,18 @@ export class FormResponseSubmissionController {
       }
 
       //Create Notification for formOwner
-      if (result.responseId) {
-        await NotificationController.NotifyNewResponse(
-          formId,
-          result.responseId,
-          {
-            name: respondentName,
-            email: respondentEmail,
-          },
-        );
+      if (!result || !result.responseId) {
+        throw new Error("Failed to submit the form");
       }
+
+      await NotificationController.NotifyNewResponse(
+        formId,
+        result.responseId,
+        {
+          name: respondentName,
+          email: respondentEmail,
+        },
+      );
 
       return res.status(200).json({
         ...ReturnCode(200, "Form submitted successfully"),
@@ -255,127 +258,6 @@ export class FormResponseSubmissionController {
       message: errors.length > 0 ? "Validation failed" : "Validation passed",
       errors,
     };
-  }
-
-  private handleProcessingError(
-    error: Error,
-    submissionId: string,
-  ): {
-    status: number;
-    body: any;
-  } | null {
-    const errorMessage = error.message.toLowerCase();
-
-    if (error.message === "Require" || errorMessage.includes("required")) {
-      return {
-        status: 400,
-        body: {
-          ...ReturnCode(400, "Missing required questions"),
-          submissionId,
-          error: "Please ensure all required questions are answered",
-        },
-      };
-    }
-
-    if (
-      error.message === "Format" ||
-      errorMessage.includes("format") ||
-      errorMessage.includes("invalid answer")
-    ) {
-      return {
-        status: 400,
-        body: {
-          ...ReturnCode(400, "Invalid answer format"),
-          submissionId,
-          error: "One or more answers are in an invalid format",
-        },
-      };
-    }
-
-    if (errorMessage.includes("question not found")) {
-      return {
-        status: 404,
-        body: {
-          ...ReturnCode(404, "Question not found"),
-          submissionId,
-          error: "One or more questions in your response could not be found",
-        },
-      };
-    }
-
-    if (
-      error.message === "Form not found" ||
-      errorMessage.includes("form not found")
-    ) {
-      return {
-        status: 404,
-        body: {
-          ...ReturnCode(404, "Form not found"),
-          submissionId,
-          error: error.message,
-        },
-      };
-    }
-
-    if (
-      error.message === "Email is required for this form" ||
-      errorMessage.includes("email is required")
-    ) {
-      return {
-        status: 400,
-        body: {
-          ...ReturnCode(400, "Email is required"),
-          submissionId,
-          error: "This form requires an email address to submit",
-        },
-      };
-    }
-
-    if (
-      error.message === "Form already exisited" ||
-      errorMessage.includes("already submitted") ||
-      errorMessage.includes("duplicate")
-    ) {
-      return {
-        status: 409,
-        body: {
-          code: 409,
-          message: "Duplicate submission",
-          submissionId,
-          error: "You have already submitted a response to this form",
-        },
-      };
-    }
-
-    if (
-      errorMessage.includes("access denied") ||
-      errorMessage.includes("unauthorized")
-    ) {
-      return {
-        status: 403,
-        body: {
-          ...ReturnCode(403, "Access denied"),
-          submissionId,
-          error: "You don't have permission to submit to this form",
-        },
-      };
-    }
-
-    if (
-      errorMessage.includes("form is closed") ||
-      errorMessage.includes("form is inactive")
-    ) {
-      return {
-        status: 403,
-        body: {
-          ...ReturnCode(403, "Form is not available"),
-          submissionId,
-          error: "This form is no longer accepting responses",
-        },
-      };
-    }
-
-    return null;
   }
 
   public async GetInititalFormData(formId: string, res: Response) {

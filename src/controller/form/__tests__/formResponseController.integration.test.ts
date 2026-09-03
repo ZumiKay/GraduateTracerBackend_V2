@@ -1,6 +1,6 @@
 //FormResponseController Integration Testing
 import Request from "supertest";
-import mongoose, { Types } from "mongoose";
+import mongoose, { Mongoose, Types } from "mongoose";
 import app from "../../../app";
 import { ReturnCode } from "../../../utilities/helper";
 import { RESPONSES } from "../../../types/customType";
@@ -13,12 +13,18 @@ import {
   loggedUserInForm,
   testEnv,
 } from "./helper.integration";
-import Form, { FormType } from "../../../model/Form.model";
+import Form, {
+  FormType,
+  returnscore,
+  TypeForm,
+} from "../../../model/Form.model";
 import User, { ROLE, UserType } from "../../../model/User.model";
 import Formsession from "../../../model/Formsession.model";
-import FormResponse from "../../../model/Response.model";
+import FormResponse, { ScoringMethod } from "../../../model/Response.model";
 import Usersession from "../../../model/Usersession.model";
 import Content from "../../../model/Content.model";
+import Notification from "../../../model/Notification.model";
+import EmailService from "../../../services/EmailService";
 import JWT from "jsonwebtoken";
 import { MockContentFactory } from "../../../utilities/mockdata";
 
@@ -37,6 +43,10 @@ describe("FormResponse Controller Integration Test", () => {
     if (mongoose.connection.readyState === 0) {
       await mongoose.connect(testEnv.DATABASE_URL);
     }
+    jest.spyOn(EmailService.prototype, "sendEmail").mockResolvedValue(true);
+    jest
+      .spyOn(EmailService.prototype, "sendResponseResults")
+      .mockResolvedValue(true);
   });
 
   beforeEach(() => {
@@ -49,6 +59,9 @@ describe("FormResponse Controller Integration Test", () => {
     await Form.deleteMany({});
     await Usersession.deleteMany({});
     await Content.deleteMany({});
+    await FormResponse.deleteMany({});
+    await Formsession.deleteMany({});
+    await Notification.deleteMany({});
     if (mongoose.connection.readyState === 1) {
       await mongoose.disconnect();
     }
@@ -312,6 +325,505 @@ describe("FormResponse Controller Integration Test", () => {
         expect(Array.isArray(superTest.body.data.contents)).toBe(true);
         expect(superTest.body.data.contents.length).toBeGreaterThan(0);
         expect(superTest.body.data.isAuthenticated).toBe(true);
+      });
+    });
+  });
+
+  /**
+   * Test case analysis for SubmitFormResponseMethod
+   * @private vlidateSubmissionInput
+   *  [] Response must be an array
+   *  [] all question must have _id
+   *
+   * @static createSubmissionWithTracking
+   *  [] gather all require tracking data
+   *
+   * Form type processing service
+   *  [] processFormSubmission (quiz form process)
+   *    [] addscore method
+   *      [] all normal question type score
+   *      [] normal condition question score
+   *      [] condition with useChildSum = true
+   *      [] condtion with isBonusScore = true
+   *    [] send notirfacation to notify new response
+   *
+   *
+   */
+
+  describe("Submit Form Response Method", () => {
+    let formOwner: UserType;
+    let respondentUser: UserType;
+    let testQuizForm: any;
+
+    beforeEach(async () => {
+      formOwner = await createTestUser({
+        name: "Quiz Owner",
+        email: `owner_${Date.now()}_${Math.random().toString(36).slice(2, 7)}@gmail.com`,
+      });
+      respondentUser = await createTestUser({
+        name: "Quiz Respondent",
+        email: `respondent_${Date.now()}_${Math.random().toString(36).slice(2, 7)}@gmail.com`,
+        password: "pass@12345",
+      });
+      testQuizForm = await createTestForm(formOwner._id, {
+        type: TypeForm.Quiz,
+        totalscore: 50,
+        setting: {
+          acceptResponses: true,
+          acceptGuest: true,
+          email: true,
+          submitonce: false,
+          returnscore: returnscore.partial,
+        },
+      });
+    });
+
+    describe("validateSubmissionInput", () => {
+      test("status 400 if responseSet is not an array", async () => {
+        const session = await loggedUserInForm({
+          email: respondentUser.email,
+          password: "pass@12345",
+          formId: testQuizForm.id,
+        });
+
+        const invalidResponseset = {
+          respondentEmail: respondentUser.email,
+          respondentName: respondentUser.name,
+          responseSet: MockContentFactory.generateResponseSet(),
+        };
+
+        const res = await Request(app)
+          .post(`${baseURL}/submit-response/${testQuizForm.id}`)
+          .set("Cookie", [
+            `${testEnv.ACCESS_RESPONDENT_COOKIE}=${session?.accessToken}`,
+            `${testEnv.RESPONDENT_COOKIE}=${session?.refreshToken}`,
+          ])
+          .send(invalidResponseset);
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe(400);
+        expect(res.body.validationErrors).toContain(
+          "Response set must be an array",
+        );
+      });
+
+      test("status 400 if response item is missing question ID or response", async () => {
+        const session = await loggedUserInForm({
+          email: respondentUser.email,
+          password: "pass@12345",
+          formId: testQuizForm.id,
+        });
+
+        const invalidResponseset = {
+          respondentEmail: respondentUser.email,
+          respondentName: respondentUser.name,
+          responseSet: [
+            { question: "", response: 0 },
+            { question: new Types.ObjectId().toString(), response: null },
+          ],
+        };
+
+        const res = await Request(app)
+          .post(`${baseURL}/submit-response/${testQuizForm.id}`)
+          .set("Cookie", [
+            `${testEnv.ACCESS_RESPONDENT_COOKIE}=${session?.accessToken}`,
+            `${testEnv.RESPONDENT_COOKIE}=${session?.refreshToken}`,
+          ])
+          .send(invalidResponseset);
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe(400);
+        expect(res.body.validationErrors).toBeDefined();
+        expect(res.body.validationErrors.length).toBeGreaterThan(0);
+      });
+    });
+
+    describe("processFormSubmission - scoring condition questions", () => {
+      test("normal condition question score: scores both parent and child when answered correctly", async () => {
+        const parentId = new Types.ObjectId();
+        const childId = new Types.ObjectId();
+
+        const parentQuestion = MockContentFactory.createMultipleChoiceContent({
+          _id: parentId,
+          formId: testQuizForm._id,
+          qIdx: 0,
+          score: 10,
+          answer: { _id: new Types.ObjectId(), answer: 0, isCorrect: true },
+          conditional: [
+            {
+              _id: new Types.ObjectId(),
+              key: 0,
+              contentId: childId,
+              contentIdx: 1,
+            },
+          ],
+        });
+
+        const childQuestion = MockContentFactory.createMultipleChoiceContent({
+          _id: childId,
+          formId: testQuizForm._id,
+          qIdx: 1,
+          score: 10,
+          answer: { _id: new Types.ObjectId(), answer: 1, isCorrect: true },
+          parentcontent: {
+            qId: parentId.toString(),
+            qIdx: 0,
+            optIdx: 0,
+          },
+        });
+
+        await createQuestionsWithFormId({
+          formId: testQuizForm._id,
+          replaceQuestion: [parentQuestion, childQuestion],
+        });
+
+        const session = await loggedUserInForm({
+          email: respondentUser.email,
+          password: "pass@12345",
+          formId: testQuizForm.id,
+        });
+
+        const submissionData = {
+          respondentEmail: respondentUser.email,
+          respondentName: respondentUser.name,
+          responseSet: [
+            MockContentFactory.generateResponseSet({
+              question: parentId.toString(),
+              response: 0,
+            }),
+            MockContentFactory.generateResponseSet({
+              question: childId.toString(),
+              response: 1,
+            }),
+          ],
+        };
+
+        const res = await Request(app)
+          .post(`${baseURL}/submit-response/${testQuizForm.id}`)
+          .set("Cookie", [
+            `${testEnv.ACCESS_RESPONDENT_COOKIE}=${session?.accessToken}`,
+            `${testEnv.RESPONDENT_COOKIE}=${session?.refreshToken}`,
+          ])
+          .send(submissionData);
+
+        expect(res.status).toBe(200);
+        expect(res.body.code).toBe(200);
+        expect(res.body.data).toBeDefined();
+        expect(res.body.data.totalScore).toBe(20);
+        expect(res.body.data.isNonScore).toBe(false);
+
+        // Verify database persistence in FormResponse
+        const savedResponse = await FormResponse.findById(
+          res.body.data.responseId,
+        ).lean();
+        expect(savedResponse).toBeDefined();
+        expect(savedResponse?.totalScore).toBe(20);
+        expect(savedResponse?.responseset).toHaveLength(2);
+
+        const parentResp = savedResponse?.responseset.find(
+          (r) => r.question.toString() === parentId.toString(),
+        );
+        const childResp = savedResponse?.responseset.find(
+          (r) => r.question.toString() === childId.toString(),
+        );
+
+        expect(parentResp?.score).toBe(10);
+        expect(parentResp?.scoringMethod).toBe(ScoringMethod.AUTO);
+        expect(childResp?.score).toBe(10);
+        expect(childResp?.scoringMethod).toBe(ScoringMethod.AUTO);
+      });
+
+      test("condition with useChildScoreSum = true: calculates individual child scores correctly", async () => {
+        const parentId = new Types.ObjectId();
+        const child1Id = new Types.ObjectId();
+        const child2Id = new Types.ObjectId();
+
+        const parentQuestion = MockContentFactory.createMultipleChoiceContent({
+          _id: parentId,
+          formId: testQuizForm._id,
+          qIdx: 0,
+          score: 20,
+          useChildScoreSum: true,
+          answer: { _id: new Types.ObjectId(), answer: 0, isCorrect: true },
+          conditional: [
+            {
+              _id: new Types.ObjectId(),
+              key: 0,
+              contentId: child1Id,
+              contentIdx: 1,
+            },
+            {
+              _id: new Types.ObjectId(),
+              key: 0,
+              contentId: child2Id,
+              contentIdx: 2,
+            },
+          ],
+        });
+
+        const child1Question = MockContentFactory.createMultipleChoiceContent({
+          _id: child1Id,
+          formId: testQuizForm._id,
+          qIdx: 1,
+          score: 10,
+          answer: { _id: new Types.ObjectId(), answer: 0, isCorrect: true },
+          parentcontent: {
+            qId: parentId.toString(),
+            qIdx: 0,
+            optIdx: 0,
+          },
+        });
+
+        const child2Question = MockContentFactory.createMultipleChoiceContent({
+          _id: child2Id,
+          formId: testQuizForm._id,
+          qIdx: 2,
+          score: 10,
+          answer: { _id: new Types.ObjectId(), answer: 1, isCorrect: true },
+          parentcontent: {
+            qId: parentId.toString(),
+            qIdx: 0,
+            optIdx: 0,
+          },
+        });
+
+        await createQuestionsWithFormId({
+          formId: testQuizForm._id,
+          replaceQuestion: [parentQuestion, child1Question, child2Question],
+        });
+
+        const session = await loggedUserInForm({
+          email: respondentUser.email,
+          password: "pass@12345",
+          formId: testQuizForm.id,
+        });
+
+        const submissionData = {
+          respondentEmail: respondentUser.email,
+          respondentName: respondentUser.name,
+          responseSet: [
+            MockContentFactory.generateResponseSet({
+              question: parentId.toString(),
+              response: 0,
+            }),
+            MockContentFactory.generateResponseSet({
+              question: child1Id.toString(),
+              response: 0,
+            }),
+            MockContentFactory.generateResponseSet({
+              question: child2Id.toString(),
+              response: 1,
+            }),
+          ],
+        };
+
+        const res = await Request(app)
+          .post(`${baseURL}/submit-response/${testQuizForm.id}`)
+          .set("Cookie", [
+            `${testEnv.ACCESS_RESPONDENT_COOKIE}=${session?.accessToken}`,
+            `${testEnv.RESPONDENT_COOKIE}=${session?.refreshToken}`,
+          ])
+          .send(submissionData);
+
+        expect(res.status).toBe(200);
+        expect(res.body.code).toBe(200);
+
+        const savedResponse = await FormResponse.findById(
+          res.body.data.responseId,
+        ).lean();
+        expect(savedResponse).toBeDefined();
+
+        const child1Resp = savedResponse?.responseset.find(
+          (r) => r.question.toString() === child1Id.toString(),
+        );
+        const child2Resp = savedResponse?.responseset.find(
+          (r) => r.question.toString() === child2Id.toString(),
+        );
+
+        expect(child1Resp?.score).toBe(10);
+        expect(child1Resp?.scoringMethod).toBe(ScoringMethod.AUTO);
+        expect(child2Resp?.score).toBe(10);
+        expect(child2Resp?.scoringMethod).toBe(ScoringMethod.AUTO);
+      });
+
+      test("condition with isBonusScore = true: separates bonus child score into extraScore", async () => {
+        const bonusParentId = new Types.ObjectId();
+        const bonusChildId = new Types.ObjectId();
+        const normalQuestionId = new Types.ObjectId();
+
+        const bonusParent = MockContentFactory.createMultipleChoiceContent({
+          _id: bonusParentId,
+          formId: testQuizForm._id,
+          qIdx: 0,
+          score: 0,
+          isBonusScore: true,
+          answer: { _id: new Types.ObjectId(), answer: 0, isCorrect: true },
+          conditional: [
+            {
+              _id: new Types.ObjectId(),
+              key: 0,
+              contentId: bonusChildId,
+              contentIdx: 1,
+            },
+          ],
+        });
+
+        const bonusChild = MockContentFactory.createMultipleChoiceContent({
+          _id: bonusChildId,
+          formId: testQuizForm._id,
+          qIdx: 1,
+          score: 5,
+          answer: { _id: new Types.ObjectId(), answer: 0, isCorrect: true },
+          parentcontent: {
+            qId: bonusParentId.toString(),
+            qIdx: 0,
+            optIdx: 0,
+          },
+        });
+
+        const normalQuestion = MockContentFactory.createMultipleChoiceContent({
+          _id: normalQuestionId,
+          formId: testQuizForm._id,
+          qIdx: 2,
+          score: 20,
+          answer: { _id: new Types.ObjectId(), answer: 0, isCorrect: true },
+        });
+
+        await createQuestionsWithFormId({
+          formId: testQuizForm._id,
+          replaceQuestion: [bonusParent, bonusChild, normalQuestion],
+        });
+
+        await Form.findByIdAndUpdate(testQuizForm._id, { totalscore: 20 });
+
+        const session = await loggedUserInForm({
+          email: respondentUser.email,
+          password: "pass@12345",
+          formId: testQuizForm.id,
+        });
+
+        const submissionData = {
+          respondentEmail: respondentUser.email,
+          respondentName: respondentUser.name,
+          responseSet: [
+            MockContentFactory.generateResponseSet({
+              question: bonusParentId.toString(),
+              response: 0,
+            }),
+            MockContentFactory.generateResponseSet({
+              question: bonusChildId.toString(),
+              response: 0,
+            }),
+            MockContentFactory.generateResponseSet({
+              question: normalQuestionId.toString(),
+              response: 0,
+            }),
+          ],
+        };
+
+        const res = await Request(app)
+          .post(`${baseURL}/submit-response/${testQuizForm.id}`)
+          .set("Cookie", [
+            `${testEnv.ACCESS_RESPONDENT_COOKIE}=${session?.accessToken}`,
+            `${testEnv.RESPONDENT_COOKIE}=${session?.refreshToken}`,
+          ])
+          .send(submissionData);
+
+        expect(res.status).toBe(200);
+        expect(res.body.code).toBe(200);
+        expect(res.body.data.totalScore).toBe(20);
+        expect(res.body.data.extraScore).toBe(5);
+
+        const savedResponse = await FormResponse.findById(
+          res.body.data.responseId,
+        ).lean();
+        expect(savedResponse).toBeDefined();
+        expect(savedResponse?.totalScore).toBe(20);
+        expect(savedResponse?.extraScore).toBe(5);
+        expect(savedResponse?.maxScore).toBe(20);
+      });
+
+      test("condition question with incorrect answer receives 0 score", async () => {
+        const parentId = new Types.ObjectId();
+        const childId = new Types.ObjectId();
+
+        const parentQuestion = MockContentFactory.createMultipleChoiceContent({
+          _id: parentId,
+          formId: testQuizForm._id,
+          qIdx: 0,
+          score: 10,
+          answer: { _id: new Types.ObjectId(), answer: 0, isCorrect: true },
+          conditional: [
+            {
+              _id: new Types.ObjectId(),
+              key: 0,
+              contentId: childId,
+              contentIdx: 1,
+            },
+          ],
+        });
+
+        const childQuestion = MockContentFactory.createMultipleChoiceContent({
+          _id: childId,
+          formId: testQuizForm._id,
+          qIdx: 1,
+          score: 10,
+          answer: { _id: new Types.ObjectId(), answer: 1, isCorrect: true },
+          parentcontent: {
+            qId: parentId.toString(),
+            qIdx: 0,
+            optIdx: 0,
+          },
+        });
+
+        await createQuestionsWithFormId({
+          formId: testQuizForm._id,
+          replaceQuestion: [parentQuestion, childQuestion],
+        });
+
+        const session = await loggedUserInForm({
+          email: respondentUser.email,
+          password: "pass@12345",
+          formId: testQuizForm.id,
+        });
+
+        const submissionData = {
+          respondentEmail: respondentUser.email,
+          respondentName: respondentUser.name,
+          responseSet: [
+            MockContentFactory.generateResponseSet({
+              question: parentId.toString(),
+              response: 0, // correct (10 pts)
+            }),
+            MockContentFactory.generateResponseSet({
+              question: childId.toString(),
+              response: 0, // incorrect (correct is 1, so 0 pts)
+            }),
+          ],
+        };
+
+        const res = await Request(app)
+          .post(`${baseURL}/submit-response/${testQuizForm.id}`)
+          .set("Cookie", [
+            `${testEnv.ACCESS_RESPONDENT_COOKIE}=${session?.accessToken}`,
+            `${testEnv.RESPONDENT_COOKIE}=${session?.refreshToken}`,
+          ])
+          .send(submissionData);
+
+        expect(res.status).toBe(200);
+        expect(res.body.code).toBe(200);
+        expect(res.body.data.totalScore).toBe(10);
+
+        const savedResponse = await FormResponse.findById(
+          res.body.data.responseId,
+        ).lean();
+        expect(savedResponse?.totalScore).toBe(10);
+
+        const childResp = savedResponse?.responseset.find(
+          (r) => r.question.toString() === childId.toString(),
+        );
+        expect(childResp?.score).toBe(0);
+        expect(childResp?.scoringMethod).toBe(ScoringMethod.AUTO);
       });
     });
   });

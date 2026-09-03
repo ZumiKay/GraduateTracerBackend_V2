@@ -505,18 +505,140 @@ export class MockContentFactory {
     };
   }
 
-  /**Function to create mock function
-   * @requires Form,User,Question
+  /**
+   * Generate an appropriate mock answer based on the question type
+   * Uses question.answer if available, otherwise generates a default valid response
    */
-  static createResponseSet(
+  static generateResponseForQuestion(
+    question: ContentType,
+  ): ResponseAnswerType {
+    if (question.answer?.answer !== undefined) {
+      if (question.answer.answer instanceof Date) {
+        return question.answer.answer.toISOString().split("T")[0];
+      }
+      return question.answer.answer;
+    }
+
+    switch (question.type) {
+      case QuestionType.MultipleChoice:
+        return question.multiple?.[0]?.idx ?? 0;
+
+      case QuestionType.CheckBox:
+      case QuestionType.MultipleSelection:
+        return question.checkbox && question.checkbox.length > 0
+          ? question.checkbox.slice(0, 2).map((c) => c.idx)
+          : [0];
+
+      case QuestionType.Selection:
+        return question.selection?.[0]?.idx ?? 0;
+
+      case QuestionType.ShortAnswer:
+        return "Sample short answer";
+
+      case QuestionType.Paragraph:
+        return "Sample paragraph response with detailed feedback.";
+
+      case QuestionType.Text:
+        return "Sample text response";
+
+      case QuestionType.Number:
+        return 42;
+
+      case QuestionType.Date:
+        return "2024-01-01";
+
+      case QuestionType.RangeDate: {
+        const start =
+          question.rangedate?.start instanceof Date
+            ? question.rangedate.start.toISOString().split("T")[0]
+            : String(question.rangedate?.start ?? "2024-01-01");
+        const end =
+          question.rangedate?.end instanceof Date
+            ? question.rangedate.end.toISOString().split("T")[0]
+            : String(question.rangedate?.end ?? "2024-12-31");
+        return { start, end };
+      }
+
+      case QuestionType.RangeNumber:
+        return question.rangenumber ?? { start: 1, end: 10 };
+
+      default:
+        return "Sample answer";
+    }
+  }
+
+  /**
+   * Generate a mock ResponseSetType
+   * Supports generating from ContentType, ObjectId/string, or manual override
+   */
+  static generateResponseSet(
+    questionOrOverride?:
+      | ContentType
+      | Types.ObjectId
+      | string
+      | Partial<ResponseSetType>,
     override?: Partial<ResponseSetType>,
-  ): Partial<ResponseSetType> {
+  ): ResponseSetType {
+    // If first argument is a ContentType (has 'type' and not a plain ResponseSetType)
+    if (
+      questionOrOverride &&
+      typeof questionOrOverride === "object" &&
+      "type" in questionOrOverride &&
+      !("response" in questionOrOverride)
+    ) {
+      const question = questionOrOverride as ContentType;
+      return {
+        question: question._id ?? new Types.ObjectId(),
+        response: this.generateResponseForQuestion(question),
+        score: question.score ?? 10,
+        scoringMethod: ScoringMethod.AUTO,
+        ...override,
+      };
+    }
+
+    // If first argument is an ObjectId or string
+    if (
+      questionOrOverride instanceof Types.ObjectId ||
+      typeof questionOrOverride === "string"
+    ) {
+      return {
+        question: questionOrOverride,
+        response: 0,
+        score: 10,
+        scoringMethod: ScoringMethod.AUTO,
+        ...override,
+      };
+    }
+
+    // If first argument is partial ResponseSetType overrides
+    const partialOverrides =
+      (questionOrOverride as Partial<ResponseSetType>) ?? {};
     return {
       question: new Types.ObjectId(),
       response: 0,
       score: 20,
       scoringMethod: ScoringMethod.AUTO,
+      ...partialOverrides,
       ...override,
     };
+  }
+
+  /**
+   * Generate an array of ResponseSetType items for multiple questions
+   */
+  static generateResponseSets(
+    questions: ContentType[],
+    overrides?: Partial<ResponseSetType>,
+  ): ResponseSetType[] {
+    return questions.map((q) => this.generateResponseSet(q, overrides));
+  }
+
+  /**Function to create mock response set
+   * @requires Form,User,Question
+   */
+  static createResponseSet(
+    override?: Partial<ResponseSetType>,
+  ): ResponseSetType {
+    return this.generateResponseSet(override);
   }
 }

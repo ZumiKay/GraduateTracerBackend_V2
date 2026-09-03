@@ -375,13 +375,12 @@ export async function GetFormCollaborators(req: CustomRequest, res: Response) {
       .lean();
     if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
 
-    if (
-      verifyRole(
-        CollaboratorType.editor,
-        form,
-        new Types.ObjectId(currentUser.sub),
-      )
-    )
+    const { hasAccess, isEditor } = validateAccess(
+      form,
+      new Types.ObjectId(currentUser.sub),
+    );
+
+    if (!hasAccess || isEditor)
       return res.status(403).json(ReturnCode(403, "Access denied"));
 
     const formCreator = form.user as unknown as UserType;

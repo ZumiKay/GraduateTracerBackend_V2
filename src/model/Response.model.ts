@@ -245,9 +245,14 @@ ResponseSchema.index({ formId: 1, respondentEmail: 1 });
 // Pre-save middleware to calculate total score
 ResponseSchema.pre("save", function (next) {
   if (this.responseset && this.responseset.length > 0) {
-    this.totalScore = this.responseset.reduce((total, response) => {
-      return total + (response.score || 0);
+    const total = this.responseset.reduce((sum, response) => {
+      return sum + (response.score || 0);
     }, 0);
+    if (this.extraScore) {
+      this.totalScore = Math.max(0, total - this.extraScore);
+    } else {
+      this.totalScore = total;
+    }
   }
 });
 

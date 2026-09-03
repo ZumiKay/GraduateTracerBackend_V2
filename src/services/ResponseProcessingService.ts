@@ -129,28 +129,16 @@ export class ResponseProcessingService {
   static async processFormSubmission(
     submissionData: Partial<FormResponseType>,
     form: FormType,
-  ): Promise<SubmitionProcessionReturnType> {
+  ): Promise<SubmitionProcessionReturnType | null> {
     const { formId, responseset, respondentEmail, respondentName } =
       submissionData;
 
-    if (!responseset || responseset.length === 0) {
-      throw new Error("Invalid Response Data");
-    }
-
-    if (form.setting?.email && !respondentEmail) {
-      throw new Error("Email is required for this form");
-    }
-
-    //Verify if user alr respond for single response form
-    if (form.setting?.submitonce) {
-      const trackingResult =
-        await RespondentTrackingService.checkRespondentExists(
-          submissionData as Partial<ProcessNormalFormSubmissionType>,
-        );
-
-      if (trackingResult.hasResponded) {
-        throw new Error("Form already submitted");
-      }
+    if (
+      !responseset ||
+      responseset.length === 0 ||
+      (form.setting?.email && !respondentEmail)
+    ) {
+      return null;
     }
 
     const user = await User.findOne({
@@ -159,20 +147,17 @@ export class ResponseProcessingService {
       .lean()
       .select("_id email");
 
-    //*Score calculate process
+    //Score calculate process
 
     let scoredResponses: ResponseSetType[] = [];
     let totalScore = 0;
     let isAutoScored = false;
     let isNonScore = false;
-
-    // Auto-score
     let hasUnansweredScoredQuestion = false;
 
     if (form.setting?.returnscore === returnscore.partial) {
       const addscore = await this.addScore(responseset);
       isAutoScored = true;
-      // Check if all questions have no score
       isNonScore = addscore.isNonScore || false;
       hasUnansweredScoredQuestion =
         addscore.hasUnansweredScoredQuestion || false;
@@ -403,7 +388,7 @@ export class ResponseProcessingService {
           hasAnyScore = true;
         }
 
-        if (isEmpty && maxScore > 0 && question.answer?.answer) {
+        if (isEmpty && maxScore > 0 && question.answer?.answer !== undefined) {
           hasUnansweredScoredQuestion = true;
           result.push({
             ...userresponse,
@@ -412,7 +397,11 @@ export class ResponseProcessingService {
           });
         }
         //Automically Score All Scoreable Questions
-        else if (!isEmpty && question.answer && question.answer?.answer) {
+        else if (
+          !isEmpty &&
+          question.answer &&
+          question.answer?.answer !== undefined
+        ) {
           const partialScored =
             SolutionValidationService.calculateResponseScore(
               userresponse.response as ResponseAnswerType,
@@ -431,6 +420,7 @@ export class ResponseProcessingService {
         else
           result.push({
             ...userresponse,
+            score: undefined,
             scoringMethod: ScoringMethod.MANUAL,
           });
       }
