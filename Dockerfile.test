@@ -20,6 +20,7 @@ ENV JWT_SECRET=test_integration_jwt_secret_key_1234567890
 ENV ACCESS_TOKEN_COOKIE=graduate_accessT
 ENV REFRESH_TOKEN_COOKIE=graduate_refreshT
 ENV DATABASE_URL=mongodb://mongo:27017/graduatetracer_test
+ENV INVITE_LINK_SECRET=test_invite_link_secret_key_12345
 
 # Command to execute integration tests
 CMD ["npm", "run", "test:integration"]

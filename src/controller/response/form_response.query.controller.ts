@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { ReturnCode } from "../../utilities/helper";
+import { ReturnCode, SendResponse } from "../../utilities/helper";
 import { Types } from "mongoose";
 import FormResponse from "../../model/Response.model";
 import Form, { FormType } from "../../model/Form.model";
@@ -210,33 +210,35 @@ export class FormResponseQueryController {
       const result =
         await ResponseQueryService.getResponsesWithFilters(filters);
 
-      if (!result)
-        return res.status(404).json(ReturnCode(404, "Response not found"));
+      if (!result) {
+        SendResponse.notFound(res, "Response not found");
+        return;
+      }
 
-      return res.status(200).json({ ...ReturnCode(200), data: result });
+      SendResponse.success(res, result);
     } catch (error) {
-      console.error("Get Responses With Filters Error:", error);
-      res.status(500).json(ReturnCode(500, "Failed to retrieve responses"));
+      SendResponse.error(res, "Error occured");
     }
   };
 
   public GetResponseByID = async (req: CustomRequest, res: Response) => {
     const { id, formId } = req.params as { id: string; formId: string };
     if (!isValidObjectIdString(id) || !isValidObjectIdString(formId)) {
-      return res.status(400).json(ReturnCode(400));
+      SendResponse.badRequest(res);
+      return;
     }
 
     try {
       const result = await ResponseQueryService.GetResponseById({ id, formId });
 
       if (!result) {
-        return res.status(404).json(ReturnCode(404));
+        SendResponse.notFound(res);
+        return;
       }
 
-      return res.status(200).json({ ...ReturnCode(200), data: result });
+      SendResponse.success(res, result);
     } catch (error) {
-      console.log("Get Response By ID", error);
-      res.status(500).json(ReturnCode(500, "Error Occured"));
+      SendResponse.error(res, "Can't Get Response");
     }
   };
 

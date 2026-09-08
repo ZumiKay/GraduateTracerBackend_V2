@@ -216,14 +216,16 @@ describe("ResponseProcessingService", () => {
                 returnscore: Form_model_1.returnscore.partial,
             },
         };
-        test("should throw error if responseset is empty", async () => {
-            await expect(ResponseProcessingService_1.ResponseProcessingService.processFormSubmission({ formId, responseset: [] }, mockForm)).rejects.toThrow("Invalid Response Data");
+        test("should return null if responseset is empty", async () => {
+            const result = await ResponseProcessingService_1.ResponseProcessingService.processFormSubmission({ formId, responseset: [] }, mockForm);
+            expect(result).toBeNull();
         });
-        test("should throw error if form requires email but none is provided", async () => {
-            await expect(ResponseProcessingService_1.ResponseProcessingService.processFormSubmission({
+        test("should return null if form requires email but none is provided", async () => {
+            const result = await ResponseProcessingService_1.ResponseProcessingService.processFormSubmission({
                 formId,
                 responseset: [{ question: q1Id.toString(), response: "Ans" }],
-            }, mockForm)).rejects.toThrow("Email is required for this form");
+            }, mockForm);
+            expect(result).toBeNull();
         });
         test("should process auto-scored submission, save response, and send email", async () => {
             const responseId = new mongoose_1.Types.ObjectId();

@@ -1,19 +1,20 @@
 import Request from "supertest";
-import mongoose, { Types } from "mongoose";
+import mongoose from "mongoose";
 import app from "../../../app";
 import JWT from "jsonwebtoken";
 import { testEnv, createTestUser, createTestForm } from "./helper.integration";
 import User, { UserType } from "../../../model/User.model";
-import Form, { CollaboratorType } from "../../../model/Form.model";
+import Form, { CollaboratorType, FormType } from "../../../model/Form.model";
 import EmailService from "../../../services/EmailService";
 import FormLinkService from "../../../services/FormLinkService";
+import { GenerateToken } from "../../../utilities/helper";
 
 describe("Collaborator Controller Integration Tests", () => {
   const baseURL = "/v0/api";
   let formOwner: UserType;
   let collaboratorUser: UserType;
   let otherUser: UserType;
-  let testForm: any;
+  let testForm: Partial<FormType>;
   let ownerToken: string;
   let collaboratorToken: string;
   let otherUserToken: string;
@@ -22,9 +23,12 @@ describe("Collaborator Controller Integration Tests", () => {
     if (mongoose.connection.readyState === 0) {
       await mongoose.connect(testEnv.DATABASE_URL);
     }
+
+    //Mocked email sender
     jest.spyOn(EmailService.prototype, "sendEmail").mockResolvedValue(true);
   });
 
+  //Prepare temp data for testing
   beforeEach(async () => {
     process.env = testEnv;
     formOwner = await createTestUser({
@@ -49,15 +53,13 @@ describe("Collaborator Controller Integration Tests", () => {
       testEnv.JWT_SECRET,
       { expiresIn: "1h" },
     );
-    collaboratorToken = JWT.sign(
+    collaboratorToken = GenerateToken(
       { sub: collaboratorUser._id.toString(), role: collaboratorUser.role },
-      testEnv.JWT_SECRET,
-      { expiresIn: "1h" },
+      "1h",
     );
-    otherUserToken = JWT.sign(
+    otherUserToken = GenerateToken(
       { sub: otherUser._id.toString(), role: otherUser.role },
-      testEnv.JWT_SECRET,
-      { expiresIn: "1h" },
+      "1h",
     );
   });
 
@@ -71,14 +73,12 @@ describe("Collaborator Controller Integration Tests", () => {
 
   describe("POST /v0/api/addformowner", () => {
     test("status 401 if unauthenticated", async () => {
-      const res = await Request(app)
-        .post(`${baseURL}/addformowner`)
-        .send({
-          formId: testForm.id,
-          email: collaboratorUser.email,
-          role: CollaboratorType.editor,
-          action: "add",
-        });
+      const res = await Request(app).post(`${baseURL}/addformowner`).send({
+        formId: testForm.id,
+        email: collaboratorUser.email,
+        role: CollaboratorType.editor,
+        action: "add",
+      });
 
       expect(res.status).toBe(401);
     });
@@ -349,7 +349,9 @@ describe("Collaborator Controller Integration Tests", () => {
         .set("Cookie", [`${testEnv.ACCESS_TOKEN_COOKIE}=${ownerToken}`]);
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toContain("Primary owner cannot remove themselves");
+      expect(res.body.message).toContain(
+        "Primary owner cannot remove themselves",
+      );
     });
 
     test("status 200 collaborator removes self from form", async () => {

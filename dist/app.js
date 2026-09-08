@@ -26,7 +26,7 @@ const limiter = (0, express_rate_limit_1.rateLimit)({
 app.use(express_1.default.json());
 app.use(express_1.default.text());
 app.use((0, cookie_parser_1.default)());
-app.use((0, cors_1.default)({ origin: "http://localhost:5173", credentials: true }));
+app.use((0, cors_1.default)({ origin: process.env.FRONTEND_URL, credentials: true }));
 app.use((0, helmet_1.default)());
 app.use((0, morgan_1.default)("dev"));
 //DB CONNECTION
@@ -36,6 +36,9 @@ app.use("/v0/api", user_route_1.default);
 app.use("/v0/api/response", response_route_1.default);
 app.use("/v0/api/notifications", notification_route_1.default);
 app.use("/v0/api/exports", export_route_1.default);
+app.get("/health", (req, res) => {
+    res.status(200).json({ status: "ok", uptime: process.uptime() });
+});
 app.get("/", (req, res) => {
     res.send("Hello, TypeScript with Express!");
 });

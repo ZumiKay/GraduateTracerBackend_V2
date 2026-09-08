@@ -17,13 +17,6 @@ export interface ExpirationOptions {
   baseDate?: Date | number;
 }
 
-/**
- * Generates an epoch timestamp in milliseconds by adding specified duration
- * offsets to a base time. Supports negative offsets for simulating expired states in tests.
- *
- * @param options - Duration offsets and optional baseDate (defaults to Date.now())
- * @returns Epoch timestamp in milliseconds (number)
- */
 export const generateExpirationDate = ({
   days = 0,
   hours = 0,

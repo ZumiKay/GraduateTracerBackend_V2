@@ -10,13 +10,6 @@ const FormLinkService_1 = __importDefault(require("../FormLinkService"));
 // Mock configuration
 const baseUrl = "http://localhost:5173";
 const secret = "invite-secret-test-key";
-/**
- * Generates an epoch timestamp in milliseconds by adding specified duration
- * offsets to a base time. Supports negative offsets for simulating expired states in tests.
- *
- * @param options - Duration offsets and optional baseDate (defaults to Date.now())
- * @returns Epoch timestamp in milliseconds (number)
- */
 const generateExpirationDate = ({ days = 0, hours = 0, minutes = 0, minute = 0, seconds = 0, second = 0, milliseconds = 0, baseDate = Date.now(), } = {}) => {
     const baseMs = baseDate instanceof Date ? baseDate.getTime() : baseDate;
     const totalMinutes = minutes || minute;

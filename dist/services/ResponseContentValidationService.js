@@ -197,10 +197,14 @@ class ResponseContentValidationService {
     }
     //Cleanly cast type of choice answer to Array of number
     static normalizeChoiceAnswer = (answer) => {
-        return answer;
+        if (Array.isArray(answer))
+            return answer;
+        if (typeof answer === "number")
+            return [answer];
+        return null;
     };
     static calculateResponseScore(userAnswer, correctAnswer, questionType, maxScore) {
-        if (!correctAnswer || maxScore === 0)
+        if (correctAnswer === undefined || correctAnswer === null || maxScore === 0)
             return 0;
         switch (questionType) {
             case Content_model_1.QuestionType.Text:

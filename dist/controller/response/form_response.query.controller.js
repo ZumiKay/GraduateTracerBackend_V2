@@ -162,13 +162,14 @@ class FormResponseQueryController {
                 group: req.query.group,
             };
             const result = await ResponseQueryService_1.ResponseQueryService.getResponsesWithFilters(filters);
-            if (!result)
-                return res.status(404).json((0, helper_1.ReturnCode)(404, "Response not found"));
-            return res.status(200).json({ ...(0, helper_1.ReturnCode)(200), data: result });
+            if (!result) {
+                helper_1.SendResponse.notFound(res, "Response not found");
+                return;
+            }
+            helper_1.SendResponse.success(res, result);
         }
         catch (error) {
-            console.error("Get Responses With Filters Error:", error);
-            res.status(500).json((0, helper_1.ReturnCode)(500, "Failed to retrieve responses"));
+            helper_1.SendResponse.error(res, "Error occured");
         }
     };
     GetResponseByID = async (req, res) => {

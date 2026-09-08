@@ -37,7 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const form_response_controller_1 = require("./form_response.controller");
-const Response_model_1 = __importDefault(require("../../model/Response.model"));
+const Response_model_1 = __importStar(require("../../model/Response.model"));
 const Form_model_1 = __importStar(require("../../model/Form.model"));
 const Content_model_1 = __importStar(require("../../model/Content.model"));
 const EmailService_1 = __importDefault(require("../../services/EmailService"));
@@ -351,6 +351,17 @@ class FormResponseReturnController extends form_response_controller_1.FormRespon
                     console.warn(`Failed to send return email to ${response.respondentEmail}`);
                 }
             }));
+            const validResponseObjectIds = responseIds
+                .filter((id) => (0, formHelpers_1.isValidObjectIdString)(id))
+                .map((id) => new mongoose_1.Types.ObjectId(id));
+            await Response_model_1.default.updateMany({ _id: { $in: validResponseObjectIds } }, {
+                $set: {
+                    isReturned: true,
+                    isCompleted: true,
+                    returnedAt: new Date(),
+                    completionStatus: Response_model_1.ResponseCompletionStatus.completed,
+                },
+            });
             return res.status(200).json((0, helper_1.ReturnCode)(200));
         }
         catch (error) {

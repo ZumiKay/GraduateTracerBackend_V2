@@ -315,7 +315,8 @@ async function GetFormCollaborators(req, res) {
             .lean();
         if (!form)
             return res.status(404).json((0, helper_1.ReturnCode)(404, "Form not found"));
-        if ((0, formHelpers_1.verifyRole)(Form_model_1.CollaboratorType.editor, form, new mongoose_1.Types.ObjectId(currentUser.sub)))
+        const { hasAccess, isEditor } = (0, formHelpers_1.validateAccess)(form, new mongoose_1.Types.ObjectId(currentUser.sub));
+        if (!hasAccess || isEditor)
             return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
         const formCreator = form.user;
         const primaryOwner = {

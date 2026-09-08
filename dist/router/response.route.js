@@ -24,8 +24,10 @@ ResponseRouter.delete("/sessionlogout/:formId", Formsession_middleware_1.default
 ResponseRouter.get("/getuserresponses/:formId/:page/:resIdx/:userId", User_middleware_1.default.VerifyToken, ResponseQueryService_1.ResponseQueryService.getUserResponses);
 // Get list of respondent by formId
 ResponseRouter.get("/getrespondents/:formId", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponsesInfo);
+//TODO ToBE Test
 // Get responses with filters and pagination
 ResponseRouter.get("/getresponselist", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponsesWithFilters);
+//TODO ToBeTest
 //Get response by id
 ResponseRouter.get("/getresponseById/:id/:formId", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponseByID);
 //Get response summary
@@ -42,10 +44,8 @@ ResponseRouter.post("/submit-response/:formId", Formsession_middleware_1.default
 ResponseRouter.put("/update-score", User_middleware_1.default.VerifyToken, form_response_controller_1.default.UpdateResponseScore);
 // Update individual question score
 ResponseRouter.put("/update-question-score", User_middleware_1.default.VerifyToken, form_response_controller_1.default.UpdateQuestionScore);
-// Batch update scores for multiple responses
+// Batch update response scores
 ResponseRouter.put("/batch-update-scores", User_middleware_1.default.VerifyToken, form_response_controller_1.default.BatchUpdateScores);
-// Recalculate total score for a response
-ResponseRouter.put("/recalculate-score", User_middleware_1.default.VerifyToken, form_response_controller_1.default.RecalculateResponseScore);
 // Delete a response
 ResponseRouter.delete("/:responseId", User_middleware_1.default.VerifyToken, form_response_controller_1.default.DeleteResponse);
 // Bulk delete responses

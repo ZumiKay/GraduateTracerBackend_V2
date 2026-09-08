@@ -248,20 +248,13 @@ class FormsessionService {
         if (!process.env.RESPONDENT_TOKEN_JWT_SECRET ||
             !process.env.ACCESS_RESPONDENT_COOKIE ||
             !process.env.RESPONDENT_COOKIE) {
-            return res.status(500).json({
-                success: false,
-                status: 500,
-                message: "Server configuration error",
-            });
+            (0, helper_1.SendResponse)(res, 500);
+            return;
         }
         const validationResult = this.respondentLoginSchema.safeParse(req.body);
         if (!validationResult.success) {
-            return res.status(400).json({
-                success: false,
-                status: 400,
-                message: "Validation failed",
-                errors: validationResult.error.errors,
-            });
+            (0, helper_1.SendResponse)(res, 400);
+            return;
         }
         const { formId, email, password, rememberMe, isGuest, name, existed } = validationResult.data;
         try {
@@ -275,56 +268,35 @@ class FormsessionService {
                     : Promise.resolve(null),
             ]);
             if (!form) {
-                return res.status(400).json({
-                    success: false,
-                    status: 400,
-                    message: "Form not found",
-                });
+                (0, helper_1.SendResponse)(res, 404, undefined, "Form not found");
+                return;
             }
             if (!form.setting?.acceptResponses) {
-                return res.status(403).json({
-                    success: false,
-                    status: 403,
-                    message: "Form is closed",
-                });
+                (0, helper_1.SendResponse)(res, 403, undefined, "Form is closed");
+                return;
             }
             if (form.type === Form_model_1.TypeForm.Normal) {
-                return res.status(204).json({
-                    success: true,
-                    status: 204,
-                    message: "Normal form type",
-                });
+                (0, helper_1.SendResponse)(res, 204);
+                return;
             }
             // Validate guest access
             if (isGuest && !form.setting?.acceptGuest) {
-                return res.status(403).json({
-                    success: false,
-                    status: 403,
-                    message: "Form does not accept guest",
-                });
+                (0, helper_1.SendResponse)(res, 403, undefined, "Form don't accept guest");
+                return;
             }
             if (!isGuest && !existed) {
                 if (!password) {
-                    return res.status(400).json({
-                        success: false,
-                        status: 400,
-                        message: "Password required",
-                    });
+                    (0, helper_1.SendResponse)(res, 400);
+                    return;
                 }
                 if (!userData) {
-                    return res.status(401).json({
-                        success: false,
-                        status: 401,
-                        message: "Incorrect Credential",
-                    });
+                    (0, helper_1.SendResponse)(res, 401);
+                    return;
                 }
                 const isValidPassword = (0, bcrypt_1.compareSync)(password, userData.password);
                 if (!isValidPassword) {
-                    return res.status(401).json({
-                        success: false,
-                        status: 401,
-                        message: "Incorrect Credential",
-                    });
+                    (0, helper_1.SendResponse)(res, 401);
+                    return;
                 }
             }
             let expiredAt = rememberMe
@@ -341,9 +313,8 @@ class FormsessionService {
             if (isGuest) {
                 const registeredUser = await User_model_1.default.findOne({ email });
                 if (registeredUser) {
-                    return res
-                        .status(400)
-                        .json((0, helper_1.ReturnCode)(400, "User exist please login as user"));
+                    (0, helper_1.SendResponse)(res, 400, undefined, "User exist please login as user");
+                    return;
                 }
             }
             //Check usersession if existed login
@@ -359,11 +330,14 @@ class FormsessionService {
                     .select("expireAt user")
                     .populate("user")
                     .lean();
-                if (!isUser || !isUser.user?.email)
-                    return res.status(401).json((0, helper_1.ReturnCode)(401));
+                if (!isUser || !isUser.user?.email) {
+                    (0, helper_1.SendResponse)(res, 401);
+                    return;
+                }
                 if (isUser.expireAt <= new Date()) {
                     await Usersession_model_1.default.deleteOne({ _id: isUser._id });
-                    return res.status(401).json((0, helper_1.ReturnCode)(401));
+                    (0, helper_1.SendResponse)(res, 401);
+                    return;
                 }
                 existedUserRefreshToken = {
                     ...isVerified,
@@ -419,17 +393,8 @@ class FormsessionService {
                 ]);
             }
             catch (tokenError) {
-                return res.status(500).json({
-                    success: false,
-                    status: 500,
-                    message: "Failed to generate session tokens",
-                    error: "TOKEN_GENERATION_ERROR",
-                    details: process.env.NODE_ENV === "DEV"
-                        ? tokenError instanceof Error
-                            ? tokenError.message
-                            : String(tokenError)
-                        : undefined,
-                });
+                (0, helper_1.SendResponse)(res, 500);
+                return;
             }
             await Formsession_model_1.default.create({
                 form: new mongoose_1.Types.ObjectId(formId),
@@ -456,18 +421,7 @@ class FormsessionService {
             });
         }
         catch (error) {
-            console.error("RespondentLogin error:", error);
-            return res.status(500).json({
-                success: false,
-                status: 500,
-                message: "Internal server error during login",
-                error: "INTERNAL_SERVER_ERROR",
-                details: process.env.NODE_ENV === "DEV"
-                    ? error instanceof Error
-                        ? error.message
-                        : String(error)
-                    : undefined,
-            });
+            (0, helper_1.SendResponse)(res, 500);
         }
     };
     //   Replace all active session with new one

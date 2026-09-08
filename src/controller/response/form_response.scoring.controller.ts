@@ -2,7 +2,10 @@ import { Response } from "express";
 import { ReturnCode, SendResponse } from "../../utilities/helper";
 import { ResponseValidationService } from "../../services/ResponseValidationService";
 import { ResponseProcessingService } from "../../services/ResponseProcessingService";
-import { UpdateResponseScoretype } from "../../model/Response.model";
+import FormResponse, { UpdateResponseScoretype } from "../../model/Response.model";
+import Form from "../../model/Form.model";
+import { hasFormAccess, isValidObjectIdString } from "../../utilities/formHelpers";
+import { Types } from "mongoose";
 import { CustomRequest } from "../../types/customType";
 
 export class FormResponseScoringController {
@@ -123,17 +126,50 @@ export class FormResponseScoringController {
       for (const update of updates) {
         if (
           !update.responseId ||
-          !update.scores ||
-          !Array.isArray(update.scores)
+          (!update.scores && typeof update.score !== "number")
         ) {
           return res
             .status(400)
             .json(
               ReturnCode(
                 400,
-                "Each update must have responseId and scores array",
+                "Each update must have responseId and either scores array or score number",
               ),
             );
+        }
+        if (
+          update.scores &&
+          (!Array.isArray(update.scores) || update.scores.length === 0)
+        ) {
+          return res
+            .status(400)
+            .json(ReturnCode(400, "Scores must be a non-empty array"));
+        }
+      }
+
+      // Check form access for the form of these responses
+      const responseIds = updates
+        .map((u) => u.responseId)
+        .filter(isValidObjectIdString);
+      if (responseIds.length > 0) {
+        const firstResp = await FormResponse.findById(responseIds[0])
+          .select("formId")
+          .lean();
+        if (firstResp) {
+          const form = await Form.findById(firstResp.formId);
+          if (
+            form &&
+            !hasFormAccess(form as any, new Types.ObjectId(validation.user.sub))
+          ) {
+            return res
+              .status(403)
+              .json(
+                ReturnCode(
+                  403,
+                  "Access denied to update scores for this form",
+                ),
+              );
+          }
         }
       }
 

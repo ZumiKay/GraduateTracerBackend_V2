@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">13.41% </span>
+                <span class="strong">12.79% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>11/82</span>
+                <span class='fraction'>11/86</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/48</span>
+                <span class='fraction'>0/57</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/7</span>
+                <span class='fraction'>0/8</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">10.52% </span>
+                <span class="strong">9.87% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>8/76</span>
+                <span class='fraction'>8/81</span>
             </div>
         
             
@@ -307,7 +307,24 @@
 <a name='L242'></a><a href='#L242'>242</a>
 <a name='L243'></a><a href='#L243'>243</a>
 <a name='L244'></a><a href='#L244'>244</a>
-<a name='L245'></a><a href='#L245'>245</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L245'></a><a href='#L245'>245</a>
+<a name='L246'></a><a href='#L246'>246</a>
+<a name='L247'></a><a href='#L247'>247</a>
+<a name='L248'></a><a href='#L248'>248</a>
+<a name='L249'></a><a href='#L249'>249</a>
+<a name='L250'></a><a href='#L250'>250</a>
+<a name='L251'></a><a href='#L251'>251</a>
+<a name='L252'></a><a href='#L252'>252</a>
+<a name='L253'></a><a href='#L253'>253</a>
+<a name='L254'></a><a href='#L254'>254</a>
+<a name='L255'></a><a href='#L255'>255</a>
+<a name='L256'></a><a href='#L256'>256</a>
+<a name='L257'></a><a href='#L257'>257</a>
+<a name='L258'></a><a href='#L258'>258</a>
+<a name='L259'></a><a href='#L259'>259</a>
+<a name='L260'></a><a href='#L260'>260</a>
+<a name='L261'></a><a href='#L261'>261</a>
+<a name='L262'></a><a href='#L262'>262</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -386,6 +403,23 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -553,7 +587,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { Response } from "express";
 import { FormatToGeneralDate, ReturnCode } from "../../utilities/helper";
-import Form, { TypeForm } from "../../model/Form.model";
+import Form, { TypeForm, returnscore } from "../../model/Form.model";
 import { CustomRequest } from "../../types/customType";
 import { Types } from "mongoose";
 import {
@@ -629,12 +663,29 @@ export const GetFilledForm = <span class="fstat-no" title="function not covered"
       }
     }
 &nbsp;
-    const formatResponseData = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(r</span>esponse: FormResponseType) =&gt; (<span class="cstat-no" title="statement not covered" >{</span></span>
-      ...response,
-      updatedAt: response.updatedAt
-        ? FormatToGeneralDate(response.updatedAt)
-        : undefined,
-    });
+    const isManualScoring = <span class="cstat-no" title="statement not covered" >form.setting?.returnscore === returnscore.manual;</span>
+    const isOwnerOrEditor = <span class="cstat-no" title="statement not covered" >hasFormAccess(form as any, userObjectId);</span>
+&nbsp;
+    const formatResponseData = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(r</span>esponse: FormResponseType) =&gt; {</span>
+      const hideScore = <span class="cstat-no" title="statement not covered" >isManualScoring &amp;&amp; !response.isReturned &amp;&amp; !isOwnerOrEditor;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >      return {</span>
+        ...response,
+        totalScore: hideScore ? undefined : response.totalScore,
+        extraScore: hideScore ? undefined : response.extraScore,
+        isScoreReleased: !hideScore,
+        responseset: hideScore
+          ? response.responseset?.map(<span class="fstat-no" title="function not covered" >(r</span>) =&gt; (<span class="cstat-no" title="statement not covered" >{</span>
+              ...r,
+              score: undefined,
+              comment: undefined,
+            }))
+          : response.responseset,
+        updatedAt: response.updatedAt
+          ? FormatToGeneralDate(response.updatedAt)
+          : undefined,
+      };
+    };
 &nbsp;
     const responseData = <span class="cstat-no" title="statement not covered" >{</span>
       form: {
@@ -802,7 +853,7 @@ export const validateFormResponses = <span class="fstat-no" title="function not 
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-31T08:42:44.919Z
+                at 2026-09-04T08:09:24.830Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

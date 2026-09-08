@@ -4,6 +4,7 @@ import { FormResponseController } from "./form_response.controller";
 import FormResponse, {
   ResponseAnswerReturnType,
   ResponseAnswerType,
+  ResponseCompletionStatus,
 } from "../../model/Response.model";
 import Form, { TypeForm } from "../../model/Form.model";
 import Content, {
@@ -19,7 +20,7 @@ import {
   convertResponseToString,
   formatDateToDDMMYYYY,
 } from "../../utilities/helper";
-import { hasFormAccess } from "../../utilities/formHelpers";
+import { hasFormAccess, isValidObjectIdString } from "../../utilities/formHelpers";
 import { Types } from "mongoose";
 
 interface ReturnResponseRequestBody {
@@ -409,6 +410,22 @@ class FormResponseReturnController extends FormResponseController {
             console.warn(`Failed to send return email to ${response.respondentEmail}`);
           }
         }),
+      );
+
+      const validResponseObjectIds = responseIds
+        .filter((id) => isValidObjectIdString(id))
+        .map((id) => new Types.ObjectId(id));
+
+      await FormResponse.updateMany(
+        { _id: { $in: validResponseObjectIds } },
+        {
+          $set: {
+            isReturned: true,
+            isCompleted: true,
+            returnedAt: new Date(),
+            completionStatus: ResponseCompletionStatus.completed,
+          },
+        },
       );
 
       return res.status(200).json(ReturnCode(200));

@@ -386,6 +386,7 @@ export const getQuestionDepth = (
   question: ContentType,
   byId: Map<string, ContentType>,
   byQIdx: Map<number, ContentType>,
+  questions?: ContentType[],
 ): number => {
   let depth = 1;
   const visited = new Set<string>();
@@ -394,18 +395,23 @@ export const getQuestionDepth = (
   while (current.parentcontent) {
     const key =
       current.parentcontent.qId ||
-      (current.parentcontent.qIdx !== undefined
+      (current.parentcontent.qIdx !== undefined &&
+      !isNaN(current.parentcontent.qIdx)
         ? `qIdx_${current.parentcontent.qIdx}`
         : null);
 
     if (!key || visited.has(key)) break; //Break loop
     visited.add(key);
 
-    const parent =
+    let parent =
       byId.get(current.parentcontent.qId ?? "") ||
       (current.parentcontent.qIdx !== undefined
         ? byQIdx.get(current.parentcontent.qIdx)
         : undefined);
+
+    if (!parent && current.parentcontent.qIdx !== undefined && questions) {
+      parent = questions[current.parentcontent.qIdx];
+    }
 
     if (!parent) break;
     depth++;
@@ -427,14 +433,19 @@ export const validateNestingDepth = (
   // Build lookup maps once
   const byId = new Map<string, ContentType>();
   const byQIdx = new Map<number, ContentType>();
-  for (const q of questions) {
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
     if (q._id) byId.set(q._id.toString(), q);
-    if (q.qIdx !== undefined) byQIdx.set(q.qIdx, q);
+    if (typeof q.qIdx === "number" && !isNaN(q.qIdx)) {
+      byQIdx.set(q.qIdx, q);
+    } else {
+      byQIdx.set(i, q);
+    }
   }
 
   const exceedDepth: string[] = [];
   for (const q of questions) {
-    const depth = getQuestionDepth(q, byId, byQIdx);
+    const depth = getQuestionDepth(q, byId, byQIdx, questions);
     if (depth > maxDepth) {
       const label =
         q.qIdx !== undefined
@@ -464,13 +475,18 @@ export const AddQuestionNumbering = ({
     if (!question.parentcontent) return null;
     if (question.parentcontent.qId)
       return question.parentcontent.qId.toString();
-    if (question.parentcontent.qIdx !== undefined)
+    if (
+      question.parentcontent.qIdx !== undefined &&
+      !isNaN(question.parentcontent.qIdx)
+    )
       return `temp_${question.parentcontent.qIdx}`;
     return null;
   };
 
-  const getQuestionId = (question: ContentType): string =>
-    question._id ? question._id.toString() : `temp_${question.qIdx}`;
+  const getQuestionId = (question: ContentType, arrayIndex: number): string =>
+    question._id
+      ? question._id.toString()
+      : `temp_${typeof question.qIdx === "number" && !isNaN(question.qIdx) ? question.qIdx : arrayIndex}`;
 
   const isTopLevel = (question: ContentType): boolean =>
     !question.parentcontent ||
@@ -514,7 +530,7 @@ export const AddQuestionNumbering = ({
     const siblings = parentChildrenMap.get(parentId) ?? [];
     const position =
       siblings.findIndex(
-        (s) => getQuestionId(s.question) === getQuestionId(question),
+        (s) => getQuestionId(s.question, s.index) === getQuestionId(question, index),
       ) + 1;
 
     return `${parentNumber}.${position}`;
@@ -522,7 +538,7 @@ export const AddQuestionNumbering = ({
 
   return questions.map((question, index) => {
     const questionId = buildNumber(question, index);
-    questionIdMap.set(getQuestionId(question), questionId);
+    questionIdMap.set(getQuestionId(question, index), questionId);
 
     const parentId = getParentId(question);
     const updatedParentContent = parentId

@@ -25,9 +25,9 @@ class FingerprintService {
             return header || "";
         };
         return {
-            userAgent: getHeaderValue(req.headers["user-agent"]),
-            acceptLanguage: getHeaderValue(req.headers["accept-language"]),
-            acceptEncoding: getHeaderValue(req.headers["accept-encoding"]),
+            userAgent: getHeaderValue(req.headers["user-agent"]) || "unknown",
+            acceptLanguage: getHeaderValue(req.headers["accept-language"]) || "unknown",
+            acceptEncoding: getHeaderValue(req.headers["accept-encoding"]) || "unknown",
             screen: getHeaderValue(req.headers["x-screen-resolution"]),
             timezone: getHeaderValue(req.headers["x-timezone"]),
             platform: getHeaderValue(req.headers["x-platform"]),

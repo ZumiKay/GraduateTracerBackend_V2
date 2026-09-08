@@ -113,35 +113,25 @@ class ResponseProcessingService {
      */
     static async processFormSubmission(submissionData, form) {
         const { formId, responseset, respondentEmail, respondentName } = submissionData;
-        if (!responseset || responseset.length === 0) {
-            throw new Error("Invalid Response Data");
-        }
-        if (form.setting?.email && !respondentEmail) {
-            throw new Error("Email is required for this form");
-        }
-        //Verify if user alr respond for single response form
-        if (form.setting?.submitonce) {
-            const trackingResult = await RespondentTrackingService_1.RespondentTrackingService.checkRespondentExists(submissionData);
-            if (trackingResult.hasResponded) {
-                throw new Error("Form already submitted");
-            }
+        if (!responseset ||
+            responseset.length === 0 ||
+            (form.setting?.email && !respondentEmail)) {
+            return null;
         }
         const user = await User_model_1.default.findOne({
             email: submissionData.respondentEmail,
         })
             .lean()
             .select("_id email");
-        //*Score calculate process
+        //Score calculate process
         let scoredResponses = [];
         let totalScore = 0;
         let isAutoScored = false;
         let isNonScore = false;
-        // Auto-score
         let hasUnansweredScoredQuestion = false;
         if (form.setting?.returnscore === Form_model_1.returnscore.partial) {
             const addscore = await this.addScore(responseset);
             isAutoScored = true;
-            // Check if all questions have no score
             isNonScore = addscore.isNonScore || false;
             hasUnansweredScoredQuestion =
                 addscore.hasUnansweredScoredQuestion || false;
@@ -255,14 +245,21 @@ class ResponseProcessingService {
         else {
             message = "This your final score";
         }
+        const isManualScoring = form.setting?.returnscore === Form_model_1.returnscore.manual;
         return {
             isNonScore,
-            totalScore,
-            extraScore,
+            totalScore: isManualScoring ? undefined : totalScore,
+            extraScore: isManualScoring ? undefined : extraScore,
             respondentEmail,
             responseId: savedResponse._id.toString(),
             maxScore: form.totalscore || 0,
-            message,
+            message: isManualScoring
+                ? "Score will be returned by form owner after review."
+                : message,
+            isScoreReleased: !isManualScoring,
+            isComplete: isManualScoring
+                ? false
+                : completionStatus === Response_model_1.ResponseCompletionStatus.completed,
             hasUnansweredScoredQuestion,
         };
     }
@@ -317,7 +314,7 @@ class ResponseProcessingService {
                 if (maxScore > 0) {
                     hasAnyScore = true;
                 }
-                if (isEmpty && maxScore > 0 && question.answer?.answer) {
+                if (isEmpty && maxScore > 0 && question.answer?.answer !== undefined) {
                     hasUnansweredScoredQuestion = true;
                     result.push({
                         ...userresponse,
@@ -326,7 +323,9 @@ class ResponseProcessingService {
                     });
                 }
                 //Automically Score All Scoreable Questions
-                else if (!isEmpty && question.answer && question.answer?.answer) {
+                else if (!isEmpty &&
+                    question.answer &&
+                    question.answer?.answer !== undefined) {
                     const partialScored = ResponseContentValidationService_1.default.calculateResponseScore(userresponse.response, question.answer.answer, question.type, maxScore);
                     result.push({
                         ...userresponse,
@@ -338,6 +337,7 @@ class ResponseProcessingService {
                 else
                     result.push({
                         ...userresponse,
+                        score: undefined,
                         scoringMethod: Response_model_1.ScoringMethod.MANUAL,
                     });
             }
@@ -405,10 +405,28 @@ class ResponseProcessingService {
         };
     }
     static async batchUpdateResponseScores(updates) {
-        const results = await Promise.allSettled(updates.map((update) => this.updateResponseScores({
-            responseId: update.responseId,
-            scores: update.scores,
-        })));
+        const results = await Promise.allSettled(updates.map(async (update) => {
+            if (update.scores && Array.isArray(update.scores) && update.scores.length > 0) {
+                return this.updateResponseScores({
+                    responseId: update.responseId,
+                    scores: update.scores,
+                });
+            }
+            else if (typeof update.score === "number") {
+                const result = await Response_model_1.default.updateOne({ _id: update.responseId }, {
+                    $set: {
+                        totalScore: update.score,
+                        completionStatus: Response_model_1.ResponseCompletionStatus.completed,
+                    },
+                });
+                if (result.matchedCount === 0)
+                    throw new Error("Response not found");
+                return { success: true, totalScore: update.score };
+            }
+            else {
+                throw new Error("Either scores array or total score must be provided");
+            }
+        }));
         const successful = results.filter((r) => r.status === "fulfilled").length;
         const failed = results.filter((r) => r.status === "rejected").length;
         return {

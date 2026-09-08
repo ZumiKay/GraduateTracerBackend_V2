@@ -71,6 +71,10 @@ class FormLinkService {
   // Decrypt data using AES-256-GCM
   decrypt(encryptedData: string): string {
     try {
+      if (!encryptedData || typeof encryptedData !== "string") {
+        throw new Error("Invalid encrypted data format");
+      }
+
       let restored = encryptedData.replace(/-/g, "+").replace(/_/g, "/");
       const paddingNeeded = 4 - (restored.length % 4);
       if (paddingNeeded !== 4) {
@@ -78,6 +82,11 @@ class FormLinkService {
       }
 
       const combined = Buffer.from(restored, "base64");
+
+      // Minimum valid payload: 12 bytes IV + 16 bytes AuthTag = 28 bytes
+      if (combined.length < 28) {
+        throw new Error("Invalid encrypted payload length");
+      }
 
       const iv = combined.subarray(0, 12);
       const authTag = combined.subarray(12, 28);
@@ -95,7 +104,9 @@ class FormLinkService {
 
       return decrypted;
     } catch (error) {
-      console.error("Decryption error:", error);
+      if (process.env.NODE_ENV !== "TEST") {
+        console.warn("Decryption failed:", (error as Error).message);
+      }
       throw new Error("Failed to decrypt invite code");
     }
   }
@@ -149,7 +160,9 @@ class FormLinkService {
 
       return { valid: true, data };
     } catch (error) {
-      console.error("Invite link validation error:", error);
+      if (process.env.NODE_ENV !== "TEST") {
+        console.warn("Invite link validation failed:", (error as Error).message);
+      }
       return { valid: false, error: "Invalid invite link" };
     }
   }
@@ -243,7 +256,9 @@ class FormLinkService {
 
       return null;
     } catch (error) {
-      console.error("Error extracting form ID from URL:", error);
+      if (process.env.NODE_ENV !== "TEST") {
+        console.warn("Error extracting form ID from URL:", (error as Error).message);
+      }
       return null;
     }
   }

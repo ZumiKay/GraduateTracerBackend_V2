@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MockContentFactory = void 0;
 const mongoose_1 = require("mongoose");
 const Content_model_1 = require("../model/Content.model");
+const Response_model_1 = require("../model/Response.model");
+const Form_model_1 = require("../model/Form.model");
 class MockContentFactory {
     static createFormId() {
         return new mongoose_1.Types.ObjectId();
@@ -349,8 +351,8 @@ class MockContentFactory {
      *
      * @returns Array of 10 ContentType questions sharing a common formId
      */
-    static createSampleForm() {
-        const formId = this.createFormId();
+    static createSampleForm(newFormId, additional) {
+        const formId = newFormId ?? this.createFormId();
         const multipleChoice = this.createMultipleChoiceContent({
             formId,
             qIdx: 0,
@@ -375,6 +377,7 @@ class MockContentFactory {
             rangeDate,
             selection,
             paragraph,
+            ...(additional ?? []),
         ];
     }
     // Helper method to create content for quick testing
@@ -391,6 +394,121 @@ class MockContentFactory {
             isValidated: false,
             ...overrides,
         };
+    }
+    static createFormObj(override) {
+        return {
+            title: "Testing Form",
+            type: Form_model_1.TypeForm.Normal,
+            submittype: Form_model_1.SubmitType.Once,
+            user: new mongoose_1.Types.ObjectId(),
+            pendingCollarborators: [],
+            setting: {
+                submitonce: true,
+                returnscore: Form_model_1.returnscore.partial,
+                acceptResponses: false,
+                email: true,
+            },
+            ...override,
+        };
+    }
+    /**
+     * Generate an appropriate mock answer based on the question type
+     * Uses question.answer if available, otherwise generates a default valid response
+     */
+    static generateResponseForQuestion(question) {
+        if (question.answer?.answer !== undefined) {
+            if (question.answer.answer instanceof Date) {
+                return question.answer.answer.toISOString().split("T")[0];
+            }
+            return question.answer.answer;
+        }
+        switch (question.type) {
+            case Content_model_1.QuestionType.MultipleChoice:
+                return question.multiple?.[0]?.idx ?? 0;
+            case Content_model_1.QuestionType.CheckBox:
+            case Content_model_1.QuestionType.MultipleSelection:
+                return question.checkbox && question.checkbox.length > 0
+                    ? question.checkbox.slice(0, 2).map((c) => c.idx)
+                    : [0];
+            case Content_model_1.QuestionType.Selection:
+                return question.selection?.[0]?.idx ?? 0;
+            case Content_model_1.QuestionType.ShortAnswer:
+                return "Sample short answer";
+            case Content_model_1.QuestionType.Paragraph:
+                return "Sample paragraph response with detailed feedback.";
+            case Content_model_1.QuestionType.Text:
+                return "Sample text response";
+            case Content_model_1.QuestionType.Number:
+                return 42;
+            case Content_model_1.QuestionType.Date:
+                return "2024-01-01";
+            case Content_model_1.QuestionType.RangeDate: {
+                const start = question.rangedate?.start instanceof Date
+                    ? question.rangedate.start.toISOString().split("T")[0]
+                    : String(question.rangedate?.start ?? "2024-01-01");
+                const end = question.rangedate?.end instanceof Date
+                    ? question.rangedate.end.toISOString().split("T")[0]
+                    : String(question.rangedate?.end ?? "2024-12-31");
+                return { start, end };
+            }
+            case Content_model_1.QuestionType.RangeNumber:
+                return question.rangenumber ?? { start: 1, end: 10 };
+            default:
+                return "Sample answer";
+        }
+    }
+    /**
+     * Generate a mock ResponseSetType
+     * Supports generating from ContentType, ObjectId/string, or manual override
+     */
+    static generateResponseSet(questionOrOverride, override) {
+        // If first argument is a ContentType (has 'type' and not a plain ResponseSetType)
+        if (questionOrOverride &&
+            typeof questionOrOverride === "object" &&
+            "type" in questionOrOverride &&
+            !("response" in questionOrOverride)) {
+            const question = questionOrOverride;
+            return {
+                question: question._id ?? new mongoose_1.Types.ObjectId(),
+                response: this.generateResponseForQuestion(question),
+                score: question.score ?? 10,
+                scoringMethod: Response_model_1.ScoringMethod.AUTO,
+                ...override,
+            };
+        }
+        // If first argument is an ObjectId or string
+        if (questionOrOverride instanceof mongoose_1.Types.ObjectId ||
+            typeof questionOrOverride === "string") {
+            return {
+                question: questionOrOverride,
+                response: 0,
+                score: 10,
+                scoringMethod: Response_model_1.ScoringMethod.AUTO,
+                ...override,
+            };
+        }
+        // If first argument is partial ResponseSetType overrides
+        const partialOverrides = questionOrOverride ?? {};
+        return {
+            question: new mongoose_1.Types.ObjectId(),
+            response: 0,
+            score: 20,
+            scoringMethod: Response_model_1.ScoringMethod.AUTO,
+            ...partialOverrides,
+            ...override,
+        };
+    }
+    /**
+     * Generate an array of ResponseSetType items for multiple questions
+     */
+    static generateResponseSets(questions, overrides) {
+        return questions.map((q) => this.generateResponseSet(q, overrides));
+    }
+    /**Function to create mock response set
+     * @requires Form,User,Question
+     */
+    static createResponseSet(override) {
+        return this.generateResponseSet(override);
     }
 }
 exports.MockContentFactory = MockContentFactory;

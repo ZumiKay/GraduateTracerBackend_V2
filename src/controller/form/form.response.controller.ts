@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { FormatToGeneralDate, ReturnCode } from "../../utilities/helper";
-import Form, { TypeForm } from "../../model/Form.model";
+import Form, { TypeForm, returnscore } from "../../model/Form.model";
 import { CustomRequest } from "../../types/customType";
 import { Types } from "mongoose";
 import {
@@ -76,12 +76,29 @@ export const GetFilledForm = async (req: CustomRequest, res: Response) => {
       }
     }
 
-    const formatResponseData = (response: FormResponseType) => ({
-      ...response,
-      updatedAt: response.updatedAt
-        ? FormatToGeneralDate(response.updatedAt)
-        : undefined,
-    });
+    const isManualScoring = form.setting?.returnscore === returnscore.manual;
+    const isOwnerOrEditor = hasFormAccess(form as any, userObjectId);
+
+    const formatResponseData = (response: FormResponseType) => {
+      const hideScore = isManualScoring && !response.isReturned && !isOwnerOrEditor;
+
+      return {
+        ...response,
+        totalScore: hideScore ? undefined : response.totalScore,
+        extraScore: hideScore ? undefined : response.extraScore,
+        isScoreReleased: !hideScore,
+        responseset: hideScore
+          ? response.responseset?.map((r) => ({
+              ...r,
+              score: undefined,
+              comment: undefined,
+            }))
+          : response.responseset,
+        updatedAt: response.updatedAt
+          ? FormatToGeneralDate(response.updatedAt)
+          : undefined,
+      };
+    };
 
     const responseData = {
       form: {

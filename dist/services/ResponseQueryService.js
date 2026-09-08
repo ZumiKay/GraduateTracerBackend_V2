@@ -39,7 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ResponseQueryService = void 0;
 const mongoose_1 = require("mongoose");
 const Response_model_1 = __importDefault(require("../model/Response.model"));
-const Form_model_1 = __importDefault(require("../model/Form.model"));
+const Form_model_1 = __importStar(require("../model/Form.model"));
 const Content_model_1 = __importStar(require("../model/Content.model"));
 const ResponseValidationService_1 = require("./ResponseValidationService");
 const fingerprint_1 = require("../utilities/fingerprint");
@@ -303,6 +303,7 @@ class ResponseQueryService {
                 content: c,
                 parentScore: parentQ?.score,
                 siblingSumScore,
+                validateContentDetail: form.type === Form_model_1.TypeForm.Quiz,
             });
         });
         if (contentValidation.some((i) => !i.isValid)) {

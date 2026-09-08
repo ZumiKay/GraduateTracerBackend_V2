@@ -20,7 +20,10 @@ import Form, {
 } from "../../../model/Form.model";
 import User, { ROLE, UserType } from "../../../model/User.model";
 import Formsession from "../../../model/Formsession.model";
-import FormResponse, { ScoringMethod } from "../../../model/Response.model";
+import FormResponse, {
+  ResponseCompletionStatus,
+  ScoringMethod,
+} from "../../../model/Response.model";
 import Usersession from "../../../model/Usersession.model";
 import Content from "../../../model/Content.model";
 import Notification from "../../../model/Notification.model";
@@ -332,20 +335,20 @@ describe("FormResponse Controller Integration Test", () => {
   /**
    * Test case analysis for SubmitFormResponseMethod
    * @private vlidateSubmissionInput
-   *  [] Response must be an array
-   *  [] all question must have _id
+   *  [x] Response must be an array
+   *  [x] all question must have _id
    *
    * @static createSubmissionWithTracking
-   *  [] gather all require tracking data
+   *  [x] gather all require tracking data
    *
    * Form type processing service
-   *  [] processFormSubmission (quiz form process)
-   *    [] addscore method
-   *      [] all normal question type score
-   *      [] normal condition question score
-   *      [] condition with useChildSum = true
-   *      [] condtion with isBonusScore = true
-   *    [] send notirfacation to notify new response
+   *  [x] processFormSubmission (quiz form process)
+   *    [x] addscore method
+   *      [x] all normal question type score
+   *      [x] normal condition question score
+   *      [x] condition with useChildSum = true
+   *      [x] condtion with isBonusScore = true
+   *    [x] send notirfacation to notify new response
    *
    *
    */
@@ -824,6 +827,286 @@ describe("FormResponse Controller Integration Test", () => {
         );
         expect(childResp?.score).toBe(0);
         expect(childResp?.scoringMethod).toBe(ScoringMethod.AUTO);
+      });
+    });
+
+    describe("Batch Update Scores (PUT /v0/api/response/batch-update-scores)", () => {
+      let ownerUser: any;
+      let nonOwnerUser: any;
+      let ownerToken: string;
+      let nonOwnerToken: string;
+      let quizForm: any;
+      let resp1: any;
+      let resp2: any;
+      let testQuestion: any;
+
+      beforeEach(async () => {
+        ownerUser = await createTestUser({
+          email: `batch_owner_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@gmail.com`,
+        });
+        nonOwnerUser = await createTestUser({
+          email: `batch_nonowner_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@gmail.com`,
+        });
+
+        ownerToken = JWT.sign(
+          { sub: ownerUser._id.toString(), role: ownerUser.role },
+          testEnv.JWT_SECRET,
+          { expiresIn: "1h" },
+        );
+        nonOwnerToken = JWT.sign(
+          { sub: nonOwnerUser._id.toString(), role: nonOwnerUser.role },
+          testEnv.JWT_SECRET,
+          { expiresIn: "1h" },
+        );
+
+        quizForm = await createTestForm(ownerUser._id, {
+          title: "Batch Scoring Test Quiz",
+          type: TypeForm.Quiz,
+          totalscore: 50,
+          setting: { returnscore: returnscore.manual },
+        });
+
+        testQuestion = await Content.create(
+          MockContentFactory.createTextContent({
+            formId: quizForm._id,
+            score: 20,
+            require: true,
+          }),
+        );
+
+        resp1 = await FormResponse.create({
+          formId: quizForm._id,
+          userId: ownerUser._id,
+          respondentEmail: "student1@test.com",
+          responseset: [
+            {
+              question: testQuestion._id,
+              response: "Answer 1",
+              score: 0,
+              scoringMethod: ScoringMethod.MANUAL,
+            },
+          ],
+          totalScore: 0,
+          completionStatus: ResponseCompletionStatus.submitted,
+        });
+
+        resp2 = await FormResponse.create({
+          formId: quizForm._id,
+          userId: ownerUser._id,
+          respondentEmail: "student2@test.com",
+          responseset: [
+            {
+              question: testQuestion._id,
+              response: "Answer 2",
+              score: 0,
+              scoringMethod: ScoringMethod.MANUAL,
+            },
+          ],
+          totalScore: 0,
+          completionStatus: ResponseCompletionStatus.submitted,
+        });
+      });
+
+      it("returns 401 when unauthenticated", async () => {
+        const res = await Request(app)
+          .put(`${baseURL}/batch-update-scores`)
+          .send({ updates: [{ responseId: resp1._id.toString(), score: 25 }] });
+        expect(res.status).toBe(401);
+      });
+
+      it("returns 400 when updates array is missing or empty", async () => {
+        const res = await Request(app)
+          .put(`${baseURL}/batch-update-scores`)
+          .set("Cookie", [`${testEnv.ACCESS_TOKEN_COOKIE}=${ownerToken}`])
+          .send({ updates: [] });
+        expect(res.status).toBe(400);
+      });
+
+      it("returns 400 when an update item is missing responseId or score", async () => {
+        const res = await Request(app)
+          .put(`${baseURL}/batch-update-scores`)
+          .set("Cookie", [`${testEnv.ACCESS_TOKEN_COOKIE}=${ownerToken}`])
+          .send({ updates: [{ responseId: resp1._id.toString() }] });
+        expect(res.status).toBe(400);
+      });
+
+      it("returns 403 when user is not an owner or editor of the form", async () => {
+        const res = await Request(app)
+          .put(`${baseURL}/batch-update-scores`)
+          .set("Cookie", [`${testEnv.ACCESS_TOKEN_COOKIE}=${nonOwnerToken}`])
+          .send({
+            updates: [{ responseId: resp1._id.toString(), score: 25 }],
+          });
+        expect(res.status).toBe(403);
+      });
+
+      it("successfully updates overall scores for multiple responses in batch", async () => {
+        const res = await Request(app)
+          .put(`${baseURL}/batch-update-scores`)
+          .set("Cookie", [`${testEnv.ACCESS_TOKEN_COOKIE}=${ownerToken}`])
+          .send({
+            updates: [
+              { responseId: resp1._id.toString(), score: 30 },
+              { responseId: resp2._id.toString(), score: 45 },
+            ],
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.successful).toBe(2);
+
+        const updated1 = await FormResponse.findById(resp1._id).lean();
+        const updated2 = await FormResponse.findById(resp2._id).lean();
+
+        expect(updated1?.totalScore).toBe(30);
+        expect(updated2?.totalScore).toBe(45);
+      });
+
+      it("successfully updates question scores for multiple responses in batch", async () => {
+        const res = await Request(app)
+          .put(`${baseURL}/batch-update-scores`)
+          .set("Cookie", [`${testEnv.ACCESS_TOKEN_COOKIE}=${ownerToken}`])
+          .send({
+            updates: [
+              {
+                responseId: resp1._id.toString(),
+                scores: [
+                  {
+                    questionId: testQuestion._id.toString(),
+                    score: 18,
+                    comment: "Well done",
+                  },
+                ],
+              },
+              {
+                responseId: resp2._id.toString(),
+                scores: [
+                  {
+                    questionId: testQuestion._id.toString(),
+                    score: 12,
+                    comment: "Needs work",
+                  },
+                ],
+              },
+            ],
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.successful).toBe(2);
+
+        const updated1 = await FormResponse.findById(resp1._id).lean();
+        expect(updated1?.totalScore).toBe(18);
+        expect(updated1?.responseset[0].score).toBe(18);
+        expect(updated1?.responseset[0].comment).toBe("Well done");
+      });
+    });
+
+    describe("Batch Return Response & Score Visibility for Manual Forms", () => {
+      let ownerUser: any;
+      let respondentUser: any;
+      let ownerToken: string;
+      let respondentToken: string;
+      let manualQuizForm: any;
+      let formQuestion: any;
+      let responseDoc: any;
+
+      beforeEach(async () => {
+        ownerUser = await createTestUser({
+          email: `manual_owner_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@gmail.com`,
+        });
+        respondentUser = await createTestUser({
+          email: `manual_resp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}@gmail.com`,
+        });
+
+        ownerToken = JWT.sign(
+          { sub: ownerUser._id.toString(), role: ownerUser.role },
+          testEnv.JWT_SECRET,
+          { expiresIn: "1h" },
+        );
+        respondentToken = JWT.sign(
+          { sub: respondentUser._id.toString(), role: respondentUser.role },
+          testEnv.JWT_SECRET,
+          { expiresIn: "1h" },
+        );
+
+        manualQuizForm = await createTestForm(ownerUser._id, {
+          title: "Manual Scoring Exam",
+          type: TypeForm.Quiz,
+          totalscore: 100,
+          setting: { returnscore: returnscore.manual },
+        });
+
+        formQuestion = await Content.create(
+          MockContentFactory.createTextContent({
+            formId: manualQuizForm._id,
+            score: 100,
+            require: true,
+          }),
+        );
+
+        responseDoc = await FormResponse.create({
+          formId: manualQuizForm._id,
+          userId: respondentUser._id,
+          respondentEmail: respondentUser.email,
+          responseset: [
+            {
+              question: formQuestion._id,
+              response: "Detailed essay text",
+              score: 85,
+              scoringMethod: ScoringMethod.MANUAL,
+            },
+          ],
+          totalScore: 85,
+          completionStatus: ResponseCompletionStatus.submitted,
+          isReturned: false,
+        });
+      });
+
+      it("hides score on submission and GetFilledForm when score has not been returned yet", async () => {
+        // 1. Respondent checks filled form via GET /v0/api/response/filled-form/:formId
+        const res = await Request(app)
+          .get(`${baseURL}/filled-form/${manualQuizForm._id}`)
+          .set("Cookie", [`${testEnv.ACCESS_TOKEN_COOKIE}=${respondentToken}`]);
+
+        expect(res.status).toBe(200);
+        // Respondent cannot see totalScore yet
+        expect(res.body.data.response.totalScore).toBeUndefined();
+        expect(res.body.data.response.isScoreReleased).toBe(false);
+        // Question scores in responseset should also be masked
+        expect(res.body.data.response.responseset[0].score).toBeUndefined();
+      });
+
+      it("allows form owner to batch return responses and reveals scores to respondents afterwards", async () => {
+        // 1. Form owner returns response in batch via POST /v0/api/response/return
+        const returnRes = await Request(app)
+          .post(`${baseURL}/return`)
+          .set("Cookie", [`${testEnv.ACCESS_TOKEN_COOKIE}=${ownerToken}`])
+          .send({
+            responseId: [responseDoc._id.toString()],
+            html: "<p>Grades released</p>",
+            feedback: "Great job on your essay!",
+          });
+
+        expect(returnRes.status).toBe(200);
+
+        // Verify MongoDB was updated
+        const updatedResponse = await FormResponse.findById(
+          responseDoc._id,
+        ).lean();
+        expect(updatedResponse?.isReturned).toBe(true);
+        expect(updatedResponse?.completionStatus).toBe("completed");
+
+        // 2. Respondent checks filled form again
+        const respondentCheck = await Request(app)
+          .get(`${baseURL}/filled-form/${manualQuizForm._id}`)
+          .set("Cookie", [`${testEnv.ACCESS_TOKEN_COOKIE}=${respondentToken}`]);
+
+        expect(respondentCheck.status).toBe(200);
+        // Respondent can now see their score
+        expect(respondentCheck.body.data.response.totalScore).toBe(85);
+        expect(respondentCheck.body.data.response.isScoreReleased).toBe(true);
+        expect(respondentCheck.body.data.response.responseset[0].score).toBe(
+          85,
+        );
       });
     });
   });

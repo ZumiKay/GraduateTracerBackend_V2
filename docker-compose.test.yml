@@ -31,4 +31,5 @@ services:
       - ACCESS_TOKEN_COOKIE=graduate_accessT
       - REFRESH_TOKEN_COOKIE=graduate_refreshT
       - FRONTEND_URL=http://localhost:5173
+      - INVITE_LINK_SECRET=test_invite_link_secret_key_12345
     command: npm run test:integration

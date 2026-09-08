@@ -54,10 +54,15 @@ export interface FormResponseType {
   formId: Types.ObjectId;
   userId?: Types.ObjectId;
   responseset: Array<ResponseSetType>;
+  responseCount?: number;
   maxScore?: number;
   totalScore?: number;
   extraScore?: number;
   isCompleted?: boolean;
+  isReturned?: boolean;
+  returnedAt?: Date;
+  isScoreable?: boolean;
+  isScoreReleased?: boolean;
   submittedAt?: Date | string;
   completionStatus?: ResponseCompletionStatus;
   respondentEmail?: string;
@@ -95,13 +100,14 @@ export enum ScoringMethod {
 
 export interface SubmitionProcessionReturnType {
   maxScore: number;
-  totalScore: number;
+  totalScore?: number;
   extraScore?: number;
   message: string;
   responseId?: string;
   respondentEmail?: string;
   isComplete?: boolean;
   isNonScore?: boolean;
+  isScoreReleased?: boolean;
   hasUnansweredScoredQuestion?: boolean;
 }
 
@@ -225,6 +231,14 @@ const ResponseSchema = new Schema<FormResponseType>(
       max: 100,
     },
 
+    isReturned: {
+      type: Boolean,
+      default: false,
+    },
+    returnedAt: {
+      type: Date,
+      required: false,
+    },
     submittedAt: {
       type: Date,
       required: false,
@@ -244,6 +258,9 @@ ResponseSchema.index({ formId: 1, respondentEmail: 1 });
 
 // Pre-save middleware to calculate total score
 ResponseSchema.pre("save", function (next) {
+  if (this.isModified("totalScore") && !this.isModified("responseset")) {
+    return;
+  }
   if (this.responseset && this.responseset.length > 0) {
     const total = this.responseset.reduce((sum, response) => {
       return sum + (response.score || 0);

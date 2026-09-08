@@ -300,14 +300,22 @@ export class ResponseProcessingService {
       message = "This your final score";
     }
 
+    const isManualScoring = form.setting?.returnscore === returnscore.manual;
+
     return {
       isNonScore,
-      totalScore,
-      extraScore,
+      totalScore: isManualScoring ? undefined : totalScore,
+      extraScore: isManualScoring ? undefined : extraScore,
       respondentEmail,
       responseId: savedResponse._id.toString(),
       maxScore: form.totalscore || 0,
-      message,
+      message: isManualScoring
+        ? "Score will be returned by form owner after review."
+        : message,
+      isScoreReleased: !isManualScoring,
+      isComplete: isManualScoring
+        ? false
+        : completionStatus === ResponseCompletionStatus.completed,
       hasUnansweredScoredQuestion,
     };
   }
@@ -511,16 +519,33 @@ export class ResponseProcessingService {
   static async batchUpdateResponseScores(
     updates: Array<{
       responseId: string;
-      scores: Array<{ questionId: string; score: number }>;
+      scores?: Array<{ questionId: string; score: number; comment?: string }>;
+      score?: number;
     }>,
   ) {
     const results = await Promise.allSettled(
-      updates.map((update) =>
-        this.updateResponseScores({
-          responseId: update.responseId,
-          scores: update.scores,
-        }),
-      ),
+      updates.map(async (update) => {
+        if (update.scores && Array.isArray(update.scores) && update.scores.length > 0) {
+          return this.updateResponseScores({
+            responseId: update.responseId,
+            scores: update.scores,
+          });
+        } else if (typeof update.score === "number") {
+          const result = await FormResponse.updateOne(
+            { _id: update.responseId },
+            {
+              $set: {
+                totalScore: update.score,
+                completionStatus: ResponseCompletionStatus.completed,
+              },
+            },
+          );
+          if (result.matchedCount === 0) throw new Error("Response not found");
+          return { success: true, totalScore: update.score };
+        } else {
+          throw new Error("Either scores array or total score must be provided");
+        }
+      }),
     );
 
     const successful = results.filter((r) => r.status === "fulfilled").length;

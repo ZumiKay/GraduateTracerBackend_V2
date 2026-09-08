@@ -58,9 +58,6 @@ class FormResponseSubmissionController {
             respondentName: zod_1.default.string().optional(),
         }),
     });
-    GetFormForRespondent = async (req, res) => {
-        return this.GetPublicFormData(req, res);
-    };
     SubmitFormResponse = async (req, res) => {
         const submissionId = `submission_${Date.now()}_${Math.random()
             .toString(36)
@@ -92,6 +89,12 @@ class FormResponseSubmissionController {
             };
             submissionDataWithTracking =
                 RespondentTrackingService_1.RespondentTrackingService.createSubmissionWithTracking(baseSubmissionData, req);
+            const checkResponseExist = await RespondentTrackingService_1.RespondentTrackingService.checkRespondentExists(submissionDataWithTracking);
+            if (checkResponseExist.hasResponded) {
+                return helper_1.SendResponse.badRequest(res, "Form already submitted", {
+                    isResponded: true,
+                });
+            }
             let result;
             try {
                 //Quiz type process
@@ -105,32 +108,27 @@ class FormResponseSubmissionController {
             }
             catch (processingError) {
                 console.error(`[${submissionId}] Error during form processing:`, processingError);
-                if (processingError instanceof Error) {
-                    const errorResponse = this.handleProcessingError(processingError, submissionId);
-                    if (errorResponse) {
-                        return res.status(errorResponse.status).json(errorResponse.body);
-                    }
-                }
                 return res.status(500).json({
                     ...(0, helper_1.ReturnCode)(500, "Failed to process form submission"),
-                    submissionId,
                     error: processingError instanceof Error
                         ? processingError.message
                         : "Unknown processing error",
                 });
             }
+            //Loggout current user for submitonce form
             if (form.setting?.submitonce && req.formsession) {
                 res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE);
                 res.clearCookie(process.env.RESPONDENT_COOKIE);
                 await Formsession_model_1.default.deleteOne({ session_id: req.formsession.sub });
             }
             //Create Notification for formOwner
-            if (result.responseId) {
-                await notification_controller_1.NotificationController.NotifyNewResponse(formId, result.responseId, {
-                    name: respondentName,
-                    email: respondentEmail,
-                });
+            if (!result || !result.responseId) {
+                throw new Error("Failed to submit the form");
             }
+            await notification_controller_1.NotificationController.NotifyNewResponse(formId, result.responseId, {
+                name: respondentName,
+                email: respondentEmail,
+            });
             return res.status(200).json({
                 ...(0, helper_1.ReturnCode)(200, "Form submitted successfully"),
                 data: result,
@@ -216,99 +214,6 @@ class FormResponseSubmissionController {
             errors,
         };
     }
-    handleProcessingError(error, submissionId) {
-        const errorMessage = error.message.toLowerCase();
-        if (error.message === "Require" || errorMessage.includes("required")) {
-            return {
-                status: 400,
-                body: {
-                    ...(0, helper_1.ReturnCode)(400, "Missing required questions"),
-                    submissionId,
-                    error: "Please ensure all required questions are answered",
-                },
-            };
-        }
-        if (error.message === "Format" ||
-            errorMessage.includes("format") ||
-            errorMessage.includes("invalid answer")) {
-            return {
-                status: 400,
-                body: {
-                    ...(0, helper_1.ReturnCode)(400, "Invalid answer format"),
-                    submissionId,
-                    error: "One or more answers are in an invalid format",
-                },
-            };
-        }
-        if (errorMessage.includes("question not found")) {
-            return {
-                status: 404,
-                body: {
-                    ...(0, helper_1.ReturnCode)(404, "Question not found"),
-                    submissionId,
-                    error: "One or more questions in your response could not be found",
-                },
-            };
-        }
-        if (error.message === "Form not found" ||
-            errorMessage.includes("form not found")) {
-            return {
-                status: 404,
-                body: {
-                    ...(0, helper_1.ReturnCode)(404, "Form not found"),
-                    submissionId,
-                    error: error.message,
-                },
-            };
-        }
-        if (error.message === "Email is required for this form" ||
-            errorMessage.includes("email is required")) {
-            return {
-                status: 400,
-                body: {
-                    ...(0, helper_1.ReturnCode)(400, "Email is required"),
-                    submissionId,
-                    error: "This form requires an email address to submit",
-                },
-            };
-        }
-        if (error.message === "Form already exisited" ||
-            errorMessage.includes("already submitted") ||
-            errorMessage.includes("duplicate")) {
-            return {
-                status: 409,
-                body: {
-                    code: 409,
-                    message: "Duplicate submission",
-                    submissionId,
-                    error: "You have already submitted a response to this form",
-                },
-            };
-        }
-        if (errorMessage.includes("access denied") ||
-            errorMessage.includes("unauthorized")) {
-            return {
-                status: 403,
-                body: {
-                    ...(0, helper_1.ReturnCode)(403, "Access denied"),
-                    submissionId,
-                    error: "You don't have permission to submit to this form",
-                },
-            };
-        }
-        if (errorMessage.includes("form is closed") ||
-            errorMessage.includes("form is inactive")) {
-            return {
-                status: 403,
-                body: {
-                    ...(0, helper_1.ReturnCode)(403, "Form is not available"),
-                    submissionId,
-                    error: "This form is no longer accepting responses",
-                },
-            };
-        }
-        return null;
-    }
     async GetInititalFormData(formId, res) {
         if (!formId)
             return res.status(400).json((0, helper_1.ReturnCode)(400));
@@ -335,11 +240,6 @@ class FormResponseSubmissionController {
             }
             const { formId } = req.params;
             let { p, ty } = req.query;
-            if (!ty)
-                return res.status(400).json((0, helper_1.ReturnCode)(400));
-            if (!mongoose_1.Types.ObjectId.isValid(formId)) {
-                return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid form ID"));
-            }
             const page = Number(p ?? "1");
             const isUserAlreadyAuthenticated = !!req.formsession;
             switch (ty) {
@@ -368,13 +268,10 @@ class FormResponseSubmissionController {
                                 : undefined,
                         });
                         if (trackingResult?.hasResponded) {
-                            return res.status(200).json({
-                                ...(0, helper_1.ReturnCode)(200),
-                                data: {
-                                    ...initialData,
-                                    isAuthenticated: true,
-                                    isResponsed: trackingResult.hasResponded,
-                                },
+                            return helper_1.SendResponse.success(res, {
+                                ...initialData,
+                                isAuthenticated: true,
+                                isResponsed: trackingResult.hasResponded,
                             });
                         }
                     }
@@ -458,7 +355,8 @@ class FormResponseSubmissionController {
             }
         }
         catch (error) {
-            console.error("Get Public Form Data Error:", error);
+            if (process.env.NODE_ENV === "DEV")
+                console.error("Get Public Form Data Error:", error);
             if (error instanceof Error) {
                 if (error.message === "You already submitted this form") {
                     return helper_1.SendResponse.badRequest(res, error.message);

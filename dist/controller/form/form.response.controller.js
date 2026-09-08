@@ -88,12 +88,27 @@ const GetFilledForm = async (req, res) => {
                 currentResponse = specificResponse;
             }
         }
-        const formatResponseData = (response) => ({
-            ...response,
-            updatedAt: response.updatedAt
-                ? (0, helper_1.FormatToGeneralDate)(response.updatedAt)
-                : undefined,
-        });
+        const isManualScoring = form.setting?.returnscore === Form_model_1.returnscore.manual;
+        const isOwnerOrEditor = (0, formHelpers_1.hasFormAccess)(form, userObjectId);
+        const formatResponseData = (response) => {
+            const hideScore = isManualScoring && !response.isReturned && !isOwnerOrEditor;
+            return {
+                ...response,
+                totalScore: hideScore ? undefined : response.totalScore,
+                extraScore: hideScore ? undefined : response.extraScore,
+                isScoreReleased: !hideScore,
+                responseset: hideScore
+                    ? response.responseset?.map((r) => ({
+                        ...r,
+                        score: undefined,
+                        comment: undefined,
+                    }))
+                    : response.responseset,
+                updatedAt: response.updatedAt
+                    ? (0, helper_1.FormatToGeneralDate)(response.updatedAt)
+                    : undefined,
+            };
+        };
         const responseData = {
             form: {
                 _id: form._id,

@@ -35,9 +35,8 @@ class FormResponseController {
     UpdateResponseScore = form_response_scoring_controller_2.default.UpdateResponseScore;
     UpdateQuestionScore = form_response_scoring_controller_2.default.UpdateQuestionScore;
     BatchUpdateScores = form_response_scoring_controller_2.default.BatchUpdateScores;
-    RecalculateResponseScore = form_response_scoring_controller_2.default.RecalculateResponseScore;
     // Submission methods
-    GetFormForRespondent = form_response_submission_controller_2.default.GetFormForRespondent;
+    GetFormForRespondent = form_response_submission_controller_2.default.GetPublicFormData;
     SubmitFormResponse = form_response_submission_controller_2.default.SubmitFormResponse;
     GetInititalFormData = form_response_submission_controller_2.default.GetInititalFormData;
     GetPublicFormData = form_response_submission_controller_2.default.GetPublicFormData;
