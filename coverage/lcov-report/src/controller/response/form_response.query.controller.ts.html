@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">12.16% </span>
+                <span class="strong">12.1% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>23/189</span>
+                <span class='fraction'>23/190</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">13.69% </span>
+                <span class="strong">13.6% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>23/168</span>
+                <span class='fraction'>23/169</span>
             </div>
         
             
@@ -545,7 +545,9 @@
 <a name='L480'></a><a href='#L480'>480</a>
 <a name='L481'></a><a href='#L481'>481</a>
 <a name='L482'></a><a href='#L482'>482</a>
-<a name='L483'></a><a href='#L483'>483</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L483'></a><a href='#L483'>483</a>
+<a name='L484'></a><a href='#L484'>484</a>
+<a name='L485'></a><a href='#L485'>485</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
@@ -759,10 +761,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -771,18 +774,19 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1028,7 +1032,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { Response } from "express";
-import { ReturnCode } from "../../utilities/helper";
+import { ReturnCode, SendResponse } from "../../utilities/helper";
 import { Types } from "mongoose";
 import FormResponse from "../../model/Response.model";
 import Form, { FormType } from "../../model/Form.model";
@@ -1239,33 +1243,35 @@ export class FormResponseQueryController {
       const result =
 <span class="cstat-no" title="statement not covered" >        await ResponseQueryService.getResponsesWithFilters(filters);</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      if (!result)</span>
-<span class="cstat-no" title="statement not covered" >        return res.status(404).json(ReturnCode(404, "Response not found"));</span>
+<span class="cstat-no" title="statement not covered" >      if (!result) {</span>
+<span class="cstat-no" title="statement not covered" >        SendResponse.notFound(res, "Response not found");</span>
+<span class="cstat-no" title="statement not covered" >        return;</span>
+      }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      return res.status(200).json({ ...ReturnCode(200), data: result });</span>
+<span class="cstat-no" title="statement not covered" >      SendResponse.success(res, result);</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.error("Get Responses With Filters Error:", error);</span>
-<span class="cstat-no" title="statement not covered" >      res.status(500).json(ReturnCode(500, "Failed to retrieve responses"));</span>
+<span class="cstat-no" title="statement not covered" >      SendResponse.error(res, "Error occured");</span>
     }
   };
 &nbsp;
   public GetResponseByID = <span class="fstat-no" title="function not covered" >async </span>(req: CustomRequest, res: Response) =&gt; {
     const { id, formId } = <span class="cstat-no" title="statement not covered" >req.params as { id: string; formId: string };</span>
 <span class="cstat-no" title="statement not covered" >    if (!isValidObjectIdString(id) || !isValidObjectIdString(formId)) {</span>
-<span class="cstat-no" title="statement not covered" >      return res.status(400).json(ReturnCode(400));</span>
+<span class="cstat-no" title="statement not covered" >      SendResponse.badRequest(res);</span>
+<span class="cstat-no" title="statement not covered" >      return;</span>
     }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >    try {</span>
       const result = <span class="cstat-no" title="statement not covered" >await ResponseQueryService.GetResponseById({ id, formId });</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >      if (!result) {</span>
-<span class="cstat-no" title="statement not covered" >        return res.status(404).json(ReturnCode(404));</span>
+<span class="cstat-no" title="statement not covered" >        SendResponse.notFound(res);</span>
+<span class="cstat-no" title="statement not covered" >        return;</span>
       }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >      return res.status(200).json({ ...ReturnCode(200), data: result });</span>
+<span class="cstat-no" title="statement not covered" >      SendResponse.success(res, result);</span>
     } catch (error) {
-<span class="cstat-no" title="statement not covered" >      console.log("Get Response By ID", error);</span>
-<span class="cstat-no" title="statement not covered" >      res.status(500).json(ReturnCode(500, "Error Occured"));</span>
+<span class="cstat-no" title="statement not covered" >      SendResponse.error(res, "Can't Get Response");</span>
     }
   };
 &nbsp;
@@ -1516,7 +1522,7 @@ export default new FormResponseQueryController();
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-09-04T08:09:24.830Z
+                at 2026-09-08T07:37:56.480Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

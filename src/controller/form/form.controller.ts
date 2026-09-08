@@ -6,6 +6,7 @@ import { Types } from "mongoose";
 import Content from "../../model/Content.model";
 import {
   hasFormAccess,
+  isPrimaryOwner,
   validateFormRequest,
 } from "../../utilities/formHelpers";
 export {
@@ -84,12 +85,12 @@ export async function DeleteForm(req: CustomRequest, res: Response) {
   try {
     const forms = await Form.find({ _id: { $in: ids } });
 
-    // Verify if form access
+    // Verify if form access (only primary owner can delete forms)
     for (const form of forms) {
-      if (!hasFormAccess(form, new Types.ObjectId(user.sub)))
+      if (!isPrimaryOwner(form, user.sub))
         return res
           .status(403)
-          .json(ReturnCode(403, "Access denied to one or more forms"));
+          .json(ReturnCode(403, "Access denied: only primary owner can delete forms"));
     }
 
     //Delete Process
@@ -146,7 +147,10 @@ export async function PageHandler(req: CustomRequest, res: Response) {
     if (ty === "add") {
       await Form.updateOne({ _id: formId }, { $inc: { totalpage: 1 } });
     } else if (ty === "delete") {
-      const toBeDeleteContent = await Content.find({ page: deletepage })
+      const toBeDeleteContent = await Content.find({
+        formId: new Types.ObjectId(formId),
+        page: deletepage,
+      })
         .select("_id")
         .lean();
 
@@ -158,7 +162,21 @@ export async function PageHandler(req: CustomRequest, res: Response) {
           $pull: { contentIds: { $in: toBeDeleteContent.map((i) => i._id) } },
         },
       );
-      await Content.deleteMany({ page: deletepage });
+      await Content.deleteMany({
+        formId: new Types.ObjectId(formId),
+        page: deletepage,
+      });
+
+      // Shift subsequent pages down by 1
+      await Content.updateMany(
+        {
+          formId: new Types.ObjectId(formId),
+          page: { $gt: deletepage },
+        },
+        {
+          $inc: { page: -1 },
+        },
+      );
     }
 
     return res

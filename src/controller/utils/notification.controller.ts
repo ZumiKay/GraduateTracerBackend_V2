@@ -3,6 +3,7 @@ import { QueryFilter, Types } from "mongoose";
 import Notification, { NotificationType } from "../../model/Notification.model";
 import { CustomRequest } from "../../types/customType";
 import { ReturnCode } from "../../utilities/helper";
+import { ROLE } from "../../model/User.model";
 
 export interface NotificationData {
   userId: string;
@@ -98,19 +99,31 @@ export class NotificationController {
 
   // Get notifications for a user
   public GetNotifications = async (req: CustomRequest, res: Response) => {
-    const { userId } = req.query;
+    const user = req.user;
+    if (!user) {
+      res.status(401).json(ReturnCode(401, "Unauthorized"));
+      return;
+    }
+
+    const requestedUserId = req.query.userId as string | undefined;
+    const targetUserId = requestedUserId || user.sub;
+
+    if (
+      requestedUserId &&
+      requestedUserId !== user.sub &&
+      user.role !== ROLE.ADMIN
+    ) {
+      res.status(403).json(ReturnCode(403, "Access denied"));
+      return;
+    }
+
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;
     const unreadOnly = req.query.unreadOnly === "true";
 
     try {
-      if (!userId) {
-        res.status(400).json(ReturnCode(400, "User ID is required"));
-        return;
-      }
-
       const query: QueryFilter<NotificationType> = {
-        userId: new Types.ObjectId(userId as string),
+        userId: new Types.ObjectId(targetUserId),
       };
       if (unreadOnly) {
         query.isRead = false;
@@ -124,7 +137,7 @@ export class NotificationController {
 
       const totalCount = await Notification.countDocuments(query);
       const unreadCount = await Notification.countDocuments({
-        userId: new Types.ObjectId(userId as string),
+        userId: new Types.ObjectId(targetUserId),
         isRead: false,
       });
 
@@ -150,11 +163,25 @@ export class NotificationController {
     res: Response,
   ): Promise<void> => {
     const { notificationId } = req.params;
+    const user = req.user;
+
+    if (!user) {
+      res.status(401).json(ReturnCode(401, "Unauthorized"));
+      return;
+    }
 
     try {
       const notification = await Notification.findById(notificationId);
       if (!notification) {
         res.status(404).json(ReturnCode(404, "Notification not found"));
+        return;
+      }
+
+      if (
+        notification.userId.toString() !== user.sub &&
+        user.role !== ROLE.ADMIN
+      ) {
+        res.status(403).json(ReturnCode(403, "Access denied"));
         return;
       }
 
@@ -177,17 +204,29 @@ export class NotificationController {
     req: CustomRequest,
     res: Response,
   ): Promise<void> => {
-    const { userId } = req.body;
     const user = req.user;
 
+    if (!user) {
+      res.status(401).json(ReturnCode(401, "Unauthorized"));
+      return;
+    }
+
+    const { userId } = req.body;
+    const targetUserId = userId || user.sub;
+
     try {
-      if (!userId || userId !== user?.id?.toString()) {
+      if (
+        userId &&
+        userId !== user.sub &&
+        userId !== (user as any).id?.toString() &&
+        user.role !== ROLE.ADMIN
+      ) {
         res.status(403).json(ReturnCode(403, "Unauthorized"));
         return;
       }
 
       await Notification.updateMany(
-        { userId: new Types.ObjectId(userId), isRead: false },
+        { userId: new Types.ObjectId(targetUserId), isRead: false },
         { isRead: true, readAt: new Date() },
       );
 
@@ -208,10 +247,23 @@ export class NotificationController {
     const { notificationId } = req.params;
     const user = req.user;
 
+    if (!user) {
+      res.status(401).json(ReturnCode(401, "Unauthorized"));
+      return;
+    }
+
     try {
       const notification = await Notification.findById(notificationId);
       if (!notification) {
         res.status(404).json(ReturnCode(404, "Notification not found"));
+        return;
+      }
+
+      if (
+        notification.userId.toString() !== user.sub &&
+        user.role !== ROLE.ADMIN
+      ) {
+        res.status(403).json(ReturnCode(403, "Access denied"));
         return;
       }
 
