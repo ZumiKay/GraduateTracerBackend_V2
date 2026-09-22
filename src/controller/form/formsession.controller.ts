@@ -568,7 +568,7 @@ export default class FormsessionService {
     }
 
     const { code } = req.params as { code?: string };
-    const { skiplogin, verify } = req.query as {
+    const { skiplogin, verify } = (req.query || {}) as {
       skiplogin?: string;
       verify?: string;
     };

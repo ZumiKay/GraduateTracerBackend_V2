@@ -98,8 +98,7 @@ const generateTextBaseResponse = (variant: "short" | "paragraph"): string => {
 
 /* ----------------------------- Randomize Helpers ----------------------------- */
 
-const randomItem = <T>(arr: T[]): T =>
-  arr[Math.floor(Math.random() * arr.length)];
+const randomItem = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
 //Randomize array items with specify amount of items
 const randomSubset = <T>(arr: T[], minCount = 1): T[] => {
@@ -113,8 +112,7 @@ const randomIntBetween = (min: number, max: number): number =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
 const randomDateBetween = (start: Date, end: Date): string => {
-  const ms =
-    start.getTime() + Math.random() * (end.getTime() - start.getTime());
+  const ms = start.getTime() + Math.random() * (end.getTime() - start.getTime());
   return new Date(ms).toISOString().split("T")[0];
 };
 
@@ -138,9 +136,7 @@ const randomCompletionTime = (): number => {
  * Generate Form Responses base on each question type
  * @returns Response Answer
  */
-const GenerateQuestionResponseBaseOnType = (
-  data: ContentType,
-): ResponseAnswerType | null => {
+const GenerateQuestionResponseBaseOnType = (data: ContentType): ResponseAnswerType | null => {
   switch (data.type) {
     case QuestionType.ShortAnswer:
       return generateTextBaseResponse("short");
@@ -179,12 +175,9 @@ const GenerateQuestionResponseBaseOnType = (
       const minDate = data.rangedate?.start
         ? new Date(data.rangedate.start)
         : new Date(new Date().getFullYear() - 2, 0, 1);
-      const maxDate = data.rangedate?.end
-        ? new Date(data.rangedate.end)
-        : new Date();
+      const maxDate = data.rangedate?.end ? new Date(data.rangedate.end) : new Date();
       const midMs =
-        minDate.getTime() +
-        Math.random() * ((maxDate.getTime() - minDate.getTime()) / 2);
+        minDate.getTime() + Math.random() * ((maxDate.getTime() - minDate.getTime()) / 2);
       const endMs = midMs + Math.random() * (maxDate.getTime() - midMs);
       return {
         start: new Date(midMs).toISOString().split("T")[0],
@@ -221,9 +214,8 @@ interface GenerateFormResponseOptions {
 
 type ExtractUser = { _id: Types.ObjectId; email: string; name?: string };
 
-const createUserData = async (
-  userCount: number,
-): Promise<Array<ExtractUser>> => {
+/*Generate user data mixed with existed real user and generate a unique user*/
+const createUserData = async (userCount: number): Promise<Array<ExtractUser>> => {
   const realUsers = await User.find().select("_id email name").lean();
   const needed = Math.max(0, userCount - realUsers.length);
 
@@ -239,23 +231,19 @@ const createUserData = async (
     return `${first} ${second}`;
   };
 
-  const generatedUsers: Array<ExtractUser> = Array.from({ length: needed }).map(
-    (_, idx) => {
-      const name = getUniqueName(idx);
-      return {
-        _id: new Types.ObjectId(),
-        name,
-        email: `${name.toLowerCase().replace(/\s+/g, "_")}_${idx}@example.com`,
-      };
-    },
-  );
+  const generatedUsers: Array<ExtractUser> = Array.from({ length: needed }).map((_, idx) => {
+    const name = getUniqueName(idx);
+    return {
+      _id: new Types.ObjectId(),
+      name,
+      email: `${name.toLowerCase().replace(/\s+/g, "_")}_${idx}@example.com`,
+    };
+  });
 
   return [...realUsers, ...generatedUsers];
 };
 
-export const GenerateFormResponse = async (
-  params: GenerateFormResponseOptions,
-) => {
+export const GenerateFormResponse = async (params: GenerateFormResponseOptions) => {
   const {
     formId,
     responseCount = 3,
@@ -283,13 +271,9 @@ export const GenerateFormResponse = async (
 
   // Clear existing responses for this form before seeding fresh data
   const deleted = await FormResponse.deleteMany({ formId });
-  console.log(
-    `Cleared ${deleted.deletedCount} existing responses for form ${formId}`,
-  );
+  console.log(`Cleared ${deleted.deletedCount} existing responses for form ${formId}`);
 
-  const questions = await Content.find({ formId })
-    .sort({ page: 1, qIdx: 1 })
-    .lean();
+  const questions = await Content.find({ formId }).sort({ page: 1, qIdx: 1 }).lean();
 
   // Index every question by its _id string for O(1) parent lookup.
   const questionById = new Map<string, ContentType>();
@@ -391,18 +375,13 @@ export const GenerateFormResponse = async (
           const qId = q._id!.toString();
 
           if (q.parentcontent) {
-            const parentQ = questionById.get(
-              q.parentcontent.qId?.toString() ?? "",
-            );
+            const parentQ = questionById.get(q.parentcontent.qId?.toString() ?? "");
             if (!parentQ) return null;
 
-            const parentAnswer = respondentAnswerMap.get(
-              parentQ._id!.toString(),
-            );
+            const parentAnswer = respondentAnswerMap.get(parentQ._id!.toString());
             if (parentAnswer === undefined) return null;
 
-            const triggerIdx =
-              triggerByChildId.get(qId) ?? Number(q.parentcontent.optIdx);
+            const triggerIdx = triggerByChildId.get(qId) ?? Number(q.parentcontent.optIdx);
 
             const triggered = Array.isArray(parentAnswer)
               ? (parentAnswer as number[]).includes(triggerIdx)
@@ -416,22 +395,18 @@ export const GenerateFormResponse = async (
 
           respondentAnswerMap.set(qId, response);
 
-          const randomScore =
-            canAddScore && q.score ? randomIntBetween(0, q.score) : undefined;
+          const randomScore = canAddScore && q.score ? randomIntBetween(0, q.score) : undefined;
 
           return {
             question: q._id,
             response,
             score: randomScore,
-            scoringMethod:
-              randomScore != null ? ScoringMethod.AUTO : ScoringMethod.NONE,
+            scoringMethod: randomScore != null ? ScoringMethod.AUTO : ScoringMethod.NONE,
           } as ResponseSetType;
         })
         .filter((entry): entry is ResponseSetType => entry !== null);
 
-      const scoredEntries = responseset.filter(
-        (i) => typeof i.score === "number" && i.score > 0,
-      );
+      const scoredEntries = responseset.filter((i) => typeof i.score === "number" && i.score > 0);
 
       const baseScore = canAddScore
         ? Math.min(

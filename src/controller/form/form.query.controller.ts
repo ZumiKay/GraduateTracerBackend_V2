@@ -1,10 +1,6 @@
 import { Response } from "express";
 import { AddQuestionNumbering, ReturnCode } from "../../utilities/helper";
-import Form, {
-  DashboardTabType,
-  FormType,
-  TypeForm,
-} from "../../model/Form.model";
+import Form, { DashboardTabType, FormType, TypeForm } from "../../model/Form.model";
 import { CustomRequest, UserToken } from "../../types/customType";
 import { Types, QueryFilter } from "mongoose";
 import Content, {
@@ -13,16 +9,9 @@ import Content, {
   QuestionType,
 } from "../../model/Content.model";
 import User from "../../model/User.model";
-import {
-  isValidObjectIdString,
-  validateAccess,
-  projections,
-} from "../../utilities/formHelpers";
+import { isValidObjectIdString, validateAccess, projections } from "../../utilities/formHelpers";
 import FormResponse from "../../model/Response.model";
-import {
-  FormValidationService,
-  FormValidationSummary,
-} from "../../services/FormValidationService";
+import { FormValidationService, FormValidationSummary } from "../../services/FormValidationService";
 
 export enum GetFilterTypeEnum {
   search = "search",
@@ -68,7 +57,6 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
       tab,
       created,
       updated,
-      action,
     } = req.query as GetFilterFormParamType;
 
     if (tab && !Object.values(DashboardTabType).includes(tab)) {
@@ -89,13 +77,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
       case GetFilterTypeEnum.detail:
       case GetFilterTypeEnum.solution:
       case GetFilterTypeEnum.preview:
-        return await handleDetailQuery(
-          res,
-          ty,
-          q as string,
-          p,
-          new Types.ObjectId(user?.sub),
-        );
+        return await handleDetailQuery(res, ty, q as string, p, new Types.ObjectId(user?.sub));
       case GetFilterTypeEnum.response:
       case GetFilterTypeEnum.analytics:
         return await handleShortFormInfo({
@@ -115,9 +97,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
           (createdAt && ![1, -1].includes(createdAt)) ||
           (updatedAt && ![1, -1].includes(updatedAt))
         ) {
-          return res
-            .status(400)
-            .json(ReturnCode(400, "Sort values must be 1 or -1"));
+          return res.status(400).json(ReturnCode(400, "Sort values must be 1 or -1"));
         }
 
         const userTab = tab || DashboardTabType.myform;
@@ -143,10 +123,7 @@ export async function GetFilterForm(req: CustomRequest, res: Response) {
         return res.status(400).json(ReturnCode(400));
     }
   } catch (error) {
-    console.error(
-      "Error in GetFilterForm:",
-      error instanceof Error ? error.message : error,
-    );
+    console.error("Error in GetFilterForm:", error instanceof Error ? error.message : error);
     return res.status(500).json(ReturnCode(500, "Internal Server Error"));
   }
 }
@@ -165,9 +142,7 @@ async function handleShortFormInfo({
   }
 
   const form = await Form.findById(id)
-    .select(
-      "_id title type totalpage totalscore user owners editors setting.email",
-    )
+    .select("_id title type totalpage totalscore user owners editors setting.email")
     .lean()
     .exec();
 
@@ -202,12 +177,9 @@ async function handleDetailQuery(
 
   const query = isValidObjectIdString(q) ? { _id: q } : { title: q };
 
-  const detailForm = await Form.findOne(query)
-    .select(projections.detail)
-    .lean();
+  const detailForm = await Form.findOne(query).select(projections.detail).lean();
 
-  if (!detailForm)
-    return res.status(404).json(ReturnCode(404, "No Form Found"));
+  if (!detailForm) return res.status(404).json(ReturnCode(404, "No Form Found"));
 
   //Normal form can't have solution ty
   if (ty === GetFilterTypeEnum.solution && detailForm.type !== TypeForm.Quiz) {
@@ -216,8 +188,7 @@ async function handleDetailQuery(
 
   //Verfiy form acess
   const accessInfo = validateAccess(detailForm, user);
-  if (!accessInfo.hasAccess)
-    return res.status(403).json(ReturnCode(403, "Access denied"));
+  if (!accessInfo.hasAccess) return res.status(403).json(ReturnCode(403, "Access denied"));
 
   //Fetch content procession
   const contentProjection =
@@ -234,12 +205,7 @@ async function handleDetailQuery(
     .sort({ qIdx: 1 })
     .lean()) as unknown as Array<ContentType>;
 
-  validationSummary = FormValidationService.validateForm(
-    detailForm,
-    resultContent,
-    p,
-    ty,
-  );
+  validationSummary = FormValidationService.validateForm(detailForm, resultContent, p, ty);
 
   //Attach each question valdiation message
   resultContent = resultContent
@@ -288,8 +254,7 @@ async function handleDetailQuery(
  */
 async function handleTotalQuery(res: Response, q: string, user: UserToken) {
   if (!user) return res.status(401).json(ReturnCode(401));
-  if (!isValidObjectIdString(q))
-    return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+  if (!isValidObjectIdString(q)) return res.status(400).json(ReturnCode(400, "Invalid form ID"));
 
   const formdata = await Form.findById(q)
     .select(projections.total)
@@ -299,8 +264,7 @@ async function handleTotalQuery(res: Response, q: string, user: UserToken) {
   if (!formdata) return res.status(404).json(ReturnCode(404, "Form not found"));
 
   const accessInfo = validateAccess(formdata, new Types.ObjectId(user.sub));
-  if (!accessInfo.hasAccess)
-    return res.status(403).json(ReturnCode(403, "Access denied"));
+  if (!accessInfo.hasAccess) return res.status(403).json(ReturnCode(403, "Access denied"));
 
   const contentStats = await Content.aggregate([
     { $match: { formId: formdata._id } },
@@ -348,8 +312,7 @@ async function handleTotalQuery(res: Response, q: string, user: UserToken) {
 
 async function handleSettingQuery(res: Response, q: string, user?: UserToken) {
   if (!user) return res.status(401).json(ReturnCode(401));
-  if (!isValidObjectIdString(q))
-    return res.status(400).json(ReturnCode(400, "Invalid form ID"));
+  if (!isValidObjectIdString(q)) return res.status(400).json(ReturnCode(400, "Invalid form ID"));
 
   const form = await Form.findById(q)
     .select(projections.setting)
@@ -359,8 +322,7 @@ async function handleSettingQuery(res: Response, q: string, user?: UserToken) {
   if (!form) return res.status(404).json(ReturnCode(404, "Form not found"));
 
   const accessInfo = validateAccess(form, new Types.ObjectId(user.sub));
-  if (!accessInfo.hasAccess)
-    return res.status(403).json(ReturnCode(403, "Access denied"));
+  if (!accessInfo.hasAccess) return res.status(403).json(ReturnCode(403, "Access denied"));
 
   return res.status(200).json({
     ...ReturnCode(200),
@@ -462,15 +424,10 @@ async function handleUserQuery({
       }
 
       const isCreator = form.user?.toString() === userId.toString();
-      const isOwner = form.owners?.some(
-        (ownerId) => ownerId.toString() === userId.toString(),
-      );
-      const isEditor = form.editors?.some(
-        (editorId) => editorId.toString() === userId.toString(),
-      );
+      const isOwner = form.owners?.some((ownerId) => ownerId.toString() === userId.toString());
+      const isEditor = form.editors?.some((editorId) => editorId.toString() === userId.toString());
 
-      const shouldBeFlagged =
-        isFormFilled && !isCreator && !isOwner && !isEditor;
+      const shouldBeFlagged = isFormFilled && !isCreator && !isOwner && !isEditor;
 
       return {
         ...form,
@@ -533,10 +490,7 @@ async function buildBaseQuery(
 }
 
 // Helper function to build filter query
-function buildFilterQuery(filter?: {
-  query?: string;
-  type?: FormType;
-}): QueryFilter<FormType> {
+function buildFilterQuery(filter?: { query?: string; type?: FormType }): QueryFilter<FormType> {
   const filterQuery: QueryFilter<FormType> = {};
 
   if (filter?.query) {
