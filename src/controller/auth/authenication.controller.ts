@@ -12,6 +12,7 @@ import bcrypt from "bcrypt";
 import Usersession from "../../model/Usersession.model";
 import HandleEmail from "../../utilities/email";
 import sessionCache from "../../utilities/sessionCache";
+import { getCookieOptions, getClearCookieOptions } from "../../utilities/cookieHelper";
 
 interface Logindata {
   email: string;
@@ -303,41 +304,33 @@ class AuthenticationController {
   };
 
   private setAccessTokenCookie(res: Response, token: string): void {
-    res.cookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", token, {
-      sameSite: "lax",
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "PROD",
-      expires: getDateByMinute(30),
-    });
+    res.cookie(
+      process.env.ACCESS_TOKEN_COOKIE || "access_token",
+      token,
+      getCookieOptions({ expires: getDateByMinute(30) }),
+    );
   }
 
   private setRefreshTokenCookie(res: Response, refreshToken: string): void {
     res.cookie(
       process.env.REFRESH_TOKEN_COOKIE || "refresh_token",
       refreshToken,
-      {
-        sameSite: "lax",
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "PROD",
-        expires: getDateByNumDay(1),
-      },
+      getCookieOptions({ expires: getDateByNumDay(1) }),
     );
   }
 
   public clearAccessTokenCookie(res: Response): void {
-    res.clearCookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", {
-      sameSite: "lax",
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "PROD",
-    });
+    res.clearCookie(
+      process.env.ACCESS_TOKEN_COOKIE || "access_token",
+      getClearCookieOptions(),
+    );
   }
 
   public clearRefreshTokenCookie(res: Response): void {
-    res.clearCookie(process.env.REFRESH_TOKEN_COOKIE || "refresh_token", {
-      sameSite: "lax",
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "PROD",
-    });
+    res.clearCookie(
+      process.env.REFRESH_TOKEN_COOKIE || "refresh_token",
+      getClearCookieOptions(),
+    );
   }
 }
 

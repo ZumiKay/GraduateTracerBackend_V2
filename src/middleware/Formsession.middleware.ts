@@ -15,6 +15,7 @@ import {
 } from "../utilities/helper";
 import FormsessionService from "../controller/form/formsession.controller";
 import { isValidObjectIdString } from "../utilities/formHelpers";
+import { getClearCookieOptions } from "../utilities/cookieHelper";
 
 export interface FormSessionJWTPayloadType extends JwtPayload {
   email: string;
@@ -104,8 +105,9 @@ export default class FormsessionMiddleware {
         const isSession = await Formsession.findOne(sessionQuery).lean();
 
         if (!isSession) {
-          res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
-          res.clearCookie(process.env.RESPONDENT_COOKIE as string);
+          const clearOpts = getClearCookieOptions({ sameSite: "strict" });
+          res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string, clearOpts);
+          res.clearCookie(process.env.RESPONDENT_COOKIE as string, clearOpts);
 
           res.status(401).json(RESPONSES.sessionNotFound());
           return;

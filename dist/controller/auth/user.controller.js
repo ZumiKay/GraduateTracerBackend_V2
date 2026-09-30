@@ -97,9 +97,16 @@ async function RegisterUser(req, res) {
 }
 async function EditUser(req, res) {
     const edituserdata = req.body;
+    const currentUser = req.user;
+    if (!currentUser)
+        return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
     try {
         if (!edituserdata._id || !edituserdata.edittype)
             return res.status(400).json((0, helper_1.ReturnCode)(400));
+        if (currentUser.sub !== edituserdata._id.toString() &&
+            currentUser.role !== User_model_1.ROLE.ADMIN) {
+            return res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
+        }
         if (edituserdata.edittype === "name") {
             const isName = await User_model_1.default.findOne({ name: edituserdata.name }).lean();
             if (isName) {
@@ -117,6 +124,7 @@ async function EditUser(req, res) {
                             const isCode = await User_model_1.default.findOne({ code: String(generateCode) });
                             if (!isCode) {
                                 isUnqiue = true;
+                                break;
                             }
                             generateCode = (0, helper_1.RandomNumber)(6);
                         }
@@ -174,11 +182,24 @@ async function EditUser(req, res) {
     }
 }
 async function DeleteUser(req, res) {
-    const id = req.body;
+    const currentUser = req.user;
+    if (!currentUser)
+        return res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+    const targetId = typeof req.body === "string"
+        ? req.body
+        : req.body?._id || req.body?.id;
     try {
-        if (!id)
-            return res.status(400).json((0, helper_1.ReturnCode)(400));
-        await User_model_1.default.findByIdAndDelete(id);
+        if (!targetId)
+            return res.status(400).json((0, helper_1.ReturnCode)(400, "User ID is required"));
+        if (currentUser.sub !== targetId.toString() &&
+            currentUser.role !== User_model_1.ROLE.ADMIN) {
+            return res
+                .status(403)
+                .json((0, helper_1.ReturnCode)(403, "Access denied: cannot delete other users"));
+        }
+        const deleted = await User_model_1.default.findByIdAndDelete(targetId);
+        if (!deleted)
+            return res.status(404).json((0, helper_1.ReturnCode)(404, "User not found"));
         return res.status(200).json((0, helper_1.ReturnCode)(200, "User Deleted"));
     }
     catch (error) {

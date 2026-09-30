@@ -44,6 +44,7 @@ const User_middleware_1 = __importStar(require("./User.middleware"));
 const helper_1 = require("../utilities/helper");
 const formsession_controller_1 = __importDefault(require("../controller/form/formsession.controller"));
 const formHelpers_1 = require("../utilities/formHelpers");
+const cookieHelper_1 = require("../utilities/cookieHelper");
 class FormsessionMiddleware {
     /**
      * Validates environment configuration for cookies
@@ -110,8 +111,9 @@ class FormsessionMiddleware {
                 };
                 const isSession = await Formsession_model_1.default.findOne(sessionQuery).lean();
                 if (!isSession) {
-                    res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE);
-                    res.clearCookie(process.env.RESPONDENT_COOKIE);
+                    const clearOpts = (0, cookieHelper_1.getClearCookieOptions)({ sameSite: "strict" });
+                    res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE, clearOpts);
+                    res.clearCookie(process.env.RESPONDENT_COOKIE, clearOpts);
                     res.status(401).json(customType_1.RESPONSES.sessionNotFound());
                     return;
                 }

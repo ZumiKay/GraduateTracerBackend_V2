@@ -48,6 +48,7 @@ const Formsession_model_1 = __importDefault(require("../../model/Formsession.mod
 const User_middleware_1 = require("../../middleware/User.middleware");
 const notification_controller_1 = require("../utils/notification.controller");
 const fingerprint_1 = require("../../utilities/fingerprint");
+const cookieHelper_1 = require("../../utilities/cookieHelper");
 const formHelpers_1 = require("../../utilities/formHelpers");
 const Content_model_1 = __importDefault(require("../../model/Content.model"));
 class FormResponseSubmissionController {
@@ -117,8 +118,15 @@ class FormResponseSubmissionController {
             }
             //Loggout current user for submitonce form
             if (form.setting?.submitonce && req.formsession) {
-                res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE);
-                res.clearCookie(process.env.RESPONDENT_COOKIE);
+                if (process.env.USE_NGROK === "true") {
+                    const clearOpts = (0, cookieHelper_1.getClearCookieOptions)({ sameSite: "strict" });
+                    res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE, clearOpts);
+                    res.clearCookie(process.env.RESPONDENT_COOKIE, clearOpts);
+                }
+                else {
+                    res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE);
+                    res.clearCookie(process.env.RESPONDENT_COOKIE);
+                }
                 await Formsession_model_1.default.deleteOne({ session_id: req.formsession.sub });
             }
             //Create Notification for formOwner

@@ -53,11 +53,7 @@ UserRoute.post(
   RegisterUser as unknown as RequestHandler,
 );
 //User Management
-UserRoute.put(
-  "/edituser",
-  UserMiddleware.VerifyToken,
-  EditUser as unknown as RequestHandler,
-);
+UserRoute.put("/edituser", UserMiddleware.VerifyToken, EditUser as unknown as RequestHandler);
 UserRoute.delete(
   "/deleteuser",
   UserMiddleware.VerifyToken,
@@ -71,14 +67,8 @@ UserRoute.post(
   validate(UserValidate) as unknown as RequestHandler,
   authenicationController.Login as unknown as RequestHandler,
 );
-UserRoute.get(
-  "/checksession",
-  authenicationController.CheckSession as unknown as RequestHandler,
-);
-UserRoute.delete(
-  "/logout",
-  authenicationController.Logout as unknown as RequestHandler,
-);
+UserRoute.get("/checksession", authenicationController.CheckSession as unknown as RequestHandler);
+UserRoute.delete("/logout", authenicationController.Logout as unknown as RequestHandler);
 UserRoute.post(
   "/refreshtoken",
   UserMiddleware.VerifyRefreshToken as unknown as RequestHandler,
@@ -91,10 +81,7 @@ UserRoute.put(
 );
 
 //Recaptcha
-UserRoute.post(
-  "/recaptchaverify",
-  VerifyRecaptcha as unknown as RequestHandler,
-);
+UserRoute.post("/recaptchaverify", VerifyRecaptcha as unknown as RequestHandler);
 
 //Form Modification Routes
 UserRoute.post(

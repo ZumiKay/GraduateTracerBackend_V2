@@ -9,6 +9,7 @@ const bcrypt_1 = __importDefault(require("bcrypt"));
 const Usersession_model_1 = __importDefault(require("../../model/Usersession.model"));
 const email_1 = __importDefault(require("../../utilities/email"));
 const sessionCache_1 = __importDefault(require("../../utilities/sessionCache"));
+const cookieHelper_1 = require("../../utilities/cookieHelper");
 class AuthenticationController {
     Login = async (req, res) => {
         const { email, password, rememberMe } = req.body;
@@ -236,34 +237,16 @@ class AuthenticationController {
         }
     };
     setAccessTokenCookie(res, token) {
-        res.cookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", token, {
-            sameSite: "lax",
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "PROD",
-            expires: (0, helper_1.getDateByMinute)(30),
-        });
+        res.cookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", token, (0, cookieHelper_1.getCookieOptions)({ expires: (0, helper_1.getDateByMinute)(30) }));
     }
     setRefreshTokenCookie(res, refreshToken) {
-        res.cookie(process.env.REFRESH_TOKEN_COOKIE || "refresh_token", refreshToken, {
-            sameSite: "lax",
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "PROD",
-            expires: (0, helper_1.getDateByNumDay)(1),
-        });
+        res.cookie(process.env.REFRESH_TOKEN_COOKIE || "refresh_token", refreshToken, (0, cookieHelper_1.getCookieOptions)({ expires: (0, helper_1.getDateByNumDay)(1) }));
     }
     clearAccessTokenCookie(res) {
-        res.clearCookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", {
-            sameSite: "lax",
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "PROD",
-        });
+        res.clearCookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", (0, cookieHelper_1.getClearCookieOptions)());
     }
     clearRefreshTokenCookie(res) {
-        res.clearCookie(process.env.REFRESH_TOKEN_COOKIE || "refresh_token", {
-            sameSite: "lax",
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "PROD",
-        });
+        res.clearCookie(process.env.REFRESH_TOKEN_COOKIE || "refresh_token", (0, cookieHelper_1.getClearCookieOptions)());
     }
 }
 exports.default = new AuthenticationController();

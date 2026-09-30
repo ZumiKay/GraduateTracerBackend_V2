@@ -20,6 +20,7 @@ import User from "../../model/User.model";
 import { compareSync } from "bcrypt";
 import Usersession from "../../model/Usersession.model";
 import FormResponse from "../../model/Response.model";
+import { getCookieOptions, getClearCookieOptions } from "../../utilities/cookieHelper";
 
 interface RespodentLoginProps {
   formId: string;
@@ -307,12 +308,10 @@ export default class FormsessionService {
     cookie?: string,
     expiredAt?: Date,
   ): void {
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "PROD",
-      sameSite: "strict" as const,
+    const cookieOptions = getCookieOptions({
+      sameSite: "strict",
       maxAge: expiredAt ? expiredAt.getTime() - Date.now() : undefined,
-    };
+    });
 
     res.cookie(
       cookie ?? (process.env.RESPONDENT_COOKIE as string),
@@ -619,11 +618,7 @@ export default class FormsessionService {
       if (isSkipAutoLogin === 1) {
         await Formsession.deleteOne({ _id: formsession._id }).lean();
 
-        const clearOptions = {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "PROD",
-          sameSite: "strict" as const,
-        };
+        const clearOptions = getClearCookieOptions({ sameSite: "strict" });
         res.clearCookie(process.env.RESPONDENT_COOKIE as string, clearOptions);
         res.clearCookie(
           process.env.ACCESS_RESPONDENT_COOKIE as string,
@@ -658,11 +653,7 @@ export default class FormsessionService {
         },
       ).lean();
 
-      const cookieOptions = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "PROD",
-        sameSite: "strict" as const,
-      };
+      const cookieOptions = getCookieOptions({ sameSite: "strict" });
 
       // Set main session cookie
       res.cookie(process.env.RESPONDENT_COOKIE as string, newUniqueSessionId, {
@@ -694,11 +685,7 @@ export default class FormsessionService {
       await Formsession.deleteOne({ session_id: req.formsession?.sub });
 
       // Clear cookies with the same options used when setting them
-      const cookieOptions = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "PROD",
-        sameSite: "strict" as const,
-      };
+      const cookieOptions = getClearCookieOptions({ sameSite: "strict" });
 
       // Clear both respondent cookies
       res.clearCookie(process.env.RESPONDENT_COOKIE as string, cookieOptions);
@@ -773,8 +760,9 @@ export default class FormsessionService {
       //Refresh token expired or invalid
       if (extractedToken.isExpired || !extractedToken.data) {
         //Clear invalid session
-        res.clearCookie(process.env.RESPONDENT_COOKIE as string);
-        res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
+        const clearOpts = getClearCookieOptions({ sameSite: "strict" });
+        res.clearCookie(process.env.RESPONDENT_COOKIE as string, clearOpts);
+        res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string, clearOpts);
         await Formsession.deleteOne({ session_id: respondentCookie });
         return res.status(401).json(ReturnCode(401, "Session expired"));
       }

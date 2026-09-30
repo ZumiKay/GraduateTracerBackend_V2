@@ -26,6 +26,7 @@ import {
 import { CustomRequest } from "../../types/customType";
 import { NotificationController } from "../utils/notification.controller";
 import { FingerprintService } from "../../utilities/fingerprint";
+import { getClearCookieOptions } from "../../utilities/cookieHelper";
 import {
   getLastQuestionIdx,
   hasFormAccess,
@@ -138,8 +139,14 @@ export class FormResponseSubmissionController {
 
       //Loggout current user for submitonce form
       if (form.setting?.submitonce && req.formsession) {
-        res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
-        res.clearCookie(process.env.RESPONDENT_COOKIE as string);
+        if (process.env.USE_NGROK === "true") {
+          const clearOpts = getClearCookieOptions({ sameSite: "strict" });
+          res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string, clearOpts);
+          res.clearCookie(process.env.RESPONDENT_COOKIE as string, clearOpts);
+        } else {
+          res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE as string);
+          res.clearCookie(process.env.RESPONDENT_COOKIE as string);
+        }
         await Formsession.deleteOne({ session_id: req.formsession.sub });
       }
 

@@ -12,7 +12,9 @@
     "test:docker:down": "docker compose -f docker-compose.test.yml down -v",
     "test:watch": "jest --watch",
     "test:helper": "jest -t \"groupContentByParent\" --no-cache",
-    "dev": "nodemon"
+    "dev": "nodemon",
+    "dev:ngrok": "USE_NGROK=true nodemon",
+    "tunnel": "ngrok http 8000"
   },
   "keywords": [],
   "author": "",

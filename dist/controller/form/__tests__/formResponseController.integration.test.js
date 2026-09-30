@@ -312,20 +312,20 @@ describe("FormResponse Controller Integration Test", () => {
     /**
      * Test case analysis for SubmitFormResponseMethod
      * @private vlidateSubmissionInput
-     *  [] Response must be an array
-     *  [] all question must have _id
+     *  [x] Response must be an array
+     *  [x] all question must have _id
      *
      * @static createSubmissionWithTracking
-     *  [] gather all require tracking data
+     *  [x] gather all require tracking data
      *
      * Form type processing service
-     *  [] processFormSubmission (quiz form process)
-     *    [] addscore method
-     *      [] all normal question type score
-     *      [] normal condition question score
-     *      [] condition with useChildSum = true
-     *      [] condtion with isBonusScore = true
-     *    [] send notirfacation to notify new response
+     *  [x] processFormSubmission (quiz form process)
+     *    [x] addscore method
+     *      [x] all normal question type score
+     *      [x] normal condition question score
+     *      [x] condition with useChildSum = true
+     *      [x] condtion with isBonusScore = true
+     *    [x] send notirfacation to notify new response
      *
      *
      */
@@ -817,9 +817,7 @@ describe("FormResponse Controller Integration Test", () => {
                     .put(`${baseURL}/batch-update-scores`)
                     .set("Cookie", [`${helper_integration_1.testEnv.ACCESS_TOKEN_COOKIE}=${nonOwnerToken}`])
                     .send({
-                    updates: [
-                        { responseId: resp1._id.toString(), score: 25 },
-                    ],
+                    updates: [{ responseId: resp1._id.toString(), score: 25 }],
                 });
                 expect(res.status).toBe(403);
             });
@@ -848,11 +846,23 @@ describe("FormResponse Controller Integration Test", () => {
                     updates: [
                         {
                             responseId: resp1._id.toString(),
-                            scores: [{ questionId: testQuestion._id.toString(), score: 18, comment: "Well done" }],
+                            scores: [
+                                {
+                                    questionId: testQuestion._id.toString(),
+                                    score: 18,
+                                    comment: "Well done",
+                                },
+                            ],
                         },
                         {
                             responseId: resp2._id.toString(),
-                            scores: [{ questionId: testQuestion._id.toString(), score: 12, comment: "Needs work" }],
+                            scores: [
+                                {
+                                    questionId: testQuestion._id.toString(),
+                                    score: 12,
+                                    comment: "Needs work",
+                                },
+                            ],
                         },
                     ],
                 });

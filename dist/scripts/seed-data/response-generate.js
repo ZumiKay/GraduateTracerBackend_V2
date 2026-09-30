@@ -190,11 +190,8 @@ const GenerateQuestionResponseBaseOnType = (data) => {
             const minDate = data.rangedate?.start
                 ? new Date(data.rangedate.start)
                 : new Date(new Date().getFullYear() - 2, 0, 1);
-            const maxDate = data.rangedate?.end
-                ? new Date(data.rangedate.end)
-                : new Date();
-            const midMs = minDate.getTime() +
-                Math.random() * ((maxDate.getTime() - minDate.getTime()) / 2);
+            const maxDate = data.rangedate?.end ? new Date(data.rangedate.end) : new Date();
+            const midMs = minDate.getTime() + Math.random() * ((maxDate.getTime() - minDate.getTime()) / 2);
             const endMs = midMs + Math.random() * (maxDate.getTime() - midMs);
             return {
                 start: new Date(midMs).toISOString().split("T")[0],
@@ -214,6 +211,7 @@ const GenerateQuestionResponseBaseOnType = (data) => {
             return null;
     }
 };
+/*Generate user data mixed with existed real user and generate a unique user*/
 const createUserData = async (userCount) => {
     const realUsers = await User_model_1.default.find().select("_id email name").lean();
     const needed = Math.max(0, userCount - realUsers.length);
@@ -256,9 +254,7 @@ const GenerateFormResponse = async (params) => {
     // Clear existing responses for this form before seeding fresh data
     const deleted = await Response_model_1.default.deleteMany({ formId });
     console.log(`Cleared ${deleted.deletedCount} existing responses for form ${formId}`);
-    const questions = await Content_model_1.default.find({ formId })
-        .sort({ page: 1, qIdx: 1 })
-        .lean();
+    const questions = await Content_model_1.default.find({ formId }).sort({ page: 1, qIdx: 1 }).lean();
     // Index every question by its _id string for O(1) parent lookup.
     const questionById = new Map();
     for (const q of questions) {

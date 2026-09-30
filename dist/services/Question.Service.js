@@ -233,7 +233,9 @@ class QuestionService {
                         const childScoreSum = data.reduce((sum, child) => {
                             const isChild = item.conditional?.find((c) => (c.contentId &&
                                 c.contentId.toString() === child._id?.toString()) ||
-                                (c.contentIdx !== undefined && c.contentIdx === child.qIdx));
+                                (c.contentIdx !== undefined &&
+                                    (c.contentIdx === child.qIdx ||
+                                        data[c.contentIdx] === child)));
                             return isChild ? sum + (child.score ?? 0) : sum;
                         }, 0);
                         if (childScoreSum !== item.score) {
@@ -243,7 +245,9 @@ class QuestionService {
                     else {
                         const isWrongScore = data.some((child) => item.conditional?.find((c) => (c.contentId &&
                             c.contentId.toString() === child._id?.toString()) ||
-                            (c.contentIdx !== undefined && c.contentIdx === child.qIdx)) &&
+                            (c.contentIdx !== undefined &&
+                                (c.contentIdx === child.qIdx ||
+                                    data[c.contentIdx] === child))) &&
                             child.score &&
                             item.score &&
                             child.score > item.score);
@@ -278,7 +282,14 @@ class QuestionService {
         return conditional
             .map((cond) => {
             if (!cond.contentId && cond.contentIdx !== undefined) {
-                const referencedId = data[cond.contentIdx]?._id || questionIdMap.get(cond.contentIdx);
+                let referencedId = data[cond.contentIdx]?._id || questionIdMap.get(cond.contentIdx);
+                if (!referencedId) {
+                    const idxByQIdx = data.findIndex((q) => q.qIdx === cond.contentIdx);
+                    if (idxByQIdx !== -1) {
+                        referencedId =
+                            data[idxByQIdx]?._id || questionIdMap.get(idxByQIdx);
+                    }
+                }
                 if (referencedId) {
                     return { ...cond, contentId: referencedId };
                 }
@@ -294,14 +305,28 @@ class QuestionService {
     static processParentContent(parentcontent, data, questionIdMap) {
         if (!parentcontent)
             return undefined;
-        // If qId already exists and is valid, return as-is
+        // If qId already exists and is valid, populate qIdx if missing
         if (parentcontent.qId && parentcontent.qId.length > 0) {
+            if (parentcontent.qIdx === undefined) {
+                const parentQuestion = data.find((q) => q._id?.toString() === parentcontent.qId?.toString());
+                if (parentQuestion &&
+                    typeof parentQuestion.qIdx === "number" &&
+                    !isNaN(parentQuestion.qIdx)) {
+                    return {
+                        ...parentcontent,
+                        qIdx: parentQuestion.qIdx,
+                    };
+                }
+            }
             return parentcontent;
         }
         // If qIdx exists, resolve it to the parent's _id
-        if (parentcontent.qIdx !== undefined) {
-            // Find the parent question by qIdx
-            const parentIndex = data.findIndex((q) => q.qIdx === parentcontent.qIdx);
+        if (parentcontent.qIdx !== undefined && !isNaN(parentcontent.qIdx)) {
+            // Find the parent question by qIdx or array index
+            let parentIndex = data.findIndex((q) => q.qIdx === parentcontent.qIdx);
+            if (parentIndex === -1 && parentcontent.qIdx < data.length) {
+                parentIndex = parentcontent.qIdx;
+            }
             if (parentIndex !== -1) {
                 const parentQuestion = data[parentIndex];
                 // Get parent's _id (either existing or newly generated)
@@ -310,6 +335,10 @@ class QuestionService {
                     return {
                         ...parentcontent,
                         qId: parentId.toString(),
+                        qIdx: typeof parentQuestion.qIdx === "number" &&
+                            !isNaN(parentQuestion.qIdx)
+                            ? parentQuestion.qIdx
+                            : parentcontent.qIdx,
                     };
                 }
             }
@@ -326,12 +355,12 @@ class QuestionService {
             if (eq._id) {
                 existingMap.set(eq._id.toString(), eq);
             }
-            if (typeof eq.qIdx === "number" && eq.qIdx > maxQIdx) {
+            if (typeof eq.qIdx === "number" && !isNaN(eq.qIdx) && eq.qIdx > maxQIdx) {
                 maxQIdx = eq.qIdx;
             }
         }
         for (const item of data) {
-            if (typeof item.qIdx === "number" && item.qIdx > maxQIdx) {
+            if (typeof item.qIdx === "number" && !isNaN(item.qIdx) && item.qIdx > maxQIdx) {
                 maxQIdx = item.qIdx;
             }
         }
@@ -340,10 +369,12 @@ class QuestionService {
             const documentId = _id || questionIdMap.get(index);
             const existingItem = _id ? existingMap.get(_id.toString()) : undefined;
             let qIdx;
-            if (typeof item.qIdx === "number") {
+            if (typeof item.qIdx === "number" && !isNaN(item.qIdx)) {
                 qIdx = item.qIdx;
             }
-            else if (existingItem && typeof existingItem.qIdx === "number") {
+            else if (existingItem &&
+                typeof existingItem.qIdx === "number" &&
+                !isNaN(existingItem.qIdx)) {
                 qIdx = existingItem.qIdx;
             }
             else {

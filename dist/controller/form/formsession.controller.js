@@ -47,6 +47,7 @@ const User_model_1 = __importDefault(require("../../model/User.model"));
 const bcrypt_1 = require("bcrypt");
 const Usersession_model_1 = __importDefault(require("../../model/Usersession.model"));
 const Response_model_1 = __importDefault(require("../../model/Response.model"));
+const cookieHelper_1 = require("../../utilities/cookieHelper");
 class FormsessionService {
     static respondentLoginSchema = zod_1.z.object({
         formId: zod_1.z.string().min(1),
@@ -228,12 +229,10 @@ class FormsessionService {
         }
     }
     static setCookie(res, sessionId, cookie, expiredAt) {
-        const cookieOptions = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "PROD",
+        const cookieOptions = (0, cookieHelper_1.getCookieOptions)({
             sameSite: "strict",
             maxAge: expiredAt ? expiredAt.getTime() - Date.now() : undefined,
-        };
+        });
         res.cookie(cookie ?? process.env.RESPONDENT_COOKIE, sessionId, cookieOptions);
     }
     /**
@@ -437,7 +436,7 @@ class FormsessionService {
             });
         }
         const { code } = req.params;
-        const { skiplogin, verify } = req.query;
+        const { skiplogin, verify } = (req.query || {});
         if (!code)
             return res.status(404).json((0, helper_1.ReturnCode)(404));
         if (verify && !Number(parseInt(verify, 10)) && verify !== "1")
@@ -477,11 +476,7 @@ class FormsessionService {
             }
             if (isSkipAutoLogin === 1) {
                 await Formsession_model_1.default.deleteOne({ _id: formsession._id }).lean();
-                const clearOptions = {
-                    httpOnly: true,
-                    secure: process.env.NODE_ENV === "PROD",
-                    sameSite: "strict",
-                };
+                const clearOptions = (0, cookieHelper_1.getClearCookieOptions)({ sameSite: "strict" });
                 res.clearCookie(process.env.RESPONDENT_COOKIE, clearOptions);
                 res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE, clearOptions);
                 return res.status(200).json((0, helper_1.ReturnCode)(200, "Session Terminated"));
@@ -505,11 +500,7 @@ class FormsessionService {
                 expiredAt,
                 $unset: { removeCode: 1 },
             }).lean();
-            const cookieOptions = {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "PROD",
-                sameSite: "strict",
-            };
+            const cookieOptions = (0, cookieHelper_1.getCookieOptions)({ sameSite: "strict" });
             // Set main session cookie
             res.cookie(process.env.RESPONDENT_COOKIE, newUniqueSessionId, {
                 ...cookieOptions,
@@ -533,11 +524,7 @@ class FormsessionService {
         try {
             await Formsession_model_1.default.deleteOne({ session_id: req.formsession?.sub });
             // Clear cookies with the same options used when setting them
-            const cookieOptions = {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "PROD",
-                sameSite: "strict",
-            };
+            const cookieOptions = (0, cookieHelper_1.getClearCookieOptions)({ sameSite: "strict" });
             // Clear both respondent cookies
             res.clearCookie(process.env.RESPONDENT_COOKIE, cookieOptions);
             res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE, cookieOptions);
@@ -592,8 +579,9 @@ class FormsessionService {
             //Refresh token expired or invalid
             if (extractedToken.isExpired || !extractedToken.data) {
                 //Clear invalid session
-                res.clearCookie(process.env.RESPONDENT_COOKIE);
-                res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE);
+                const clearOpts = (0, cookieHelper_1.getClearCookieOptions)({ sameSite: "strict" });
+                res.clearCookie(process.env.RESPONDENT_COOKIE, clearOpts);
+                res.clearCookie(process.env.ACCESS_RESPONDENT_COOKIE, clearOpts);
                 await Formsession_model_1.default.deleteOne({ session_id: respondentCookie });
                 return res.status(401).json((0, helper_1.ReturnCode)(401, "Session expired"));
             }

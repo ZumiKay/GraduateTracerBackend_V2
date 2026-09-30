@@ -24,7 +24,6 @@ ResponseRouter.delete("/sessionlogout/:formId", Formsession_middleware_1.default
 ResponseRouter.get("/getuserresponses/:formId/:page/:resIdx/:userId", User_middleware_1.default.VerifyToken, ResponseQueryService_1.ResponseQueryService.getUserResponses);
 // Get list of respondent by formId
 ResponseRouter.get("/getrespondents/:formId", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponsesInfo);
-//TODO ToBE Test
 // Get responses with filters and pagination
 ResponseRouter.get("/getresponselist", User_middleware_1.default.VerifyToken, form_response_controller_1.default.GetResponsesWithFilters);
 //TODO ToBeTest

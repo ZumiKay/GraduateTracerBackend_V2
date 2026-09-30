@@ -84,12 +84,12 @@ async function DeleteForm(req, res) {
         return res.status(400).json((0, helper_1.ReturnCode)(400, "No IDs provided"));
     try {
         const forms = await Form_model_1.default.find({ _id: { $in: ids } });
-        // Verify if form access
+        // Verify if form access (only primary owner can delete forms)
         for (const form of forms) {
-            if (!(0, formHelpers_1.hasFormAccess)(form, new mongoose_1.Types.ObjectId(user.sub)))
+            if (!(0, formHelpers_1.isPrimaryOwner)(form, user.sub))
                 return res
                     .status(403)
-                    .json((0, helper_1.ReturnCode)(403, "Access denied to one or more forms"));
+                    .json((0, helper_1.ReturnCode)(403, "Access denied: only primary owner can delete forms"));
         }
         //Delete Process
         await Form_model_1.default.deleteMany({
@@ -134,7 +134,10 @@ async function PageHandler(req, res) {
             await Form_model_1.default.updateOne({ _id: formId }, { $inc: { totalpage: 1 } });
         }
         else if (ty === "delete") {
-            const toBeDeleteContent = await Content_model_1.default.find({ page: deletepage })
+            const toBeDeleteContent = await Content_model_1.default.find({
+                formId: new mongoose_1.Types.ObjectId(formId),
+                page: deletepage,
+            })
                 .select("_id")
                 .lean();
             //update form totalpage and delete questions
@@ -142,7 +145,17 @@ async function PageHandler(req, res) {
                 $inc: { totalpage: -1 },
                 $pull: { contentIds: { $in: toBeDeleteContent.map((i) => i._id) } },
             });
-            await Content_model_1.default.deleteMany({ page: deletepage });
+            await Content_model_1.default.deleteMany({
+                formId: new mongoose_1.Types.ObjectId(formId),
+                page: deletepage,
+            });
+            // Shift subsequent pages down by 1
+            await Content_model_1.default.updateMany({
+                formId: new mongoose_1.Types.ObjectId(formId),
+                page: { $gt: deletepage },
+            }, {
+                $inc: { page: -1 },
+            });
         }
         return res
             .status(200)

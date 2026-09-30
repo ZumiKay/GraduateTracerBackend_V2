@@ -1,14 +1,19 @@
 import { Request, Response } from "express";
-import { ReturnCode } from "../../utilities/helper";
+import { ReturnCode, SendResponse } from "../../utilities/helper";
 
 export default async function VerifyRecaptcha(req: Request, res: Response) {
   const { token } = req.body;
 
-  const secretKey = process.env.RECAPCHA_SECRETKEY;
-  const verificationUrl = `https://www.google.com/recaptcha/api/siteverify`;
+  if (!process.env?.RECAPCHA_SECRETKEY || !process.env.RECAPCHA_URL) {
+    return SendResponse(res, 500);
+  }
+
+  const secretKey = process.env.RECAPCHA_SECRETKEY as string;
+  const verificationUrl = process.env.RECAPCHA_URL as string;
 
   try {
-    const response = await fetch(verificationUrl, {
+    const url = `${verificationUrl}/assessments?key=${secretKey}`;
+    const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -21,9 +26,7 @@ export default async function VerifyRecaptcha(req: Request, res: Response) {
     if (data.success && data.score >= 0.5) {
       return res.status(200).json(ReturnCode(200));
     } else {
-      return res
-        .status(400)
-        .json({ ...ReturnCode(400), errors: data["error-codes"] });
+      return res.status(400).json({ ...ReturnCode(400), errors: data["error-codes"] });
     }
   } catch (error) {
     return res.status(500).json(ReturnCode(500));

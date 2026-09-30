@@ -10,6 +10,7 @@ declare namespace NodeJS {
     REFRESH_TOKEN_COOKIE: string;
     ACCESS_TOKEN_COOKIE: string;
     RECAPCHA_SECRETKEY: string;
+    RECAPCHA_URL: string;
     LOGIN_ATTEMPT: string;
     RESPONDENT_COOKIE: string;
     ACCESS_RESPONDENT_COOKIE: string;
@@ -28,6 +29,12 @@ declare namespace NodeJS {
     RSA_PUBLIC_KEY: string;
     RSA_PRIVATE_KEY: string;
     API_BASEURL: string;
+    // Ngrok & Cross-Site settings
+    USE_NGROK?: string;
+    ALLOW_NGROK?: string;
+    COOKIE_SAMESITE?: "lax" | "strict" | "none";
+    COOKIE_SECURE?: string;
+    TRUST_PROXY?: string;
     [key: string]: string | undefined; // Optional: For additional dynamic environment variables
   }
 }

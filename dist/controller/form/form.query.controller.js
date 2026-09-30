@@ -70,7 +70,7 @@ var ValidationActionEnum;
 })(ValidationActionEnum || (ValidationActionEnum = {}));
 async function GetFilterForm(req, res) {
     try {
-        const { ty, q, page = "1", limit = "5", tab, created, updated, action, } = req.query;
+        const { ty, q, page = "1", limit = "5", tab, created, updated, } = req.query;
         if (tab && !Object.values(Form_model_1.DashboardTabType).includes(tab)) {
             return res.status(400).json((0, helper_1.ReturnCode)(400, "Invalid type or query"));
         }
@@ -101,9 +101,7 @@ async function GetFilterForm(req, res) {
             case GetFilterTypeEnum.user:
                 if ((createdAt && ![1, -1].includes(createdAt)) ||
                     (updatedAt && ![1, -1].includes(updatedAt))) {
-                    return res
-                        .status(400)
-                        .json((0, helper_1.ReturnCode)(400, "Sort values must be 1 or -1"));
+                    return res.status(400).json((0, helper_1.ReturnCode)(400, "Sort values must be 1 or -1"));
                 }
                 const userTab = tab || Form_model_1.DashboardTabType.myform;
                 return await handleUserQuery({
@@ -160,9 +158,7 @@ async function handleDetailQuery(res, ty, q, p, user) {
     if (!user)
         return res.status(401).json((0, helper_1.ReturnCode)(401));
     const query = (0, formHelpers_1.isValidObjectIdString)(q) ? { _id: q } : { title: q };
-    const detailForm = await Form_model_1.default.findOne(query)
-        .select(formHelpers_1.projections.detail)
-        .lean();
+    const detailForm = await Form_model_1.default.findOne(query).select(formHelpers_1.projections.detail).lean();
     if (!detailForm)
         return res.status(404).json((0, helper_1.ReturnCode)(404, "No Form Found"));
     //Normal form can't have solution ty

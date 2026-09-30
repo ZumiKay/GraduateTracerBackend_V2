@@ -7,6 +7,7 @@ exports.NotificationController = exports.sseManager = void 0;
 const mongoose_1 = require("mongoose");
 const Notification_model_1 = __importDefault(require("../../model/Notification.model"));
 const helper_1 = require("../../utilities/helper");
+const User_model_1 = require("../../model/User.model");
 // SSE Client Manager
 class SSEConnectionManager {
     clients = new Map();
@@ -73,17 +74,25 @@ class NotificationController {
     }
     // Get notifications for a user
     GetNotifications = async (req, res) => {
-        const { userId } = req.query;
+        const user = req.user;
+        if (!user) {
+            res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+            return;
+        }
+        const requestedUserId = req.query.userId;
+        const targetUserId = requestedUserId || user.sub;
+        if (requestedUserId &&
+            requestedUserId !== user.sub &&
+            user.role !== User_model_1.ROLE.ADMIN) {
+            res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
+            return;
+        }
         const page = Number(req.query.page) || 1;
         const limit = Number(req.query.limit) || 20;
         const unreadOnly = req.query.unreadOnly === "true";
         try {
-            if (!userId) {
-                res.status(400).json((0, helper_1.ReturnCode)(400, "User ID is required"));
-                return;
-            }
             const query = {
-                userId: new mongoose_1.Types.ObjectId(userId),
+                userId: new mongoose_1.Types.ObjectId(targetUserId),
             };
             if (unreadOnly) {
                 query.isRead = false;
@@ -95,7 +104,7 @@ class NotificationController {
                 .lean();
             const totalCount = await Notification_model_1.default.countDocuments(query);
             const unreadCount = await Notification_model_1.default.countDocuments({
-                userId: new mongoose_1.Types.ObjectId(userId),
+                userId: new mongoose_1.Types.ObjectId(targetUserId),
                 isRead: false,
             });
             res.status(200).json({
@@ -117,10 +126,20 @@ class NotificationController {
     // Mark notification as read
     MarkAsRead = async (req, res) => {
         const { notificationId } = req.params;
+        const user = req.user;
+        if (!user) {
+            res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+            return;
+        }
         try {
             const notification = await Notification_model_1.default.findById(notificationId);
             if (!notification) {
                 res.status(404).json((0, helper_1.ReturnCode)(404, "Notification not found"));
+                return;
+            }
+            if (notification.userId.toString() !== user.sub &&
+                user.role !== User_model_1.ROLE.ADMIN) {
+                res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
                 return;
             }
             await Notification_model_1.default.findByIdAndUpdate(notificationId, {
@@ -138,14 +157,22 @@ class NotificationController {
     };
     // Mark all notifications as read
     MarkAllAsRead = async (req, res) => {
-        const { userId } = req.body;
         const user = req.user;
+        if (!user) {
+            res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+            return;
+        }
+        const { userId } = req.body;
+        const targetUserId = userId || user.sub;
         try {
-            if (!userId || userId !== user?.id?.toString()) {
+            if (userId &&
+                userId !== user.sub &&
+                userId !== user.id?.toString() &&
+                user.role !== User_model_1.ROLE.ADMIN) {
                 res.status(403).json((0, helper_1.ReturnCode)(403, "Unauthorized"));
                 return;
             }
-            await Notification_model_1.default.updateMany({ userId: new mongoose_1.Types.ObjectId(userId), isRead: false }, { isRead: true, readAt: new Date() });
+            await Notification_model_1.default.updateMany({ userId: new mongoose_1.Types.ObjectId(targetUserId), isRead: false }, { isRead: true, readAt: new Date() });
             res.status(200).json((0, helper_1.ReturnCode)(200, "All notifications marked as read"));
         }
         catch (error) {
@@ -159,10 +186,19 @@ class NotificationController {
     DeleteNotification = async (req, res) => {
         const { notificationId } = req.params;
         const user = req.user;
+        if (!user) {
+            res.status(401).json((0, helper_1.ReturnCode)(401, "Unauthorized"));
+            return;
+        }
         try {
             const notification = await Notification_model_1.default.findById(notificationId);
             if (!notification) {
                 res.status(404).json((0, helper_1.ReturnCode)(404, "Notification not found"));
+                return;
+            }
+            if (notification.userId.toString() !== user.sub &&
+                user.role !== User_model_1.ROLE.ADMIN) {
+                res.status(403).json((0, helper_1.ReturnCode)(403, "Access denied"));
                 return;
             }
             await Notification_model_1.default.findByIdAndDelete(notificationId);

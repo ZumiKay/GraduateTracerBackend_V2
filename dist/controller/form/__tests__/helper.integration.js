@@ -37,18 +37,19 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loggedNormalUser = exports.loginNormalUser = exports.loggedUserInForm = exports.createResponse = exports.createQuestionsWithFormId = exports.createTestForm = exports.createTestUser = exports.mockEmailSender = exports.mockTrafficMiddleware = exports.testEnv = void 0;
-const bcrypt_1 = __importDefault(require("bcrypt"));
+const bcrypt_1 = __importStar(require("bcrypt"));
 const User_model_1 = __importStar(require("../../../model/User.model"));
 const mongoose_1 = require("mongoose");
 const Form_model_1 = __importStar(require("../../../model/Form.model"));
 const mockdata_1 = require("../../../utilities/mockdata");
-const Response_model_1 = __importDefault(require("../../../model/Response.model"));
+const Response_model_1 = __importStar(require("../../../model/Response.model"));
 const Content_model_1 = __importDefault(require("../../../model/Content.model"));
 const helper_1 = require("../../../utilities/helper");
 const Formsession_model_1 = __importDefault(require("../../../model/Formsession.model"));
 const Usersession_model_1 = __importDefault(require("../../../model/Usersession.model"));
 exports.testEnv = {
     ...process.env,
+    DATABASE_URL: process.env.DATABASE_URL || "mongodb://127.0.0.1:27017/graduatetracer_test",
     RESPONDENT_TOKEN_JWT_SECRET: "test_respondent_jwt_secret_key_12345",
     ACCESS_RESPONDENT_COOKIE: "graduate_access_resp",
     RESPONDENT_COOKIE: "graduate_refresh_resp",
@@ -127,7 +128,7 @@ const createQuestionsWithFormId = async ({ formId, replaceQuestion, }) => {
     }
 };
 exports.createQuestionsWithFormId = createQuestionsWithFormId;
-const createResponse = async ({ formId, userId, respondentEmail, }) => {
+const createResponse = async ({ formId, userId, respondentEmail, questions, }) => {
     try {
         let email = respondentEmail;
         if (!email && userId) {
@@ -138,11 +139,17 @@ const createResponse = async ({ formId, userId, respondentEmail, }) => {
             formId,
             userId,
             respondentEmail: email,
-            responseset: [
-                mockdata_1.MockContentFactory.createResponseSet({
-                    question: new mongoose_1.Types.ObjectId(),
-                }),
-            ],
+            respondentType: Response_model_1.RespondentType.user,
+            completionStatus: Response_model_1.ResponseCompletionStatus.submitted,
+            totalScore: 90,
+            submittedAt: new Date(),
+            responseset: questions
+                ? questions.map((q) => mockdata_1.MockContentFactory.generateResponseSet(q))
+                : [
+                    mockdata_1.MockContentFactory.createResponseSet({
+                        question: new mongoose_1.Types.ObjectId(),
+                    }),
+                ],
         });
     }
     catch (error) {
@@ -187,58 +194,62 @@ exports.loggedUserInForm = loggedUserInForm;
 const loginNormalUser = async (options) => {
     let targetUser = null;
     let rememberMe = false;
-    if (options) {
-        if ("_id" in options && options._id) {
-            targetUser = options;
+    if (!options) {
+        targetUser =
+            (await User_model_1.default.findOne({ email: sampleUserData.email }).lean()) ||
+                (await (0, exports.createTestUser)());
+    }
+    else if ("user" in options && options.user) {
+        targetUser = options.user;
+        rememberMe = options.rememberMe ?? false;
+    }
+    else if ("_id" in options &&
+        options._id &&
+        !("password" in options && !("email" in options))) {
+        targetUser = options;
+    }
+    else if ("email" in options && options.email) {
+        rememberMe = options.rememberMe ?? false;
+        const foundUser = await User_model_1.default.findOne({ email: options.email }).lean();
+        if (!foundUser)
+            return undefined;
+        if ("password" in options && options.password) {
+            const isMatch = options.password === foundUser.password ||
+                (0, bcrypt_1.compareSync)(options.password, foundUser.password);
+            if (!isMatch)
+                return undefined;
         }
-        else if ("user" in options && options.user) {
-            targetUser = options.user;
-            rememberMe = Boolean(options.rememberMe);
-        }
-        else if ("email" in options && options.email) {
-            rememberMe = Boolean(options.rememberMe);
-            targetUser = await User_model_1.default.findOne({ email: options.email }).lean();
-            if (!targetUser) {
-                console.log("Integration", "No user found for email:", options.email);
-                return;
-            }
-            if (options.password && targetUser.password) {
-                const isValid = bcrypt_1.default.compareSync(options.password, targetUser.password);
-                if (!isValid) {
-                    console.log("Integration", "Wrong Password");
-                    return;
-                }
-            }
-        }
+        targetUser = foundUser;
+    }
+    else if ("_id" in options && options._id) {
+        targetUser = options;
     }
     if (!targetUser) {
-        targetUser = await User_model_1.default.findOne({ email: sampleUserData.email }).lean();
-        if (!targetUser) {
-            targetUser = await (0, exports.createTestUser)();
-        }
+        return undefined;
     }
-    const userId = targetUser._id?.toString?.() ||
-        targetUser.id?.toString?.() ||
-        String(targetUser._id);
-    const userRole = targetUser.role || User_model_1.ROLE.USER;
+    const userId = typeof targetUser._id?.toString === "function"
+        ? targetUser._id.toString()
+        : String(targetUser._id || targetUser.id);
+    const role = targetUser.role || User_model_1.ROLE.USER;
     const tokenPayload = {
         sub: userId,
-        role: userRole,
+        role,
+        jti: Math.random().toString(36).substring(2) + Date.now().toString(36),
     };
-    const jwtSecret = exports.testEnv.JWT_SECRET || process.env.JWT_SECRET;
-    const accessToken = (0, helper_1.GenerateToken)(tokenPayload, "15m", jwtSecret);
-    const refreshToken = (0, helper_1.GenerateToken)(tokenPayload, rememberMe ? "7d" : "1d", jwtSecret);
-    const sessionExpireAt = rememberMe
-        ? (0, helper_1.getDateByNumDay)(7)
-        : (0, helper_1.getDateByNumDay)(1);
+    const secret = process.env.JWT_SECRET || exports.testEnv.JWT_SECRET;
+    const accessToken = (0, helper_1.GenerateToken)(tokenPayload, "15m", secret);
+    const refreshToken = (0, helper_1.GenerateToken)(tokenPayload, rememberMe ? "7d" : "1d", secret);
+    const sessionExpireAt = rememberMe ? (0, helper_1.getDateByNumDay)(7) : (0, helper_1.getDateByNumDay)(1);
     await Usersession_model_1.default.create({
         session_id: refreshToken,
         expireAt: sessionExpireAt,
-        user: mongoose_1.Types.ObjectId.isValid(userId) ? new mongoose_1.Types.ObjectId(userId) : undefined,
+        user: new mongoose_1.Types.ObjectId(userId),
     });
+    const accessCookieName = process.env.ACCESS_TOKEN_COOKIE || exports.testEnv.ACCESS_TOKEN_COOKIE;
+    const refreshCookieName = process.env.REFRESH_TOKEN_COOKIE || exports.testEnv.REFRESH_TOKEN_COOKIE;
     const cookies = [
-        `${exports.testEnv.ACCESS_TOKEN_COOKIE}=${accessToken}`,
-        `${exports.testEnv.REFRESH_TOKEN_COOKIE}=${refreshToken}`,
+        `${accessCookieName}=${accessToken}`,
+        `${refreshCookieName}=${refreshToken}`,
     ];
     return {
         user: targetUser,

@@ -175,18 +175,19 @@ class FormResponseQueryController {
     GetResponseByID = async (req, res) => {
         const { id, formId } = req.params;
         if (!(0, formHelpers_1.isValidObjectIdString)(id) || !(0, formHelpers_1.isValidObjectIdString)(formId)) {
-            return res.status(400).json((0, helper_1.ReturnCode)(400));
+            helper_1.SendResponse.badRequest(res);
+            return;
         }
         try {
             const result = await ResponseQueryService_1.ResponseQueryService.GetResponseById({ id, formId });
             if (!result) {
-                return res.status(404).json((0, helper_1.ReturnCode)(404));
+                helper_1.SendResponse.notFound(res);
+                return;
             }
-            return res.status(200).json({ ...(0, helper_1.ReturnCode)(200), data: result });
+            helper_1.SendResponse.success(res, result);
         }
         catch (error) {
-            console.log("Get Response By ID", error);
-            res.status(500).json((0, helper_1.ReturnCode)(500, "Error Occured"));
+            helper_1.SendResponse.error(res, "Can't Get Response");
         }
     };
     GetUserResponses = async (req, res) => {

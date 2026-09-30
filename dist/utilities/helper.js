@@ -300,22 +300,26 @@ exports.MAX_QUESTION_DEPTH = 20;
  * Returns the nesting depth of a single question (1 = top-level, 2 = first
  * conditional child, etc.)
  */
-const getQuestionDepth = (question, byId, byQIdx) => {
+const getQuestionDepth = (question, byId, byQIdx, questions) => {
     let depth = 1;
     const visited = new Set();
     let current = question;
     while (current.parentcontent) {
         const key = current.parentcontent.qId ||
-            (current.parentcontent.qIdx !== undefined
+            (current.parentcontent.qIdx !== undefined &&
+                !isNaN(current.parentcontent.qIdx)
                 ? `qIdx_${current.parentcontent.qIdx}`
                 : null);
         if (!key || visited.has(key))
             break; //Break loop
         visited.add(key);
-        const parent = byId.get(current.parentcontent.qId ?? "") ||
+        let parent = byId.get(current.parentcontent.qId ?? "") ||
             (current.parentcontent.qIdx !== undefined
                 ? byQIdx.get(current.parentcontent.qIdx)
                 : undefined);
+        if (!parent && current.parentcontent.qIdx !== undefined && questions) {
+            parent = questions[current.parentcontent.qIdx];
+        }
         if (!parent)
             break;
         depth++;
@@ -333,15 +337,20 @@ const validateNestingDepth = (questions, maxDepth = exports.MAX_QUESTION_DEPTH) 
     // Build lookup maps once
     const byId = new Map();
     const byQIdx = new Map();
-    for (const q of questions) {
+    for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
         if (q._id)
             byId.set(q._id.toString(), q);
-        if (q.qIdx !== undefined)
+        if (typeof q.qIdx === "number" && !isNaN(q.qIdx)) {
             byQIdx.set(q.qIdx, q);
+        }
+        else {
+            byQIdx.set(i, q);
+        }
     }
     const exceedDepth = [];
     for (const q of questions) {
-        const depth = (0, exports.getQuestionDepth)(q, byId, byQIdx);
+        const depth = (0, exports.getQuestionDepth)(q, byId, byQIdx, questions);
         if (depth > maxDepth) {
             const label = q.qIdx !== undefined
                 ? `qIdx ${q.qIdx}`
@@ -363,11 +372,14 @@ const AddQuestionNumbering = ({ questions, lastIdx, }) => {
             return null;
         if (question.parentcontent.qId)
             return question.parentcontent.qId.toString();
-        if (question.parentcontent.qIdx !== undefined)
+        if (question.parentcontent.qIdx !== undefined &&
+            !isNaN(question.parentcontent.qIdx))
             return `temp_${question.parentcontent.qIdx}`;
         return null;
     };
-    const getQuestionId = (question) => question._id ? question._id.toString() : `temp_${question.qIdx}`;
+    const getQuestionId = (question, arrayIndex) => question._id
+        ? question._id.toString()
+        : `temp_${typeof question.qIdx === "number" && !isNaN(question.qIdx) ? question.qIdx : arrayIndex}`;
     const isTopLevel = (question) => !question.parentcontent ||
         (question.parentcontent.qIdx === undefined && !question.parentcontent.qId);
     // Build parent → sorted children map
@@ -395,12 +407,12 @@ const AddQuestionNumbering = ({ questions, lastIdx, }) => {
                     q.qIdx === parseInt(parentId.replace("temp_", ""), 10)))?.questionId ??
             `${index + 1}`;
         const siblings = parentChildrenMap.get(parentId) ?? [];
-        const position = siblings.findIndex((s) => getQuestionId(s.question) === getQuestionId(question)) + 1;
+        const position = siblings.findIndex((s) => getQuestionId(s.question, s.index) === getQuestionId(question, index)) + 1;
         return `${parentNumber}.${position}`;
     };
     return questions.map((question, index) => {
         const questionId = buildNumber(question, index);
-        questionIdMap.set(getQuestionId(question), questionId);
+        questionIdMap.set(getQuestionId(question, index), questionId);
         const parentId = getParentId(question);
         const updatedParentContent = parentId
             ? { ...question.parentcontent, questionId: questionIdMap.get(parentId) }

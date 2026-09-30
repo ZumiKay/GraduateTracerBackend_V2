@@ -17,6 +17,7 @@ describe("VerifyRecaptcha Edge Case & Resilience Tests", () => {
       json: mockJson,
     };
     process.env.RECAPCHA_SECRETKEY = "test_recaptcha_secret_key";
+    process.env.RECAPCHA_URL = "https://www.google.com/recaptcha/api/siteverify";
   });
 
   afterAll(() => {
