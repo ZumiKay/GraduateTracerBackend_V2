@@ -42,7 +42,7 @@ class AuthenticationController {
             });
             //Set Authentication Cookie
             this.setAccessTokenCookie(res, AccessToken);
-            this.setRefreshTokenCookie(res, RefreshToken);
+            this.setRefreshTokenCookie(res, RefreshToken, sessionExpireAt);
             return res.status(200).json({
                 ...(0, helper_1.ReturnCode)(200),
                 data: {
@@ -239,8 +239,8 @@ class AuthenticationController {
     setAccessTokenCookie(res, token) {
         res.cookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", token, (0, cookieHelper_1.getCookieOptions)({ expires: (0, helper_1.getDateByMinute)(30) }));
     }
-    setRefreshTokenCookie(res, refreshToken) {
-        res.cookie(process.env.REFRESH_TOKEN_COOKIE || "refresh_token", refreshToken, (0, cookieHelper_1.getCookieOptions)({ expires: (0, helper_1.getDateByNumDay)(1) }));
+    setRefreshTokenCookie(res, refreshToken, expires) {
+        res.cookie(process.env.REFRESH_TOKEN_COOKIE || "refresh_token", refreshToken, (0, cookieHelper_1.getCookieOptions)({ expires: expires ?? (0, helper_1.getDateByNumDay)(1) }));
     }
     clearAccessTokenCookie(res) {
         res.clearCookie(process.env.ACCESS_TOKEN_COOKIE || "access_token", (0, cookieHelper_1.getClearCookieOptions)());

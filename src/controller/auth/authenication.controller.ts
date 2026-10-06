@@ -70,7 +70,7 @@ class AuthenticationController {
 
       //Set Authentication Cookie
       this.setAccessTokenCookie(res, AccessToken);
-      this.setRefreshTokenCookie(res, RefreshToken);
+      this.setRefreshTokenCookie(res, RefreshToken, sessionExpireAt);
 
       return res.status(200).json({
         ...ReturnCode(200),
@@ -311,11 +311,15 @@ class AuthenticationController {
     );
   }
 
-  private setRefreshTokenCookie(res: Response, refreshToken: string): void {
+  private setRefreshTokenCookie(
+    res: Response,
+    refreshToken: string,
+    expires?: Date,
+  ): void {
     res.cookie(
       process.env.REFRESH_TOKEN_COOKIE || "refresh_token",
       refreshToken,
-      getCookieOptions({ expires: getDateByNumDay(1) }),
+      getCookieOptions({ expires: expires ?? getDateByNumDay(1) }),
     );
   }
 

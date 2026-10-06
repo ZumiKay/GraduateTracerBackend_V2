@@ -33,11 +33,21 @@ export function getCookieOptions(customOptions: CookieOptions = {}): CookieOptio
       ? process.env.COOKIE_SECURE === "true"
       : sameSite === "none" || isProd;
 
+  // CHIPS (Cookies Having Independent Partitioned State) support
+  // Allows cross-site cookies to work in browsers (Safari 17.4+, Chrome, Edge)
+  // that partition third-party storage.
+  const partitioned: boolean =
+    process.env.COOKIE_PARTITIONED !== undefined
+      ? process.env.COOKIE_PARTITIONED === "true"
+      : sameSite === "none" && secure;
+
   return {
     httpOnly: true,
+    path: "/",
     ...customOptions,
     sameSite,
     secure,
+    ...(partitioned ? { partitioned: true } : {}),
   };
 }
 
@@ -52,6 +62,7 @@ export function getClearCookieOptions(customOptions: CookieOptions = {}): Cookie
     httpOnly: base.httpOnly,
     sameSite: base.sameSite,
     secure: base.secure,
+    ...(base.partitioned ? { partitioned: true } : {}),
     path: customOptions.path ?? "/",
     ...customOptions,
   };

@@ -28,11 +28,19 @@ function getCookieOptions(customOptions = {}) {
     const secure = process.env.COOKIE_SECURE !== undefined
         ? process.env.COOKIE_SECURE === "true"
         : sameSite === "none" || isProd;
+    // CHIPS (Cookies Having Independent Partitioned State) support
+    // Allows cross-site cookies to work in browsers (Safari 17.4+, Chrome, Edge)
+    // that partition third-party storage.
+    const partitioned = process.env.COOKIE_PARTITIONED !== undefined
+        ? process.env.COOKIE_PARTITIONED === "true"
+        : sameSite === "none" && secure;
     return {
         httpOnly: true,
+        path: "/",
         ...customOptions,
         sameSite,
         secure,
+        ...(partitioned ? { partitioned: true } : {}),
     };
 }
 /**
@@ -46,6 +54,7 @@ function getClearCookieOptions(customOptions = {}) {
         httpOnly: base.httpOnly,
         sameSite: base.sameSite,
         secure: base.secure,
+        ...(base.partitioned ? { partitioned: true } : {}),
         path: customOptions.path ?? "/",
         ...customOptions,
     };

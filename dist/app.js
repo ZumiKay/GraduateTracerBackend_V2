@@ -28,14 +28,20 @@ const getAllowedOrigins = () => {
     return envUrl
         .split(",")
         .map((url) => url.trim().replace(/\/$/, ""))
+        .flatMap((url) => [
+        url,
+        ...(url.startsWith("http://") || url.startsWith("https://")
+            ? []
+            : [`https://${url}`, `http://${url}`]),
+    ])
         .filter(Boolean);
 };
 const isOriginAllowed = (origin) => {
     const normalizedOrigin = origin.replace(/\/$/, "");
-    const allowedList = getAllowedOrigins();
-    // Exact match with FRONTEND_URL entries
-    if (allowedList.includes(normalizedOrigin))
+    const allowedOrigins = getAllowedOrigins();
+    if (allowedOrigins.includes(normalizedOrigin)) {
         return true;
+    }
     // In non-production or when ngrok is enabled, allow any ngrok tunnel or dev origin
     const isNgrokOrDevAllowed = process.env.USE_NGROK === "true" ||
         process.env.ALLOW_NGROK === "true" ||
