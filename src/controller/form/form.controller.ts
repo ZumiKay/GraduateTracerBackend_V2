@@ -8,7 +8,9 @@ import {
   hasFormAccess,
   isPrimaryOwner,
   validateFormRequest,
+  buildBumpedPageVersions,
 } from "../../utilities/formHelpers";
+import { formCollaboration } from "../../services/FormCollaborationService";
 export {
   ManageFormCollaborator,
   GetFormCollaborators,
@@ -155,11 +157,15 @@ export async function PageHandler(req: CustomRequest, res: Response) {
         .lean();
 
       //update form totalpage and delete questions
+      // Pages shift after a delete, so invalidate every page version
       await Form.updateOne(
         { _id: formId },
         {
           $inc: { totalpage: -1 },
           $pull: { contentIds: { $in: toBeDeleteContent.map((i) => i._id) } },
+          $set: {
+            pageVersions: buildBumpedPageVersions(form, form.totalpage ?? 1),
+          },
         },
       );
       await Content.deleteMany({
@@ -178,6 +184,15 @@ export async function PageHandler(req: CustomRequest, res: Response) {
         },
       );
     }
+
+    // Live refresh: other open editors must re-read the form's pages
+    formCollaboration.broadcastStructureChange(formId, {
+      userId: user.sub.toString(),
+      connectionId:
+        typeof req.body?.connectionId === "string"
+          ? req.body.connectionId
+          : undefined,
+    });
 
     return res
       .status(200)

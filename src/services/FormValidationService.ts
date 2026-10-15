@@ -1,11 +1,6 @@
 import { Request, Response } from "express";
 import Content, { ContentType, QuestionType } from "../model/Content.model";
-import Form, {
-  FormType,
-  returnscore,
-  SummaryFormType,
-  TypeForm,
-} from "../model/Form.model";
+import Form, { FormType, returnscore, SummaryFormType, TypeForm } from "../model/Form.model";
 import { AddQuestionNumbering, ReturnCode } from "../utilities/helper";
 import SolutionValidationService from "./ResponseContentValidationService";
 import { projections } from "../utilities/formHelpers";
@@ -44,40 +39,25 @@ export const formValidationErrorByContentTypes: Record<
   QuestionType,
   (content: ContentType) => Array<ValidationErrorCodeType>
 > = {
-  [QuestionType.Text]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.Text]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
-    if (
-      content.isBonusScore ||
-      content.useChildScoreSum ||
-      (content.score && content.score > 0)
-    ) {
+    if (content.isBonusScore || content.useChildScoreSum || (content.score && content.score > 0)) {
       errors.push(PredefinedErrorMessage()[ValidationErrorCodeEnum.invalid]);
     }
     return errors;
   },
 
-  [QuestionType.MultipleChoice]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.MultipleChoice]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
-    if (
-      !content.multiple ||
-      !Array.isArray(content.multiple) ||
-      content.multiple.length === 0
-    ) {
+    if (!content.multiple || !Array.isArray(content.multiple) || content.multiple.length === 0) {
       errors.push(
         PredefinedErrorMessage({
           target: ValidationErrorCodeEnum.format,
-          customMess:
-            "Multiple choice question requires at least one choice option",
+          customMess: "Multiple choice question requires at least one choice option",
         })[ValidationErrorCodeEnum.format],
       );
     } else {
-      const hasEmptyChoice = content.multiple.some(
-        (c) => !c.content || c.content.trim() === "",
-      );
+      const hasEmptyChoice = content.multiple.some((c) => !c.content || c.content.trim() === "");
       if (hasEmptyChoice) {
         errors.push(
           PredefinedErrorMessage({
@@ -90,9 +70,7 @@ export const formValidationErrorByContentTypes: Record<
     return errors;
   },
 
-  [QuestionType.MultipleSelection]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.MultipleSelection]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
     const options = content.checkbox;
     if (!options || !Array.isArray(options) || options.length === 0) {
@@ -106,9 +84,7 @@ export const formValidationErrorByContentTypes: Record<
     return errors;
   },
 
-  [QuestionType.CheckBox]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.CheckBox]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
     const options = content.checkbox;
     if (!options || !Array.isArray(options) || options.length === 0) {
@@ -122,9 +98,7 @@ export const formValidationErrorByContentTypes: Record<
     return errors;
   },
 
-  [QuestionType.Selection]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.Selection]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
     const options = content.selection;
     if (!options || !Array.isArray(options) || options.length === 0) {
@@ -135,9 +109,7 @@ export const formValidationErrorByContentTypes: Record<
         })[ValidationErrorCodeEnum.format],
       );
     } else {
-      const hasEmptyChoice = options.some(
-        (c) => !c.content || c.content.trim() === "",
-      );
+      const hasEmptyChoice = options.some((c) => !c.content || c.content.trim() === "");
       if (hasEmptyChoice) {
         errors.push(
           PredefinedErrorMessage({
@@ -150,9 +122,7 @@ export const formValidationErrorByContentTypes: Record<
     return errors;
   },
 
-  [QuestionType.Number]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.Number]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
     if (content.answer && content.answer.answer !== undefined) {
       if (typeof content.answer.answer !== "number") {
@@ -167,9 +137,7 @@ export const formValidationErrorByContentTypes: Record<
     return errors;
   },
 
-  [QuestionType.Date]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.Date]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
 
     if (!content.date || typeof content.date !== "string") {
@@ -183,9 +151,7 @@ export const formValidationErrorByContentTypes: Record<
     return errors;
   },
 
-  [QuestionType.RangeDate]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.RangeDate]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
     const range = content.rangedate || content.range;
     if (range && range.start && range.end) {
@@ -202,8 +168,7 @@ export const formValidationErrorByContentTypes: Record<
         errors.push(
           PredefinedErrorMessage({
             target: ValidationErrorCodeEnum.format,
-            customMess:
-              "RangeDate start date must be before or equal to end date",
+            customMess: "RangeDate start date must be before or equal to end date",
           })[ValidationErrorCodeEnum.format],
         );
       }
@@ -211,9 +176,7 @@ export const formValidationErrorByContentTypes: Record<
     return errors;
   },
 
-  [QuestionType.RangeNumber]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.RangeNumber]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
     const range = content.rangenumber || content.range;
     if (range && range.start !== undefined && range.end !== undefined) {
@@ -236,9 +199,7 @@ export const formValidationErrorByContentTypes: Record<
     return errors;
   },
 
-  [QuestionType.ShortAnswer]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.ShortAnswer]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
     if (content.answer && content.answer.answer !== undefined) {
       if (typeof content.answer.answer !== "string") {
@@ -253,9 +214,7 @@ export const formValidationErrorByContentTypes: Record<
     return errors;
   },
 
-  [QuestionType.Paragraph]: (
-    content: ContentType,
-  ): Array<ValidationErrorCodeType> => {
+  [QuestionType.Paragraph]: (content: ContentType): Array<ValidationErrorCodeType> => {
     const errors: Array<ValidationErrorCodeType> = [];
     if (content.answer && content.answer.answer !== undefined) {
       if (typeof content.answer.answer !== "string") {
@@ -271,14 +230,11 @@ export const formValidationErrorByContentTypes: Record<
   },
 };
 
-export const formValidationErrorByContentType =
-  formValidationErrorByContentTypes;
+export const formValidationErrorByContentType = formValidationErrorByContentTypes;
 
 export class FormValidationService {
-  public static formValidationErrorByContentTypes =
-    formValidationErrorByContentTypes;
-  public static formValidationErrorByContentType =
-    formValidationErrorByContentType;
+  public static formValidationErrorByContentTypes = formValidationErrorByContentTypes;
+  public static formValidationErrorByContentType = formValidationErrorByContentType;
 
   static ValidationResultInitial: ValidationResult = {
     isValid: true,
@@ -302,33 +258,22 @@ export class FormValidationService {
     const currentPage = Number(page || p) || 1;
 
     try {
-      let result:
-        | { validation: FormValidationSummary }
-        | SummaryFormType
-        | undefined;
+      let result: { validation: FormValidationSummary } | SummaryFormType | undefined;
 
-      if (action === GetFilterTypeEnum.detail) {
+      if (action === GetFilterTypeEnum.question) {
         result = await FormValidationService.getFormOverviewDataById({
           formId: new Types.ObjectId(formId),
           p: currentPage,
         });
       } else if (action === GetFilterTypeEnum.solution) {
-        const currentForm = await Form.findById(formId)
-          .select(projections.detail)
-          .lean();
+        const currentForm = await Form.findById(formId).select(projections.detail).lean();
         if (!currentForm) return res.status(404).json(ReturnCode(404));
 
         const currentContents = await Content.find({ formId }).lean();
-        if (!currentContents.length)
-          return res.status(204).json(ReturnCode(204));
+        if (!currentContents.length) return res.status(204).json(ReturnCode(204));
 
         result = {
-          validation: this.validateForm(
-            currentForm,
-            currentContents,
-            currentPage,
-            action,
-          ),
+          validation: this.validateForm(currentForm, currentContents, currentPage, action),
         };
       }
       return res.status(200).json({
@@ -506,9 +451,7 @@ export class FormValidationService {
       }
     }
 
-    const scorableQuestions = contents.filter(
-      (content) => content.type !== QuestionType.Text,
-    );
+    const scorableQuestions = contents.filter((content) => content.type !== QuestionType.Text);
 
     const canReturnScoreAutomatically =
       form.type === TypeForm.Quiz &&
@@ -546,10 +489,7 @@ export class FormValidationService {
   static getValidationMessageByQId = (
     issue: ErrorValidatePropsType[],
     questionId: string | number,
-  ) =>
-    issue
-      .filter((i) => i._id === questionId || i.qIdx === questionId)
-      .map((i) => i.message);
+  ) => issue.filter((i) => i._id === questionId || i.qIdx === questionId).map((i) => i.message);
 
   static getFormOverviewDataById = async ({
     formId,
@@ -574,10 +514,7 @@ export class FormValidationService {
             $sum: {
               $cond: [
                 {
-                  $and: [
-                    { $not: { $ifNull: ["$parentcontent", false] } },
-                    { $eq: ["$page", p] },
-                  ],
+                  $and: [{ $not: { $ifNull: ["$parentcontent", false] } }, { $eq: ["$page", p] }],
                 },
                 { $ifNull: ["$score", 0] },
                 0,

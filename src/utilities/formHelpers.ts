@@ -80,11 +80,50 @@ export function validateAccess(form: any, userId: Types.ObjectId) {
 export const projections = {
   basic: "title type createdAt updatedAt user owners",
   detail:
-    "title type createdAt updatedAt totalpage totalscore extraScore setting contentIds user owners editors",
+    "title type createdAt updatedAt totalpage totalscore extraScore setting contentIds user owners editors pageVersions",
   minimal: "_id title type user owners editors",
   total: "totalpage totalscore extraScore contentIds user owners editors",
   setting: "_id title type setting user owners editors",
 };
+
+/**
+ * Current content version of a page (0 when the page has never been saved
+ * since versioning was introduced).
+ */
+export function getPageVersion(
+  form: Pick<FormType, "pageVersions"> | null | undefined,
+  page: number,
+): number {
+  const versions = form?.pageVersions;
+  if (!versions) return 0;
+  const value =
+    versions instanceof Map
+      ? versions.get(String(page))
+      : (versions as Record<string, number>)[String(page)];
+  return typeof value === "number" ? value : 0;
+}
+
+/**
+ * Invalidates every page version of a form. Used when the page structure
+ * changes (page deleted and later pages shifted), so any client holding an
+ * older copy of any page gets a conflict instead of saving onto the wrong page.
+ */
+export function buildBumpedPageVersions(
+  form: Pick<FormType, "pageVersions" | "totalpage">,
+  totalPage: number,
+): Record<string, number> {
+  const versions = form.pageVersions;
+  const current =
+    versions instanceof Map
+      ? Array.from(versions.values())
+      : Object.values((versions as Record<string, number>) ?? {});
+  const next = Math.max(0, ...current.filter((v) => typeof v === "number")) + 1;
+  const bumped: Record<string, number> = {};
+  for (let page = 1; page <= Math.max(totalPage, 1); page++) {
+    bumped[String(page)] = next;
+  }
+  return bumped;
+}
 
 // Common validation logic
 export function validateFormRequest(formId: string, userId?: string) {

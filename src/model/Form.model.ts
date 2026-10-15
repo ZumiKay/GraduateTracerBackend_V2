@@ -93,6 +93,9 @@ export interface FormType {
   pendingOwnershipTransfer?: PendingOwnershipTransferType;
   pendingInvite?: Array<string>;
   lastQuestionIdx?: number;
+  // Content version per page (key = page number), bumped on every content change.
+  // Used to reject saves made from a stale copy of the page.
+  pageVersions?: Map<string, number> | Record<string, number>;
 }
 
 const FormSettingSchema = new Schema<FromSettingType>({
@@ -237,6 +240,12 @@ const FormSchema = new Schema<FormType>(
       type: Number,
       required: false,
       default: 0,
+    },
+    pageVersions: {
+      type: Map,
+      of: Number,
+      required: false,
+      default: {},
     },
   },
   {

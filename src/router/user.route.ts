@@ -15,6 +15,11 @@ import {
   ResendPendingInvitation,
   DeletePendingCollaborator,
 } from "../controller/form/form.controller";
+import {
+  SubscribeToFormCollaboration,
+  AcquireQuestionLock,
+  ReleaseQuestionLock,
+} from "../controller/form/form.collaboration.controller";
 import { createFormValidate } from "../model/Form.model";
 import { validate } from "../middleware/Validatetor";
 import authenicationController from "../controller/auth/authenication.controller";
@@ -181,6 +186,23 @@ UserRoute.delete(
   "/deletepending",
   UserMiddleware.VerifyToken as unknown as RequestHandler,
   DeletePendingCollaborator as unknown as RequestHandler,
+);
+
+//Form live collaboration (presence + question locks)
+UserRoute.get(
+  "/form/:formId/collab/stream",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  SubscribeToFormCollaboration as unknown as RequestHandler,
+);
+UserRoute.post(
+  "/form/:formId/collab/lock",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  AcquireQuestionLock as unknown as RequestHandler,
+);
+UserRoute.post(
+  "/form/:formId/collab/unlock",
+  UserMiddleware.VerifyToken as unknown as RequestHandler,
+  ReleaseQuestionLock as unknown as RequestHandler,
 );
 
 //Form Content Routes

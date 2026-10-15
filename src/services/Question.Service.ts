@@ -11,7 +11,7 @@ import {
   StatusCode,
   validateNestingDepth,
 } from "../utilities/helper";
-import { getLastQuestionIdx } from "../utilities/formHelpers";
+import { getLastQuestionIdx, getPageVersion } from "../utilities/formHelpers";
 import { formValidationErrorByContentTypes } from "./FormValidationService";
 
 export interface SaveQuestionPayload {
@@ -19,6 +19,12 @@ export interface SaveQuestionPayload {
   formId: string;
   page?: number;
   title?: string;
+  // Page content version the client last loaded/saved. When provided, the save
+  // is rejected with 409 if the page has changed since.
+  version?: number;
+  // Collaboration stream connection of the saving tab; it is left out when
+  // the saved page is pushed to the other open editors
+  connectionId?: string;
 }
 
 export interface DeleteOperationResult {
@@ -32,12 +38,19 @@ export interface SaveQuestionResult {
   message?: string;
   noChanges?: boolean;
   data?: any;
+  // Page content version after this call
+  version?: number;
+  // Set with statusCode 409: the page changed since the client's version
+  conflict?: { version: number; data: any };
 }
 
 export interface DeleteQuestionResult {
   success: boolean;
   statusCode?: StatusCode;
   message?: string;
+  // Page the question was on and that page's version after the delete
+  page?: number;
+  version?: number;
 }
 
 export interface SaveSolutionResult {
@@ -104,7 +117,15 @@ export class QuestionService {
 
     if (this.efficientChangeDetection(existingContent, data)) {
       if (title) await Form.updateOne({ _id: formId }, { title });
-      return { success: true, noChanges: true, message: "No changes detected" };
+      const currentForm = await Form.findById(formId)
+        .select("pageVersions")
+        .lean();
+      return {
+        success: true,
+        noChanges: true,
+        message: "No changes detected",
+        version: getPageVersion(currentForm, page!),
+      };
     }
 
     // Step 4: Generate IDs for new questions
@@ -120,6 +141,27 @@ export class QuestionService {
         success: false,
         statusCode: 400,
         message: "Score Validation Error",
+      };
+    }
+
+    // Step 5.1: Claim the next page version. Fails when another save changed
+    // this page after the client loaded it, so a stale copy can never
+    // overwrite or delete someone else's work.
+    const claim = await this.claimPageVersion(formId, page!, payload.version);
+    if (!claim.success) {
+      const latestContent = await this.fetchUpdatedContent(formId, page!);
+      const lastIdx = await getLastQuestionIdx(formId, page!);
+      return {
+        success: false,
+        statusCode: 409,
+        message: "This page was changed by someone else",
+        conflict: {
+          version: claim.version,
+          data: AddQuestionNumbering({
+            questions: latestContent,
+            lastIdx,
+          }),
+        },
       };
     }
 
@@ -195,7 +237,44 @@ export class QuestionService {
         lastIdx: lastQuestionIdx,
       }),
       message: "Saved Completed",
+      version: claim.version,
     };
+  }
+
+  /**
+   * Atomically bumps a page's content version.
+   * When `expected` is given, the bump only happens if the stored version
+   * still equals it (compare-and-set); otherwise the current version is
+   * returned with success=false.
+   */
+  public static async claimPageVersion(
+    formId: string,
+    page: number,
+    expected?: number,
+  ): Promise<{ success: boolean; version: number }> {
+    const key = `pageVersions.${page}`;
+    const filter: Record<string, unknown> = { _id: formId };
+
+    if (typeof expected === "number") {
+      // Forms saved before versioning have no stored value: treat it as 0
+      filter.$or =
+        expected === 0
+          ? [{ [key]: 0 }, { [key]: { $exists: false } }]
+          : [{ [key]: expected }];
+    }
+
+    const updated = await Form.findOneAndUpdate(
+      filter,
+      { $inc: { [key]: 1 } },
+      { new: true, projection: { pageVersions: 1 } },
+    ).lean();
+
+    if (updated) {
+      return { success: true, version: getPageVersion(updated, page) };
+    }
+
+    const current = await Form.findById(formId).select("pageVersions").lean();
+    return { success: false, version: getPageVersion(current, page) };
   }
 
   /**
@@ -213,8 +292,9 @@ export class QuestionService {
       };
     }
 
-    const tobeDelete = await Content.findById(id)
-      .select("conditional score")
+    // Scoped to the form so access to one form can't delete another's content
+    const tobeDelete = await Content.findOne({ _id: id, formId })
+      .select("conditional score page")
       .lean();
 
     if (!tobeDelete) {
@@ -253,6 +333,17 @@ export class QuestionService {
     }
 
     await Promise.all(operations);
+
+    // Content changed: stale copies of this page must not save over it
+    if (typeof tobeDelete.page === "number") {
+      const claim = await this.claimPageVersion(formId, tobeDelete.page);
+      return {
+        success: true,
+        message: "Question Deleted",
+        page: tobeDelete.page,
+        version: claim.version,
+      };
+    }
 
     return { success: true, message: "Question Deleted" };
   }
@@ -593,7 +684,8 @@ export class QuestionService {
 
       return {
         updateOne: {
-          filter: { _id: documentId },
+          // formId in the filter: an _id from another form can never be rewritten
+          filter: { _id: documentId, formId },
           update: {
             $set: {
               ...rest,
@@ -749,6 +841,18 @@ export class QuestionService {
     }
 
     await Promise.all(operations);
+  }
+
+  /**
+   * A page's current questions with display numbering, as the editor shows them.
+   */
+  public static async fetchNumberedPage(
+    formId: string,
+    page: number,
+  ): Promise<ContentType[]> {
+    const content = await this.fetchUpdatedContent(formId, page);
+    const lastIdx = await getLastQuestionIdx(formId, page);
+    return AddQuestionNumbering({ questions: content, lastIdx });
   }
 
   public static async fetchUpdatedContent(

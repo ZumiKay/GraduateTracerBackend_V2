@@ -9,7 +9,12 @@ import Content, {
   QuestionType,
 } from "../../model/Content.model";
 import User from "../../model/User.model";
-import { isValidObjectIdString, validateAccess, projections } from "../../utilities/formHelpers";
+import {
+  isValidObjectIdString,
+  validateAccess,
+  projections,
+  getPageVersion,
+} from "../../utilities/formHelpers";
 import FormResponse from "../../model/Response.model";
 import { FormValidationService, FormValidationSummary } from "../../services/FormValidationService";
 
@@ -19,6 +24,7 @@ export enum GetFilterTypeEnum {
   createdDate = "createddate",
   modifiedDate = "modifieddate",
   detail = "detail",
+  question = "question",
   user = "user",
   setting = "setting",
   solution = "solution",
@@ -237,6 +243,8 @@ async function handleDetailQuery(
         lastIdx: summaryData?.lastQuestionIdx,
       }), //Return only the selected page content
       contentIds: undefined,
+      pageVersions: undefined,
+      contentVersion: getPageVersion(detailForm, p),
 
       //Overall validation
       validation: validationSummary,

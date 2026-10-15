@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import Form from "../model/Form.model";
+import { getFrontendBaseUrl } from "../utilities/frontendUrl";
 
 export interface FormLinkData {
   formId: string;
@@ -35,7 +36,7 @@ class FormLinkService {
   private algorithm = "aes-256-gcm" as const;
 
   constructor() {
-    this.baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    this.baseUrl = getFrontendBaseUrl();
     const secret =
       process.env.INVITE_LINK_SECRET || "default-invite-secret-key";
     this.encryptionKey = crypto.scryptSync(secret, "salt", 32);

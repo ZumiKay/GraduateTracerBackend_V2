@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { getFrontendBaseUrl } from "../utilities/frontendUrl";
 import { contentTitleToString } from "../utilities/helper";
 import { ContentTitle } from "../model/Content.model";
 
@@ -99,7 +100,7 @@ class EmailService {
 
   // Send form link to multiple recipients
   async sendFormLinks(data: FormLinkEmailData): Promise<boolean> {
-    const formUrl = `${process.env.FRONTEND_URL}/form-access/${data.formId}`;
+    const formUrl = `${getFrontendBaseUrl()}/form-access/${data.formId}`;
 
     const html = `
       <!DOCTYPE html>
@@ -138,7 +139,7 @@ class EmailService {
             }</strong> to fill out a form.</p>
             ${data.message ? `<p><em>${data.message}</em></p>` : ""}
             <p>Click the button below to access the form:</p>
-            <a href="${formUrl}" class="button">Fill Out Form</a>
+            <a href="${formUrl}" class="button" style="display:inline-block;background-color:#4f46e5;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;margin:20px 0;font-weight:bold;">Fill Out Form</a>
             <p>Or copy and paste this link into your browser:</p>
             <p><a href="${formUrl}">${formUrl}</a></p>
             <p>Thank you for your participation!</p>
