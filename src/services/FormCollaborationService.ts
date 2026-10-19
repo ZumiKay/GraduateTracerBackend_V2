@@ -4,9 +4,7 @@ import { randomUUID } from "crypto";
  * Live collaboration state for the form editor: who has a form open
  * (presence) and which question each person is editing (soft locks).
  *
- * State is kept in memory, so it is per server process. That is fine for a
- * single backend instance; running several would need a shared store.
- */
+ * State is kept in memory */
 
 // A lock disappears if its holder stops refreshing it for this long
 export const LOCK_TTL_MS = 30_000;
@@ -93,9 +91,7 @@ export class FormCollaborationManager {
 
   /** True when the connection is open on this form and belongs to the user. */
   ownsConnection(formId: string, connectionId: string, userId: string): boolean {
-    return (
-      this.rooms.get(formId)?.clients.get(connectionId)?.userId === userId
-    );
+    return this.rooms.get(formId)?.clients.get(connectionId)?.userId === userId;
   }
 
   /**
@@ -114,9 +110,7 @@ export class FormCollaborationManager {
 
     const existing = room.locks.get(questionId);
     const heldByOther =
-      existing &&
-      existing.connectionId !== connectionId &&
-      existing.expiresAt > now;
+      existing && existing.connectionId !== connectionId && existing.expiresAt > now;
 
     if (heldByOther) {
       return { success: false, lock: this.toPublicLock(existing) };
@@ -161,15 +155,11 @@ export class FormCollaborationManager {
     if (!room) return;
 
     // Only trust the connection id when it really is this user's
-    const senderClient = sender.connectionId
-      ? room.clients.get(sender.connectionId)
-      : undefined;
-    const ownSender =
-      senderClient?.userId === sender.userId ? senderClient : undefined;
+    const senderClient = sender.connectionId ? room.clients.get(sender.connectionId) : undefined;
+    const ownSender = senderClient?.userId === sender.userId ? senderClient : undefined;
     const name =
       ownSender?.name ??
-      Array.from(room.clients.values()).find((c) => c.userId === sender.userId)
-        ?.name ??
+      Array.from(room.clients.values()).find((c) => c.userId === sender.userId)?.name ??
       "A collaborator";
 
     const message = {
@@ -194,11 +184,8 @@ export class FormCollaborationManager {
     const room = this.rooms.get(formId);
     if (!room) return;
 
-    const senderClient = sender.connectionId
-      ? room.clients.get(sender.connectionId)
-      : undefined;
-    const skip =
-      senderClient?.userId === sender.userId ? sender.connectionId : undefined;
+    const senderClient = sender.connectionId ? room.clients.get(sender.connectionId) : undefined;
+    const skip = senderClient?.userId === sender.userId ? sender.connectionId : undefined;
 
     for (const client of room.clients.values()) {
       if (client.connectionId === skip) continue;
@@ -225,13 +212,13 @@ export class FormCollaborationManager {
     return {
       type: "state",
       users: room
-        ? Array.from(room.clients.values()).map(
-            ({ connectionId, userId, name }) => ({ connectionId, userId, name }),
-          )
+        ? Array.from(room.clients.values()).map(({ connectionId, userId, name }) => ({
+            connectionId,
+            userId,
+            name,
+          }))
         : [],
-      locks: room
-        ? Array.from(room.locks.values()).map((l) => this.toPublicLock(l))
-        : [],
+      locks: room ? Array.from(room.locks.values()).map((l) => this.toPublicLock(l)) : [],
     };
   }
 

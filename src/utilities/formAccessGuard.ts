@@ -6,8 +6,7 @@ import { ReturnCode } from "./helper";
 import { hasFormAccess, isValidObjectIdString } from "./formHelpers";
 
 /**
- * Only the form's creator, owners and editors may change or co-edit it.
- * Sends the error response itself and returns false when access is denied.
+ * Only the form's creator, owners and editors.
  */
 export async function ensureFormAccess(
   req: CustomRequest,

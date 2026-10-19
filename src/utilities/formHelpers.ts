@@ -1,14 +1,12 @@
 import { Types } from "mongoose";
 import { FormType, CollaboratorType } from "../model/Form.model";
 import Content, { QuestionType, RangeType } from "../model/Content.model";
-import { ResponseAnswerType, ResponseSetType } from "../model/Response.model";
+import { ResponseAnswerType } from "../model/Response.model";
 import { formatDateToDDMMYYYY } from "./helper";
 
 // Helper function to validate ObjectId format
 export function isValidObjectIdString(id: string): boolean {
-  return (
-    typeof id === "string" && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)
-  );
+  return typeof id === "string" && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id);
 }
 
 export function hasFormAccess(form: FormType, userId: Types.ObjectId): boolean {

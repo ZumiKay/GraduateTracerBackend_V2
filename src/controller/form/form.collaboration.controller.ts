@@ -5,6 +5,7 @@ import { ReturnCode } from "../../utilities/helper";
 import { ensureFormAccess } from "../../utilities/formAccessGuard";
 import { formCollaboration } from "../../services/FormCollaborationService";
 
+//Interval to keep the connection alive,
 const HEARTBEAT_MS = 30_000;
 
 /**

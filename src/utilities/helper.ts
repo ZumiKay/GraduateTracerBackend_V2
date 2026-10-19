@@ -179,7 +179,7 @@ export const convertResponseToString = (value: any): string => {
 
 export const ValidatePassword = (pass: string) => {
   const hasNumber = /\d/.test(pass);
-  const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
+  const hasSpecialChar = /[!@#$%^&*\-_(),.?":{}|<>]/.test(pass);
   if (pass.length < 8 || !hasNumber || !hasSpecialChar) {
     return false;
   }
