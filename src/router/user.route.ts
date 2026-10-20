@@ -34,6 +34,7 @@ import {
 import form_responseController from "../controller/response/form_response.controller";
 import questionController from "../controller/form/question.controller";
 import VerifyRecaptcha from "../controller/utils/recaptcha.controller";
+import { VerifyTurnstile } from "../middleware/Turnstile.middleware";
 import {
   ConfirmAddCollaborator,
   ConfirmOwnershipTransfer,
@@ -54,6 +55,7 @@ UserRoute.get(
 UserRoute.post(
   "/registeruser",
   TrafficControl.ApiRateLimit as unknown as RequestHandler,
+  VerifyTurnstile("signup") as unknown as RequestHandler,
   validate(UserValidate) as unknown as RequestHandler,
   RegisterUser as unknown as RequestHandler,
 );
@@ -69,6 +71,7 @@ UserRoute.delete(
 UserRoute.post(
   "/login",
   TrafficControl.LoginRateLimit as unknown as RequestHandler,
+  VerifyTurnstile("login") as unknown as RequestHandler,
   validate(UserValidate) as unknown as RequestHandler,
   authenicationController.Login as unknown as RequestHandler,
 );
@@ -82,6 +85,9 @@ UserRoute.post(
 UserRoute.put(
   "/forgotpassword",
   TrafficControl.PasswordResetRateLimit as unknown as RequestHandler,
+  // Only the step that sends the reset email; the code/new-password steps
+  // are already tied to that email
+  VerifyTurnstile("forgot-password", (req) => req.body?.ty === "vfy") as unknown as RequestHandler,
   authenicationController.ForgotPassword as unknown as RequestHandler,
 );
 
