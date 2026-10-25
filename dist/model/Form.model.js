@@ -172,6 +172,12 @@ const FormSchema = new mongoose_1.Schema({
         required: false,
         default: 0,
     },
+    pageVersions: {
+        type: Map,
+        of: Number,
+        required: false,
+        default: {},
+    },
 }, {
     timestamps: true,
     toJSON: { virtuals: true },

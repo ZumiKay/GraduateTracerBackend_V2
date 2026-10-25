@@ -13,6 +13,7 @@ const Form_model_1 = __importDefault(require("../../model/Form.model"));
 const mongoose_1 = require("mongoose");
 const Content_model_1 = __importDefault(require("../../model/Content.model"));
 const formHelpers_1 = require("../../utilities/formHelpers");
+const FormCollaborationService_1 = require("../../services/FormCollaborationService");
 var form_collaborator_controller_1 = require("./form.collaborator.controller");
 Object.defineProperty(exports, "ManageFormCollaborator", { enumerable: true, get: function () { return form_collaborator_controller_1.ManageFormCollaborator; } });
 Object.defineProperty(exports, "GetFormCollaborators", { enumerable: true, get: function () { return form_collaborator_controller_1.GetFormCollaborators; } });
@@ -141,9 +142,13 @@ async function PageHandler(req, res) {
                 .select("_id")
                 .lean();
             //update form totalpage and delete questions
+            // Pages shift after a delete, so invalidate every page version
             await Form_model_1.default.updateOne({ _id: formId }, {
                 $inc: { totalpage: -1 },
                 $pull: { contentIds: { $in: toBeDeleteContent.map((i) => i._id) } },
+                $set: {
+                    pageVersions: (0, formHelpers_1.buildBumpedPageVersions)(form, form.totalpage ?? 1),
+                },
             });
             await Content_model_1.default.deleteMany({
                 formId: new mongoose_1.Types.ObjectId(formId),
@@ -157,6 +162,13 @@ async function PageHandler(req, res) {
                 $inc: { page: -1 },
             });
         }
+        // Live refresh: other open editors must re-read the form's pages
+        FormCollaborationService_1.formCollaboration.broadcastStructureChange(formId, {
+            userId: user.sub.toString(),
+            connectionId: typeof req.body?.connectionId === "string"
+                ? req.body.connectionId
+                : undefined,
+        });
         return res
             .status(200)
             .json((0, helper_1.ReturnCode)(200, "Operation completed successfully"));

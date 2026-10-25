@@ -19,9 +19,10 @@ function generateCollaboratorInviteEmail(params) {
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
         .header { background-color: #4f46e5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
         .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-        .button { 
-          display: inline-block;  
-          color: blue; 
+        .button {
+          display: inline-block;
+          background-color: #4f46e5;
+          color: #ffffff !important; 
           padding: 12px 24px; 
           text-decoration: none; 
           border-radius: 6px; 
@@ -53,7 +54,7 @@ function generateCollaboratorInviteEmail(params) {
           <h3 style="color: #4f46e5;">${formTitle}</h3>
           <p>Your role: <span class="role-badge">${role}</span></p>
           <p>Click the button below to accept the invitation:</p>
-          <a href="${inviteUrl}" class="button">Accept Invitation</a>
+          <a href="${inviteUrl}" class="button" style="display:inline-block;background-color:#4f46e5;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;margin:20px 0;font-weight:bold;">Accept Invitation</a>
           <p>Or copy and paste this link into your browser:</p>
           <p style="word-break: break-all;"><a href="${inviteUrl}">${inviteUrl}</a></p>
           <div class="warning">
@@ -83,9 +84,10 @@ function generateOwnershipTransferEmail(params) {
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
         .header { background-color: #7c3aed; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
         .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-        .button { 
-          display: inline-block;  
-          color: blue; 
+        .button {
+          display: inline-block;
+          background-color: #4f46e5;
+          color: #ffffff !important; 
           padding: 12px 24px; 
           text-decoration: none; 
           border-radius: 6px; 
@@ -126,7 +128,7 @@ function generateOwnershipTransferEmail(params) {
             </ul>
           </div>
           <p>Click the button below to accept the ownership transfer:</p>
-          <a href="${inviteUrl}" class="button">Accept Ownership Transfer</a>
+          <a href="${inviteUrl}" class="button" style="display:inline-block;background-color:#4f46e5;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;margin:20px 0;font-weight:bold;">Accept Ownership Transfer</a>
           <p>Or copy and paste this link into your browser:</p>
           <p style="word-break: break-all;"><a href="${inviteUrl}">${inviteUrl}</a></p>
           <div class="warning">
@@ -195,7 +197,7 @@ function generateCollaboratorReminderEmail(params) {
           <h3 style="color: #4f46e5;">${formTitle}</h3>
           <p>Your role: <span class="role-badge">${role}</span></p>
           <p>Click the button below to accept the invitation:</p>
-          <a href="${inviteUrl}" class="button">Accept Invitation</a>
+          <a href="${inviteUrl}" class="button" style="display:inline-block;background-color:#4f46e5;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;margin:20px 0;font-weight:bold;">Accept Invitation</a>
           <p>Or copy and paste this link into your browser:</p>
           <p style="word-break: break-all;"><a href="${inviteUrl}">${inviteUrl}</a></p>
           <div class="warning">

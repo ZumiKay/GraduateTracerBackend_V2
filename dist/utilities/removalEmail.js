@@ -5,18 +5,19 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendBulkRemovalEmails = exports.sendRemovalLinkEmail = void 0;
 const email_1 = __importDefault(require("./email"));
+const frontendUrl_1 = require("./frontendUrl");
 /**
  * Send removal link email to respondent
  * @param respondentEmail - Email address of the respondent
  * @param removeCode - Unique removal code
  * @param formTitle - Title of the form (optional, for better user experience)
- * @param baseUrl - Base URL of your application (defaults to FRONTEND_URL env var)
+ * @param baseUrl - Base URL of your application (defaults to getFrontendBaseUrl())
  * @returns Promise with success status
  */
 const sendRemovalLinkEmail = async (respondentEmail, removeCode, formId, formTitle, baseUrl) => {
     const encodedRemoveCode = encodeURIComponent(removeCode);
     const encodedFormId = encodeURIComponent(formId);
-    const frontendUrl = baseUrl || process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = baseUrl || (0, frontendUrl_1.getFrontendBaseUrl)();
     const removalUrl = `${frontendUrl}/response/session/replace/${encodedFormId}/${encodedRemoveCode}`;
     const subject = "Remove Your Form Response - Action Required";
     const htmlTemplate = `

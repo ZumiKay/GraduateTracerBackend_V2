@@ -56,7 +56,15 @@ class QuestionService {
         if (this.efficientChangeDetection(existingContent, data)) {
             if (title)
                 await Form_model_1.default.updateOne({ _id: formId }, { title });
-            return { success: true, noChanges: true, message: "No changes detected" };
+            const currentForm = await Form_model_1.default.findById(formId)
+                .select("pageVersions")
+                .lean();
+            return {
+                success: true,
+                noChanges: true,
+                message: "No changes detected",
+                version: (0, formHelpers_1.getPageVersion)(currentForm, page),
+            };
         }
         // Step 4: Generate IDs for new questions
         const { questionIdMap, newIds } = this.generateNewQuestionIds(data);
@@ -67,6 +75,26 @@ class QuestionService {
                 success: false,
                 statusCode: 400,
                 message: "Score Validation Error",
+            };
+        }
+        // Step 5.1: Claim the next page version. Fails when another save changed
+        // this page after the client loaded it, so a stale copy can never
+        // overwrite or delete someone else's work.
+        const claim = await this.claimPageVersion(formId, page, payload.version);
+        if (!claim.success) {
+            const latestContent = await this.fetchUpdatedContent(formId, page);
+            const lastIdx = await (0, formHelpers_1.getLastQuestionIdx)(formId, page);
+            return {
+                success: false,
+                statusCode: 409,
+                message: "This page was changed by someone else",
+                conflict: {
+                    version: claim.version,
+                    data: (0, helper_1.AddQuestionNumbering)({
+                        questions: latestContent,
+                        lastIdx,
+                    }),
+                },
             };
         }
         // Step 6: Build bulk operations for upsert
@@ -102,7 +130,31 @@ class QuestionService {
                 lastIdx: lastQuestionIdx,
             }),
             message: "Saved Completed",
+            version: claim.version,
         };
+    }
+    /**
+     * Atomically bumps a page's content version.
+     * When `expected` is given, the bump only happens if the stored version
+     * still equals it (compare-and-set); otherwise the current version is
+     * returned with success=false.
+     */
+    static async claimPageVersion(formId, page, expected) {
+        const key = `pageVersions.${page}`;
+        const filter = { _id: formId };
+        if (typeof expected === "number") {
+            // Forms saved before versioning have no stored value: treat it as 0
+            filter.$or =
+                expected === 0
+                    ? [{ [key]: 0 }, { [key]: { $exists: false } }]
+                    : [{ [key]: expected }];
+        }
+        const updated = await Form_model_1.default.findOneAndUpdate(filter, { $inc: { [key]: 1 } }, { new: true, projection: { pageVersions: 1 } }).lean();
+        if (updated) {
+            return { success: true, version: (0, formHelpers_1.getPageVersion)(updated, page) };
+        }
+        const current = await Form_model_1.default.findById(formId).select("pageVersions").lean();
+        return { success: false, version: (0, formHelpers_1.getPageVersion)(current, page) };
     }
     /**
      * Delete Question
@@ -115,8 +167,9 @@ class QuestionService {
                 message: "Invalid request payload",
             };
         }
-        const tobeDelete = await Content_model_1.default.findById(id)
-            .select("conditional score")
+        // Scoped to the form so access to one form can't delete another's content
+        const tobeDelete = await Content_model_1.default.findOne({ _id: id, formId })
+            .select("conditional score page")
             .lean();
         if (!tobeDelete) {
             return { success: false, statusCode: 400, message: "Content not found" };
@@ -134,6 +187,16 @@ class QuestionService {
             operations.push(Content_model_1.default.deleteMany({ _id: { $in: conditionalIds } }), Form_model_1.default.updateOne({ _id: formId }, { $pull: { contentIds: { $in: conditionalIds } } }));
         }
         await Promise.all(operations);
+        // Content changed: stale copies of this page must not save over it
+        if (typeof tobeDelete.page === "number") {
+            const claim = await this.claimPageVersion(formId, tobeDelete.page);
+            return {
+                success: true,
+                message: "Question Deleted",
+                page: tobeDelete.page,
+                version: claim.version,
+            };
+        }
         return { success: true, message: "Question Deleted" };
     }
     /**
@@ -385,7 +448,8 @@ class QuestionService {
             const processedParentContent = this.processParentContent(rest.parentcontent, data, questionIdMap);
             return {
                 updateOne: {
-                    filter: { _id: documentId },
+                    // formId in the filter: an _id from another form can never be rewritten
+                    filter: { _id: documentId, formId },
                     update: {
                         $set: {
                             ...rest,
@@ -475,6 +539,14 @@ class QuestionService {
             }));
         }
         await Promise.all(operations);
+    }
+    /**
+     * A page's current questions with display numbering, as the editor shows them.
+     */
+    static async fetchNumberedPage(formId, page) {
+        const content = await this.fetchUpdatedContent(formId, page);
+        const lastIdx = await (0, formHelpers_1.getLastQuestionIdx)(formId, page);
+        return (0, helper_1.AddQuestionNumbering)({ questions: content, lastIdx });
     }
     static async fetchUpdatedContent(formId, page) {
         return Content_model_1.default.find({ formId, page }, null, {

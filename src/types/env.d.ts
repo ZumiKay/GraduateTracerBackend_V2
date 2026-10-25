@@ -9,8 +9,9 @@ declare namespace NodeJS {
     JWT_SECRET: string;
     REFRESH_TOKEN_COOKIE: string;
     ACCESS_TOKEN_COOKIE: string;
-    RECAPCHA_SECRETKEY: string;
-    RECAPCHA_URL: string;
+    TURNSTILE_SECRET?: string;
+    /** Comma-separated hostnames allowed for Turnstile tokens (defaults to FRONTEND_URL) */
+    TURNSTILE_HOSTNAMES?: string;
     LOGIN_ATTEMPT: string;
     RESPONDENT_COOKIE: string;
     ACCESS_RESPONDENT_COOKIE: string;

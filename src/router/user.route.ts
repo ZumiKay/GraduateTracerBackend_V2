@@ -33,7 +33,6 @@ import {
 } from "../controller/auth/user.controller";
 import form_responseController from "../controller/response/form_response.controller";
 import questionController from "../controller/form/question.controller";
-import VerifyRecaptcha from "../controller/utils/recaptcha.controller";
 import { VerifyTurnstile } from "../middleware/Turnstile.middleware";
 import {
   ConfirmAddCollaborator,
@@ -91,8 +90,6 @@ UserRoute.put(
   authenicationController.ForgotPassword as unknown as RequestHandler,
 );
 
-//Recaptcha
-UserRoute.post("/recaptchaverify", VerifyRecaptcha as unknown as RequestHandler);
 
 //Form Modification Routes
 UserRoute.post(

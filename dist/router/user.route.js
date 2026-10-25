@@ -7,6 +7,7 @@ const express_1 = require("express");
 const ConditionValidator_1 = __importDefault(require("../middleware/ConditionValidator"));
 const Traffic_middleware_1 = __importDefault(require("../middleware/Traffic.middleware"));
 const form_controller_1 = require("../controller/form/form.controller");
+const form_collaboration_controller_1 = require("../controller/form/form.collaboration.controller");
 const Form_model_1 = require("../model/Form.model");
 const Validatetor_1 = require("../middleware/Validatetor");
 const authenication_controller_1 = __importDefault(require("../controller/auth/authenication.controller"));
@@ -14,25 +15,26 @@ const User_middleware_1 = __importDefault(require("../middleware/User.middleware
 const user_controller_1 = require("../controller/auth/user.controller");
 const form_response_controller_1 = __importDefault(require("../controller/response/form_response.controller"));
 const question_controller_1 = __importDefault(require("../controller/form/question.controller"));
-const recaptcha_controller_1 = __importDefault(require("../controller/utils/recaptcha.controller"));
+const Turnstile_middleware_1 = require("../middleware/Turnstile.middleware");
 const form_collaborator_controller_1 = require("../controller/form/form.collaborator.controller");
 const FormValidationService_1 = require("../services/FormValidationService");
 const UserRoute = (0, express_1.Router)();
 //Get User Profile
 UserRoute.get("/user/profile", User_middleware_1.default.VerifyToken, user_controller_1.GetUserProfile);
 //RegisterUser
-UserRoute.post("/registeruser", Traffic_middleware_1.default.ApiRateLimit, (0, Validatetor_1.validate)(user_controller_1.UserValidate), user_controller_1.RegisterUser);
+UserRoute.post("/registeruser", Traffic_middleware_1.default.ApiRateLimit, (0, Turnstile_middleware_1.VerifyTurnstile)("signup"), (0, Validatetor_1.validate)(user_controller_1.UserValidate), user_controller_1.RegisterUser);
 //User Management
 UserRoute.put("/edituser", User_middleware_1.default.VerifyToken, user_controller_1.EditUser);
 UserRoute.delete("/deleteuser", User_middleware_1.default.VerifyToken, user_controller_1.DeleteUser);
 //Authentication
-UserRoute.post("/login", Traffic_middleware_1.default.LoginRateLimit, (0, Validatetor_1.validate)(user_controller_1.UserValidate), authenication_controller_1.default.Login);
+UserRoute.post("/login", Traffic_middleware_1.default.LoginRateLimit, (0, Turnstile_middleware_1.VerifyTurnstile)("login"), (0, Validatetor_1.validate)(user_controller_1.UserValidate), authenication_controller_1.default.Login);
 UserRoute.get("/checksession", authenication_controller_1.default.CheckSession);
 UserRoute.delete("/logout", authenication_controller_1.default.Logout);
 UserRoute.post("/refreshtoken", User_middleware_1.default.VerifyRefreshToken, authenication_controller_1.default.RefreshToken);
-UserRoute.put("/forgotpassword", Traffic_middleware_1.default.PasswordResetRateLimit, authenication_controller_1.default.ForgotPassword);
-//Recaptcha
-UserRoute.post("/recaptchaverify", recaptcha_controller_1.default);
+UserRoute.put("/forgotpassword", Traffic_middleware_1.default.PasswordResetRateLimit, 
+// Only the step that sends the reset email; the code/new-password steps
+// are already tied to that email
+(0, Turnstile_middleware_1.VerifyTurnstile)("forgot-password", (req) => req.body?.ty === "vfy"), authenication_controller_1.default.ForgotPassword);
 //Form Modification Routes
 UserRoute.post("/createform", [
     User_middleware_1.default.VerifyToken,
@@ -59,6 +61,10 @@ UserRoute.delete("/ownership/cancel", User_middleware_1.default.VerifyToken, for
 // Pending collaborator management
 UserRoute.post("/resendpending", User_middleware_1.default.VerifyToken, form_controller_1.ResendPendingInvitation);
 UserRoute.delete("/deletepending", User_middleware_1.default.VerifyToken, form_controller_1.DeletePendingCollaborator);
+//Form live collaboration (presence + question locks)
+UserRoute.get("/form/:formId/collab/stream", User_middleware_1.default.VerifyToken, form_collaboration_controller_1.SubscribeToFormCollaboration);
+UserRoute.post("/form/:formId/collab/lock", User_middleware_1.default.VerifyToken, form_collaboration_controller_1.AcquireQuestionLock);
+UserRoute.post("/form/:formId/collab/unlock", User_middleware_1.default.VerifyToken, form_collaboration_controller_1.ReleaseQuestionLock);
 //Form Content Routes
 UserRoute.put("/savecontent", User_middleware_1.default.VerifyToken, question_controller_1.default.SaveQuestion);
 UserRoute.delete("/deletecontent", User_middleware_1.default.VerifyToken, question_controller_1.default.DeleteQuestion);

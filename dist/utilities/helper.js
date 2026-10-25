@@ -132,7 +132,7 @@ const convertResponseToString = (value) => {
 exports.convertResponseToString = convertResponseToString;
 const ValidatePassword = (pass) => {
     const hasNumber = /\d/.test(pass);
-    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
+    const hasSpecialChar = /[!@#$%^&*\-_(),.?":{}|<>]/.test(pass);
     if (pass.length < 8 || !hasNumber || !hasSpecialChar) {
         return false;
     }

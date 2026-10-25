@@ -5,12 +5,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const crypto_1 = __importDefault(require("crypto"));
 const Form_model_1 = __importDefault(require("../model/Form.model"));
+const frontendUrl_1 = require("../utilities/frontendUrl");
 class FormLinkService {
     baseUrl;
     encryptionKey;
     algorithm = "aes-256-gcm";
     constructor() {
-        this.baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+        this.baseUrl = (0, frontendUrl_1.getFrontendBaseUrl)();
         const secret = process.env.INVITE_LINK_SECRET || "default-invite-secret-key";
         this.encryptionKey = crypto_1.default.scryptSync(secret, "salt", 32);
     }

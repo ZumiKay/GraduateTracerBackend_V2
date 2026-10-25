@@ -70,10 +70,10 @@ Built with **Node.js**, **ExpressJS**, **TypeScript**, and **MongoDB**.
   <img src="https://img.shields.io/badge/bcrypt-4A90D9?style=for-the-badge&logo=lock&logoColor=white" alt="bcrypt" />
 </a>
 
-<!-- reCAPTCHA -->
+<!-- Cloudflare Turnstile -->
 
-<a href="https://developers.google.com/recaptcha" target="_blank">
-  <img src="https://img.shields.io/badge/reCAPTCHA_v2-4285F4?style=for-the-badge&logo=google&logoColor=white" alt="reCAPTCHA" />
+<a href="https://developers.cloudflare.com/turnstile/" target="_blank">
+  <img src="https://img.shields.io/badge/Cloudflare_Turnstile-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Cloudflare Turnstile" />
 </a>
 
 <!-- Containerization -->
@@ -104,7 +104,7 @@ src/
 │   ├── form/               # Form CRUD, content, collaborators, sessions
 │   ├── response/           # Response submission and retrieval
 │   ├── analytics/          # Choice & response analytics
-│   └── utils/              # reCAPTCHA, misc helpers
+│   └── utils/              # Misc helpers
 ├── middleware/             # Auth verification, validators, rate control
 ├── model/                  # Mongoose models
 ├── services/               # Business logic services
@@ -167,7 +167,8 @@ Copy `.env.example` to `.env` and fill in all values. Key variables:
 | `RESPONDENT_TOKEN_JWT_SECRET`               | Secret for respondent session tokens              |
 | `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` | Email (SMTP) credentials                          |
 | `FRONTEND_URL`                              | Allowed CORS origin (e.g.`http://localhost:5173`) |
-| `RECAPCHA_SECRETKEY`                        | Google reCAPTCHA v2 secret                        |
+| `TURNSTILE_SECRET`                          | Cloudflare Turnstile secret key                   |
+| `TURNSTILE_HOSTNAMES`                       | Allowed token hostnames (default: `FRONTEND_URL`) |
 | `INVITE_LINK_SECRET`                        | Secret for signing invitation links               |
 | `FORM_LINK_EXPIRATION`                      | Invite link TTL in hours                          |
 
@@ -268,7 +269,7 @@ Tests use **Jest** with **ts-jest**.
 - All routes use **Helmet** headers.
 - Rate limiting: 100 requests per 15 minutes per IP.
 - Respondent sessions use short-lived JWTs with RSA signing.
-- reCAPTCHA validation on sensitive endpoints.
+- Cloudflare Turnstile verification on login, sign-up and password reset.
 
 ## License
 

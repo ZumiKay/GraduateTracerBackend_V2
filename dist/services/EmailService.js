@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const nodemailer_1 = __importDefault(require("nodemailer"));
+const frontendUrl_1 = require("../utilities/frontendUrl");
 const helper_1 = require("../utilities/helper");
 class EmailService {
     transporter;
@@ -35,7 +36,7 @@ class EmailService {
     }
     // Send form link to multiple recipients
     async sendFormLinks(data) {
-        const formUrl = `${process.env.FRONTEND_URL}/form-access/${data.formId}`;
+        const formUrl = `${(0, frontendUrl_1.getFrontendBaseUrl)()}/form-access/${data.formId}`;
         const html = `
       <!DOCTYPE html>
       <html>
@@ -69,7 +70,7 @@ class EmailService {
             <p>You have been invited by <strong>${data.formOwner}</strong> to fill out a form.</p>
             ${data.message ? `<p><em>${data.message}</em></p>` : ""}
             <p>Click the button below to access the form:</p>
-            <a href="${formUrl}" class="button">Fill Out Form</a>
+            <a href="${formUrl}" class="button" style="display:inline-block;background-color:#4f46e5;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:6px;margin:20px 0;font-weight:bold;">Fill Out Form</a>
             <p>Or copy and paste this link into your browser:</p>
             <p><a href="${formUrl}">${formUrl}</a></p>
             <p>Thank you for your participation!</p>

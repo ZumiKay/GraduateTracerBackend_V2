@@ -15,9 +15,17 @@ jest.mock("../../model/Form.model");
 describe("QuestionService", () => {
     const formId = new mongoose_1.Types.ObjectId().toString();
     const q1Id = new mongoose_1.Types.ObjectId();
+    const leanResult = (value) => ({
+        lean: jest.fn().mockResolvedValue(value),
+    });
     beforeEach(() => {
         jest.clearAllMocks();
         Question_Service_1.QuestionService.comparisonCache?.clear?.();
+        // Page version claim succeeds by default (page 1 moves to version 1)
+        Form_model_1.default.findOneAndUpdate.mockReturnValue(leanResult({ pageVersions: { "1": 1 } }));
+        Form_model_1.default.findById.mockReturnValue({
+            select: jest.fn().mockReturnValue(leanResult({ pageVersions: { "1": 1 } })),
+        });
     });
     //save question
     describe("saveQuestion", () => {
@@ -366,7 +374,7 @@ describe("QuestionService", () => {
             expect(result.message).toBe("Invalid request payload");
         });
         test("returns error if content not found", async () => {
-            Content_model_1.default.findById.mockReturnValue({
+            Content_model_1.default.findOne.mockReturnValue({
                 select: jest.fn().mockReturnValue({
                     lean: jest.fn().mockResolvedValue(null),
                 }),
@@ -378,10 +386,11 @@ describe("QuestionService", () => {
         });
         test("successfully deletes question and linked conditional questions", async () => {
             const childId = new mongoose_1.Types.ObjectId();
-            Content_model_1.default.findById.mockReturnValue({
+            Content_model_1.default.findOne.mockReturnValue({
                 select: jest.fn().mockReturnValue({
                     lean: jest.fn().mockResolvedValue({
                         score: 10,
+                        page: 2,
                         conditional: [{ contentId: childId }],
                     }),
                 }),
@@ -401,6 +410,77 @@ describe("QuestionService", () => {
                 $pull: { contentIds: q1Id.toString() },
                 $inc: { totalscore: -10 },
             });
+            // Only content of this form can be deleted
+            expect(Content_model_1.default.findOne).toHaveBeenCalledWith({
+                _id: q1Id.toString(),
+                formId,
+            });
+            // Deleting bumps the page version so stale copies can't save over it
+            expect(Form_model_1.default.findOneAndUpdate).toHaveBeenCalledWith({ _id: formId }, { $inc: { "pageVersions.2": 1 } }, expect.anything());
+        });
+    });
+    describe("page versioning", () => {
+        const changedQuestion = () => mockdata_1.MockContentFactory.createTextContent({
+            _id: q1Id,
+            formId: new mongoose_1.Types.ObjectId(formId),
+            page: 1,
+            qIdx: 0,
+        });
+        test("claimPageVersion bumps only when the stored version matches", async () => {
+            const result = await Question_Service_1.QuestionService.claimPageVersion(formId, 1, 3);
+            expect(result).toEqual({ success: true, version: 1 });
+            expect(Form_model_1.default.findOneAndUpdate).toHaveBeenCalledWith({ _id: formId, $or: [{ "pageVersions.1": 3 }] }, { $inc: { "pageVersions.1": 1 } }, expect.anything());
+        });
+        test("claimPageVersion treats a missing stored version as 0", async () => {
+            await Question_Service_1.QuestionService.claimPageVersion(formId, 2, 0);
+            expect(Form_model_1.default.findOneAndUpdate).toHaveBeenCalledWith({
+                _id: formId,
+                $or: [
+                    { "pageVersions.2": 0 },
+                    { "pageVersions.2": { $exists: false } },
+                ],
+            }, { $inc: { "pageVersions.2": 1 } }, expect.anything());
+        });
+        test("claimPageVersion reports the current version when the claim fails", async () => {
+            Form_model_1.default.findOneAndUpdate.mockReturnValue(leanResult(null));
+            Form_model_1.default.findById.mockReturnValue({
+                select: jest.fn().mockReturnValue(leanResult({ pageVersions: { "1": 7 } })),
+            });
+            const result = await Question_Service_1.QuestionService.claimPageVersion(formId, 1, 3);
+            expect(result).toEqual({ success: false, version: 7 });
+        });
+        test("saveQuestion returns 409 with the latest page and writes nothing when the version is stale", async () => {
+            const stored = { ...changedQuestion(), title: { type: "doc" } };
+            Content_model_1.default.find.mockResolvedValue([stored]);
+            Form_model_1.default.findOneAndUpdate.mockReturnValue(leanResult(null));
+            Form_model_1.default.findById.mockReturnValue({
+                select: jest.fn().mockReturnValue(leanResult({ pageVersions: { "1": 5 } })),
+            });
+            const result = await Question_Service_1.QuestionService.saveQuestion({
+                formId,
+                page: 1,
+                version: 4,
+                data: [{ ...changedQuestion(), require: true }],
+            });
+            expect(result.success).toBe(false);
+            expect(result.statusCode).toBe(409);
+            expect(result.conflict?.version).toBe(5);
+            expect(Array.isArray(result.conflict?.data)).toBe(true);
+            expect(Content_model_1.default.bulkWrite).not.toHaveBeenCalled();
+            expect(Content_model_1.default.deleteMany).not.toHaveBeenCalled();
+        });
+        test("saveQuestion reports the current version when nothing changed", async () => {
+            const question = changedQuestion();
+            Content_model_1.default.find.mockResolvedValue([question]);
+            const result = await Question_Service_1.QuestionService.saveQuestion({
+                formId,
+                page: 1,
+                version: 1,
+                data: [question],
+            });
+            expect(result.noChanges).toBe(true);
+            expect(result.version).toBe(1);
+            expect(Form_model_1.default.findOneAndUpdate).not.toHaveBeenCalled();
         });
     });
     describe("saveSolution", () => {

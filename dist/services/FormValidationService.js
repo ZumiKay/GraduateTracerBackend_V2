@@ -49,18 +49,14 @@ const form_query_controller_1 = require("../controller/form/form.query.controlle
 exports.formValidationErrorByContentTypes = {
     [Content_model_1.QuestionType.Text]: (content) => {
         const errors = [];
-        if (content.isBonusScore ||
-            content.useChildScoreSum ||
-            (content.score && content.score > 0)) {
+        if (content.isBonusScore || content.useChildScoreSum || (content.score && content.score > 0)) {
             errors.push((0, validation_types_1.PredefinedErrorMessage)()[validation_types_1.ValidationErrorCodeEnum.invalid]);
         }
         return errors;
     },
     [Content_model_1.QuestionType.MultipleChoice]: (content) => {
         const errors = [];
-        if (!content.multiple ||
-            !Array.isArray(content.multiple) ||
-            content.multiple.length === 0) {
+        if (!content.multiple || !Array.isArray(content.multiple) || content.multiple.length === 0) {
             errors.push((0, validation_types_1.PredefinedErrorMessage)({
                 target: validation_types_1.ValidationErrorCodeEnum.format,
                 customMess: "Multiple choice question requires at least one choice option",
@@ -222,16 +218,14 @@ class FormValidationService {
         const currentPage = Number(page || p) || 1;
         try {
             let result;
-            if (action === form_query_controller_1.GetFilterTypeEnum.detail) {
+            if (action === form_query_controller_1.GetFilterTypeEnum.question) {
                 result = await FormValidationService.getFormOverviewDataById({
                     formId: new mongoose_1.Types.ObjectId(formId),
                     p: currentPage,
                 });
             }
             else if (action === form_query_controller_1.GetFilterTypeEnum.solution) {
-                const currentForm = await Form_model_1.default.findById(formId)
-                    .select(formHelpers_1.projections.detail)
-                    .lean();
+                const currentForm = await Form_model_1.default.findById(formId).select(formHelpers_1.projections.detail).lean();
                 if (!currentForm)
                     return res.status(404).json((0, helper_1.ReturnCode)(404));
                 const currentContents = await Content_model_1.default.find({ formId }).lean();
@@ -405,9 +399,7 @@ class FormValidationService {
             initialCurrentPageScoreAnalysis,
         };
     }
-    static getValidationMessageByQId = (issue, questionId) => issue
-        .filter((i) => i._id === questionId || i.qIdx === questionId)
-        .map((i) => i.message);
+    static getValidationMessageByQId = (issue, questionId) => issue.filter((i) => i._id === questionId || i.qIdx === questionId).map((i) => i.message);
     static getFormOverviewDataById = async ({ formId, p, }) => {
         const [summary] = await Content_model_1.default.aggregate([
             { $match: { formId } },
@@ -424,10 +416,7 @@ class FormValidationService {
                         $sum: {
                             $cond: [
                                 {
-                                    $and: [
-                                        { $not: { $ifNull: ["$parentcontent", false] } },
-                                        { $eq: ["$page", p] },
-                                    ],
+                                    $and: [{ $not: { $ifNull: ["$parentcontent", false] } }, { $eq: ["$page", p] }],
                                 },
                                 { $ifNull: ["$score", 0] },
                                 0,

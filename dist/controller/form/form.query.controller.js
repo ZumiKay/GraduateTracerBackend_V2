@@ -53,6 +53,7 @@ var GetFilterTypeEnum;
     GetFilterTypeEnum["createdDate"] = "createddate";
     GetFilterTypeEnum["modifiedDate"] = "modifieddate";
     GetFilterTypeEnum["detail"] = "detail";
+    GetFilterTypeEnum["question"] = "question";
     GetFilterTypeEnum["user"] = "user";
     GetFilterTypeEnum["setting"] = "setting";
     GetFilterTypeEnum["solution"] = "solution";
@@ -203,6 +204,8 @@ async function handleDetailQuery(res, ty, q, p, user) {
                 lastIdx: summaryData?.lastQuestionIdx,
             }), //Return only the selected page content
             contentIds: undefined,
+            pageVersions: undefined,
+            contentVersion: (0, formHelpers_1.getPageVersion)(detailForm, p),
             //Overall validation
             validation: validationSummary,
             ...summaryData,
